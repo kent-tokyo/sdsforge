@@ -1,0 +1,10 @@
+.claude/
+tasks/
+CLAUDE.md
+AGENTS.md
+.env
+.env.local
+
+# Added by cargo
+
+/target

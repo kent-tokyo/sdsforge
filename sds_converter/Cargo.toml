@@ -1,0 +1,24 @@
+[package]
+name = "sds-converter"
+version = "0.1.0"
+edition = "2021"
+description = "CLI tool for converting SDS documents (PDF/Word) ↔ MHLW standard JSON. Powered by sds-converter-core."
+license = "MIT OR Apache-2.0"
+keywords = ["sds", "safety-data-sheet", "cli", "mhlw"]
+categories = ["command-line-utilities"]
+readme = "README.md"
+repository = "https://github.com/kent-tokyo/sds-converter"
+homepage = "https://github.com/kent-tokyo/sds-converter"
+
+[[bin]]
+name = "sds-converter"
+path = "src/main.rs"
+
+[dependencies]
+sds-converter-core = { path = "../sds_converter_core", version = "0.1" }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4.5", features = ["derive", "env"] }
