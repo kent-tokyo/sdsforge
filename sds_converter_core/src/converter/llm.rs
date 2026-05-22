@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use reqwest::Client;
 use serde_json::Value;
 
@@ -6,7 +8,7 @@ use crate::language::Language;
 use crate::schema::SdsRoot;
 
 // ---------------------------------------------------------------------------
-// LlmBackend trait (rig-inspired, stable async fn in trait since Rust 1.75)
+// LlmBackend trait (stable async fn in trait since Rust 1.75)
 // ---------------------------------------------------------------------------
 
 /// Abstraction over LLM completion providers.
@@ -23,12 +25,31 @@ pub trait LlmBackend {
 }
 
 // ---------------------------------------------------------------------------
+// Provider URL table
+// ---------------------------------------------------------------------------
+
+/// Returns the default base URL for well-known OpenAI-compatible providers.
+///
+/// Recognised names: `"openai"`, `"gemini"`, `"mistral"`, `"groq"`, `"cohere"`, `"local"`.
+pub fn openai_compat_url(provider: &str) -> Option<&'static str> {
+    match provider {
+        "openai"  => Some("https://api.openai.com/v1/chat/completions"),
+        "gemini"  => Some("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"),
+        "mistral" => Some("https://api.mistral.ai/v1/chat/completions"),
+        "groq"    => Some("https://api.groq.com/openai/v1/chat/completions"),
+        "cohere"  => Some("https://api.cohere.com/v2/chat"),
+        "local"   => Some("http://localhost:11434/v1/chat/completions"),
+        _         => None,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Built-in Anthropic backend
 // ---------------------------------------------------------------------------
 
-const DEFAULT_MODEL: &str = "claude-sonnet-4-6";
 const ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
+const MAX_RETRIES: u32 = 3;
 
 /// LLM completion configuration.
 #[derive(Debug, Clone)]
@@ -40,8 +61,8 @@ pub struct LlmConfig {
 impl Default for LlmConfig {
     fn default() -> Self {
         Self {
-            model: DEFAULT_MODEL.to_string(),
-            max_tokens: 8192,
+            model: "claude-haiku-4-5-20251001".to_string(),
+            max_tokens: 16_384,
         }
     }
 }
@@ -67,34 +88,50 @@ impl AnthropicBackend {
             config,
         }
     }
-
-    /// Create from the `ANTHROPIC_API_KEY` environment variable.
-    pub fn from_env() -> Result<Self, SdsError> {
-        let key = std::env::var("ANTHROPIC_API_KEY")
-            .map_err(|_| SdsError::Config("ANTHROPIC_API_KEY environment variable not set".into()))?;
-        Ok(Self::new(key, LlmConfig::default()))
-    }
 }
 
 impl LlmBackend for AnthropicBackend {
     async fn complete(&self, system: &str, user: &str) -> Result<String, SdsError> {
+        // Structured system array enables prompt caching (cache_control: ephemeral).
+        // Assistant prefill forces the model to start the JSON object directly.
+        // temperature=0 eliminates stochastic section omissions.
         let body = serde_json::json!({
             "model": self.config.model,
             "max_tokens": self.config.max_tokens,
-            "system": system,
+            "temperature": 0,
+            "system": [{
+                "type": "text",
+                "text": system,
+                "cache_control": { "type": "ephemeral" }
+            }],
             "messages": [
-                {"role": "user", "content": user}
+                {"role": "user", "content": user},
+                {"role": "assistant", "content": "{"}
             ]
         });
 
-        let response = self.client
-            .post(ANTHROPIC_API_URL)
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", ANTHROPIC_VERSION)
-            .header("content-type", "application/json")
-            .json(&body)
-            .send()
-            .await?;
+        let mut attempt = 0u32;
+        let response = loop {
+            let r = self.client
+                .post(ANTHROPIC_API_URL)
+                .header("x-api-key", &self.api_key)
+                .header("anthropic-version", ANTHROPIC_VERSION)
+                .header("anthropic-beta", "extended-cache-ttl-2025-04-11")
+                .header("content-type", "application/json")
+                .json(&body)
+                .send()
+                .await?;
+
+            let status = r.status().as_u16();
+            if (status == 429 || status == 529) && attempt < MAX_RETRIES {
+                attempt += 1;
+                let secs = 2_u64.pow(attempt);
+                tracing::warn!("HTTP {status} (attempt {attempt}/{MAX_RETRIES}), retrying in {secs}s");
+                tokio::time::sleep(Duration::from_secs(secs)).await;
+            } else {
+                break r;
+            }
+        };
 
         if !response.status().is_success() {
             let status = response.status().as_u16();
@@ -107,7 +144,8 @@ impl LlmBackend for AnthropicBackend {
             .as_str()
             .ok_or_else(|| SdsError::LlmParse("missing content[0].text".to_string()))?;
 
-        Ok(strip_code_fences(text))
+        // Prepend the prefill character to reconstruct the complete JSON object.
+        Ok(format!("{{{text}"))
     }
 }
 
@@ -115,23 +153,19 @@ impl LlmBackend for AnthropicBackend {
 // OpenAI-compatible backend (works with OpenAI GPT, Google Gemini, etc.)
 // ---------------------------------------------------------------------------
 
-const OPENAI_API_URL: &str = "https://api.openai.com/v1/chat/completions";
-const GEMINI_OPENAI_URL: &str =
-    "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-
-/// Backend for any OpenAI-compatible chat completions API (OpenAI GPT, Google Gemini, etc.).
+/// Backend for any OpenAI-compatible chat completions API.
 ///
 /// # Example — OpenAI GPT
 /// ```no_run
 /// use sds_converter_core::converter::llm::{OpenAiCompatBackend, LlmConfig};
-/// let config = LlmConfig { model: "gpt-4o".into(), max_tokens: 8192 };
+/// let config = LlmConfig { model: "gpt-4o".into(), max_tokens: 16384 };
 /// let backend = OpenAiCompatBackend::openai("sk-...", config);
 /// ```
 ///
 /// # Example — Google Gemini
 /// ```no_run
 /// use sds_converter_core::converter::llm::{OpenAiCompatBackend, LlmConfig};
-/// let config = LlmConfig { model: "gemini-2.0-flash".into(), max_tokens: 8192 };
+/// let config = LlmConfig { model: "gemini-2.0-flash".into(), max_tokens: 16384 };
 /// let backend = OpenAiCompatBackend::gemini("AIza...", config);
 /// ```
 pub struct OpenAiCompatBackend {
@@ -153,26 +187,12 @@ impl OpenAiCompatBackend {
 
     /// OpenAI GPT backend (api.openai.com).
     pub fn openai(api_key: impl Into<String>, config: LlmConfig) -> Self {
-        Self::new(api_key, config, OPENAI_API_URL)
+        Self::new(api_key, config, openai_compat_url("openai").unwrap())
     }
 
     /// Google Gemini backend via OpenAI-compatible endpoint.
     pub fn gemini(api_key: impl Into<String>, config: LlmConfig) -> Self {
-        Self::new(api_key, config, GEMINI_OPENAI_URL)
-    }
-
-    /// Create OpenAI backend from the `OPENAI_API_KEY` environment variable.
-    pub fn openai_from_env() -> Result<Self, SdsError> {
-        let key = std::env::var("OPENAI_API_KEY")
-            .map_err(|_| SdsError::Config("OPENAI_API_KEY environment variable not set".into()))?;
-        Ok(Self::openai(key, LlmConfig { model: "gpt-4o".into(), max_tokens: 8192 }))
-    }
-
-    /// Create Gemini backend from the `GEMINI_API_KEY` environment variable.
-    pub fn gemini_from_env() -> Result<Self, SdsError> {
-        let key = std::env::var("GEMINI_API_KEY")
-            .map_err(|_| SdsError::Config("GEMINI_API_KEY environment variable not set".into()))?;
-        Ok(Self::gemini(key, LlmConfig { model: "gemini-2.0-flash".into(), max_tokens: 8192 }))
+        Self::new(api_key, config, openai_compat_url("gemini").unwrap())
     }
 }
 
@@ -181,19 +201,33 @@ impl LlmBackend for OpenAiCompatBackend {
         let body = serde_json::json!({
             "model": self.config.model,
             "max_tokens": self.config.max_tokens,
+            "temperature": 0,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user}
             ]
         });
 
-        let response = self.client
-            .post(&self.base_url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("content-type", "application/json")
-            .json(&body)
-            .send()
-            .await?;
+        let mut attempt = 0u32;
+        let response = loop {
+            let r = self.client
+                .post(&self.base_url)
+                .header("Authorization", format!("Bearer {}", self.api_key))
+                .header("content-type", "application/json")
+                .json(&body)
+                .send()
+                .await?;
+
+            let status = r.status().as_u16();
+            if (status == 429 || status == 529) && attempt < MAX_RETRIES {
+                attempt += 1;
+                let secs = 2_u64.pow(attempt);
+                tracing::warn!("HTTP {status} (attempt {attempt}/{MAX_RETRIES}), retrying in {secs}s");
+                tokio::time::sleep(Duration::from_secs(secs)).await;
+            } else {
+                break r;
+            }
+        };
 
         if !response.status().is_success() {
             let status = response.status().as_u16();
@@ -216,11 +250,72 @@ impl LlmBackend for OpenAiCompatBackend {
 
 fn strip_code_fences(text: &str) -> String {
     let text = text.trim();
-    let text = text
-        .strip_prefix("```json")
-        .or_else(|| text.strip_prefix("```"))
-        .unwrap_or(text);
+    let text = if let Some(rest) = text.strip_prefix("```json") {
+        rest.trim_start_matches(['\n', '\r', ' '])
+    } else if let Some(rest) = text.strip_prefix("```") {
+        rest.trim_start_matches(['\n', '\r', ' '])
+    } else {
+        text
+    };
     text.strip_suffix("```").unwrap_or(text).trim().to_string()
+}
+
+/// Attempt lightweight repair of truncated or malformed JSON before parsing.
+///
+/// Handles:
+/// - Trailing commas before `}` or `]` (common in LLM output)
+/// - Unclosed braces/brackets due to context-limit truncation
+fn repair_json(s: &str) -> String {
+    let mut s = s.to_string();
+    loop {
+        let rep = s
+            .replace(",}", "}")
+            .replace(",]", "]")
+            .replace(", }", "}")
+            .replace(", ]", "]")
+            .replace(",\n}", "}")
+            .replace(",\n]", "]")
+            .replace(",\r\n}", "}")
+            .replace(",\r\n]", "]");
+        if rep == s {
+            break;
+        }
+        s = rep;
+    }
+
+    // Close unclosed braces/brackets using a stack
+    let mut stack: Vec<char> = Vec::new();
+    let mut in_string = false;
+    let mut prev_backslash = false;
+    for c in s.chars() {
+        if prev_backslash {
+            prev_backslash = false;
+            continue;
+        }
+        if c == '\\' && in_string {
+            prev_backslash = true;
+            continue;
+        }
+        if c == '"' {
+            in_string = !in_string;
+            continue;
+        }
+        if in_string {
+            continue;
+        }
+        match c {
+            '{' => stack.push('}'),
+            '[' => stack.push(']'),
+            '}' | ']' => {
+                stack.pop();
+            }
+            _ => {}
+        }
+    }
+    for closer in stack.iter().rev() {
+        s.push(*closer);
+    }
+    s
 }
 
 // ---------------------------------------------------------------------------
@@ -280,7 +375,10 @@ const MHLW_SCHEMA_HINT: &str = r#"Output a JSON object. CRITICAL: Use EXACTLY th
   "HandlingAndStorage": {
     "SafeHandling": {
       "HandlingPrecautions": "火気厳禁。換気の良い場所で取り扱う。",
-      "TechnicalMeasuresAndStorageConditions": { "FullText": "..." }
+      "TechnicalMeasuresAndStorageConditions": {
+        "ProtectiveMeasures": "適切な保護措置を講じる。",
+        "VentilationCondition": "局所排気換気を確保する。"
+      }
     },
     "Storage": {
       "ConditionsForSafeStorage": { "TechnicalMeasuresAndStorageConditions": "冷暗所に保管する。容器を密閉する。" }
@@ -297,8 +395,13 @@ const MHLW_SCHEMA_HINT: &str = r#"Output a JSON object. CRITICAL: Use EXACTLY th
   },
   "PhysicalChemicalProperties": {
     "BasePhysicalChemicalProperties": { "PhysicalState": "液体", "Colour": "無色", "Odour": "特異臭" },
+    "MeltingPointRelated": [{ "ItemName": "融点", "NumericRangeWithUnitAndQualifier": { "ExactValue": { "Value": -117.0 }, "Unit": "°C" } }],
+    "BoilingPointRelated": [{ "ItemName": "沸点", "NumericRangeWithUnitAndQualifier": { "ExactValue": { "Value": 78.4 }, "Unit": "°C" } }],
     "FlashPoint": [{ "NumericRangeWithUnitAndQualifier": { "ExactValue": { "Value": 13.0 }, "Unit": "°C" } }],
-    "BoilingPointRelated": [{ "ItemName": "沸点", "NumericRangeWithUnitAndQualifier": { "ExactValue": { "Value": 78.4 }, "Unit": "°C" } }]
+    "VapourPressure": [{ "NumericRangeWithUnitAndQualifier": { "ExactValue": { "Value": 5.9 }, "Unit": "kPa" } }],
+    "Densities": [{ "NumericRangeWithUnitAndQualifier": { "ExactValue": { "Value": 0.789 }, "Unit": "g/cm3" } }],
+    "Solubilities": { "WaterSolubility": [{ "AdditionalInfo": { "FullText": ["水に混和する"] } }] },
+    "OtherPhysicalChemicalProperty": [{ "ItemName": "その他の物性", "AdditionalInfo": { "FullText": ["テキスト形式の補足情報"] } }]
   },
   "StabilityReactivity": {
     "ReactivityDescription": "反応性についての説明",
@@ -342,6 +445,15 @@ const MHLW_SCHEMA_HINT: &str = r#"Output a JSON object. CRITICAL: Use EXACTLY th
   }
 }"#;
 
+const TYPO_WARNINGS: &str = r#"
+CRITICAL — the following key names look like typos but are REQUIRED exactly as shown in the MHLW schema:
+- "HumanExposureAndEmergencyMeasuress"  (two s's at the end — do NOT change to single s)
+- "TestGuidline"  (not "TestGuideline" — the 'e' is missing intentionally)
+- "Desclaimer"  (not "Disclaimer" — letters are transposed intentionally)
+- "gazetteNo"  (lowercase 'g' — do NOT capitalize)
+- "Dose/Concentration"  (literal forward-slash in the key name)
+Use these malformed spellings exactly. Correcting them will break schema validation."#;
+
 /// Build the system prompt for SDS extraction in the given document language.
 fn build_system_prompt(lang: Option<Language>) -> String {
     let lang_hint = match lang {
@@ -353,53 +465,183 @@ fn build_system_prompt(lang: Option<Language>) -> String {
         None => "The source document may be in Japanese, English, Simplified Chinese, or Traditional Chinese — detect the language automatically.\n".to_string(),
     };
 
+    let section_hint = match lang {
+        Some(Language::Japanese) | None => {
+            "Section headings follow JIS Z 7253 (第1節〜第16節).\n"
+        }
+        Some(Language::English) => {
+            "Section headings follow GHS/OSHA HazCom (SECTION 1–16).\n"
+        }
+        Some(Language::ChineseSimplified) => {
+            "Section headings follow GB/T 16483 (第1部分〜第16部分).\n"
+        }
+        Some(Language::ChineseTraditional) => {
+            "Section headings follow CNS 15030 (第1節〜第16節).\n"
+        }
+    };
+
     format!(
         "You are an expert in extracting Safety Data Sheet (SDS) information.\n\
          {lang_hint}\
+         {section_hint}\
          Read the document text and output all SDS information as a JSON object conforming to the \
          Japanese Ministry of Health, Labour and Welfare (MHLW) SDS data exchange format v1.0.\n\
          Rules:\n\
          - Output raw JSON only — no markdown, no code fences, no explanation\n\
-         - Omit keys that have no information (empty strings and null are forbidden)\n\
+         - Your response must begin immediately with '{{' — the first character must be '{{'\n\
+         - CRITICAL: Extract ALL sections listed in the user message. Never silently omit a section.\n\
+         - Pay special attention to Section 9 (PhysicalChemicalProperties): always include it if the document has any physical/chemical property data, even if only BasePhysicalChemicalProperties\n\
+         - For Section 9 numeric properties (FlashPoint, VapourPressure, Densities, etc.): use NumericRangeWithUnitAndQualifier with a numeric Value. If the value is text only (e.g. '不明', 'N/A', 'データなし'), use AdditionalInfo: {{\"FullText\": [\"text\"]}} instead — never put text in a numeric Value field\n\
+         - Omit keys that have no information (empty strings, null, and empty objects {{}} are forbidden)\n\
          - Dates in YYYY-MM-DD format\n\
          - Numeric values as numeric types (not strings) inside NumericRangeWithUnitAndQualifier\n\
+         - For qualitative text values in PhysicalChemicalProperties, use AdditionalInfo: {{\"FullText\": [\"text\"]}} — note FullText is an ARRAY of strings\n\
          - Reproduce text exactly as written in the source document; do not infer or fill in missing data\n\
          - JSON keys must match EXACTLY the key names shown in the schema example below\n\
+         {TYPO_WARNINGS}\n\
          \nSchema example (use these EXACT key names):\n{MHLW_SCHEMA_HINT}"
     )
 }
 
+// Section groups for parallel extraction — splits output token load across two concurrent calls.
+const GROUP_A: &[&str] = &[
+    "Datasheet",
+    "Identification",
+    "HazardIdentification",
+    "Composition",
+    "FirstAidMeasures",
+    "FireFightingMeasures",
+    "AccidentalReleaseMeasures",
+    "HandlingAndStorage",
+    "ExposureControlPersonalProtection",
+];
+const GROUP_B: &[&str] = &[
+    "PhysicalChemicalProperties",
+    "StabilityReactivity",
+    "ToxicologicalInformation",
+    "EcologicalInformation",
+    "DisposalConsiderations",
+    "TransportInformation",
+    "RegulatoryInformation",
+    "OtherInformation",
+];
+
+/// Merge two `SdsRoot` values by taking the first non-`None` for each field.
+fn merge_sds(a: SdsRoot, b: SdsRoot) -> SdsRoot {
+    SdsRoot {
+        datasheet: a.datasheet.or(b.datasheet),
+        identification: a.identification.or(b.identification),
+        hazard_identification: a.hazard_identification.or(b.hazard_identification),
+        composition: a.composition.or(b.composition),
+        first_aid_measures: a.first_aid_measures.or(b.first_aid_measures),
+        fire_fighting_measures: a.fire_fighting_measures.or(b.fire_fighting_measures),
+        accidental_release_measures: a.accidental_release_measures.or(b.accidental_release_measures),
+        handling_and_storage: a.handling_and_storage.or(b.handling_and_storage),
+        exposure_control_personal_protection: a
+            .exposure_control_personal_protection
+            .or(b.exposure_control_personal_protection),
+        physical_chemical_properties: a.physical_chemical_properties.or(b.physical_chemical_properties),
+        stability_reactivity: a.stability_reactivity.or(b.stability_reactivity),
+        toxicological_information: a.toxicological_information.or(b.toxicological_information),
+        ecological_information: a.ecological_information.or(b.ecological_information),
+        disposal_considerations: a.disposal_considerations.or(b.disposal_considerations),
+        transport_information: a.transport_information.or(b.transport_information),
+        regulatory_information: a.regulatory_information.or(b.regulatory_information),
+        other_information: a.other_information.or(b.other_information),
+    }
+}
+
 /// Extract SDS data from document text using the provided LLM backend.
-pub async fn extract_sds_from_text<B: LlmBackend>(
+///
+/// Issues two parallel LLM calls (sections 1–9 and 10–16) to halve per-file latency,
+/// then retries any sections skipped due to schema mismatch.
+///
+/// Returns `(SdsRoot, Vec<String>)` where the `Vec` lists any sections that could not
+/// be extracted after all passes.
+pub async fn extract_sds_from_text<B: LlmBackend + Sync>(
     backend: &B,
     text: &str,
     source_language: Option<Language>,
-) -> Result<SdsRoot, SdsError> {
+) -> Result<(SdsRoot, Vec<String>), SdsError> {
     let system = build_system_prompt(source_language);
 
-    let lang_instruction = match source_language {
+    let lang_prefix = match source_language {
         Some(l) => format!("This document is in {}. ", l.name_en()),
         None => String::new(),
     };
-    let user = format!(
-        "{lang_instruction}Extract all SDS information from the following document text and output as JSON:\n\n{text}"
+
+    let user_a = format!(
+        "{lang_prefix}Extract ONLY these sections: {}.\n\
+         Output as JSON. Do not include any other sections.\n\n\
+         Document text:\n{text}",
+        GROUP_A.join(", ")
+    );
+    let user_b = format!(
+        "{lang_prefix}Extract ONLY these sections: {}.\n\
+         Output as JSON. Do not include any other sections.\n\n\
+         Document text:\n{text}",
+        GROUP_B.join(", ")
     );
 
-    let json_str = backend.complete(&system, &user).await?;
-    tracing::debug!("Raw LLM JSON output:\n{}", json_str);
-    lenient_deserialize(&json_str)
+    // Parallel extraction of both groups — each call generates ~half the output tokens.
+    let (raw_a, raw_b) = tokio::join!(
+        backend.complete(&system, &user_a),
+        backend.complete(&system, &user_b),
+    );
+
+    let json_a = raw_a?;
+    let json_b = raw_b?;
+    tracing::debug!("Group A JSON:\n{json_a}");
+    tracing::debug!("Group B JSON:\n{json_b}");
+
+    let (sds_a, skipped_a) = lenient_deserialize(&json_a)?;
+    let (sds_b, skipped_b) = lenient_deserialize(&json_b)?;
+    let mut sds = merge_sds(sds_a, sds_b);
+    let mut all_skipped = [skipped_a, skipped_b].concat();
+
+    // Retry pass: re-request only the sections that had schema issues.
+    if !all_skipped.is_empty() {
+        let retry_keys: Vec<&str> = all_skipped.iter().map(String::as_str).collect();
+        tracing::warn!(
+            "Retrying {} skipped sections: {}",
+            retry_keys.len(),
+            retry_keys.join(", ")
+        );
+        let user_retry = format!(
+            "{lang_prefix}Extract ONLY these sections (previous extraction had schema issues — \
+             be especially precise about field types and nesting): {}.\n\
+             Output as JSON.\n\n\
+             Document text:\n{text}",
+            retry_keys.join(", ")
+        );
+        if let Ok(raw_retry) = backend.complete(&system, &user_retry).await {
+            tracing::debug!("Retry JSON:\n{raw_retry}");
+            if let Ok((retry_sds, retry_skipped)) = lenient_deserialize(&raw_retry) {
+                sds = merge_sds(sds, retry_sds);
+                all_skipped = retry_skipped;
+            }
+        }
+    }
+
+    let warnings: Vec<String> = all_skipped
+        .into_iter()
+        .map(|k| format!("{k}: skipped (schema mismatch — check logs for details)"))
+        .collect();
+
+    Ok((sds, warnings))
 }
 
 /// Deserialize LLM JSON output section-by-section, skipping sections with type errors.
 ///
-/// The MHLW schema is deeply nested (~200 structs). If the LLM outputs a valid top-level
-/// JSON object but gets a subsection's structure wrong, this lets us still return all
-/// correctly-structured sections rather than failing entirely.
-fn lenient_deserialize(json_str: &str) -> Result<SdsRoot, SdsError> {
+/// Returns `(SdsRoot, Vec<String>)` where the Vec lists skipped section *key names*
+/// (e.g. `["HandlingAndStorage"]`). The full serde error is written to the tracing log.
+fn lenient_deserialize(json_str: &str) -> Result<(SdsRoot, Vec<String>), SdsError> {
     use crate::schema::*;
     use tracing::warn;
 
-    let val: Value = serde_json::from_str(json_str).map_err(|e| {
+    let repaired = repair_json(json_str);
+
+    let val: Value = serde_json::from_str(&repaired).map_err(|e| {
         let preview: String = json_str.chars().take(500).collect();
         SdsError::LlmParse(format!("Invalid JSON: {e}\nRaw (first 500 chars): {preview}"))
     })?;
@@ -408,17 +650,30 @@ fn lenient_deserialize(json_str: &str) -> Result<SdsRoot, SdsError> {
         .as_object()
         .ok_or_else(|| SdsError::LlmParse("LLM output is not a JSON object".into()))?;
 
+    let mut skipped: Vec<String> = Vec::new();
+
     macro_rules! section {
         ($key:literal, $type:ty) => {
             obj.get($key).and_then(|v| {
                 serde_json::from_value::<$type>(v.clone())
-                    .map_err(|e| warn!("Section '{}' skipped (schema mismatch): {}", $key, e))
+                    .map_err(|e| {
+                        let preview: String = serde_json::to_string(v)
+                            .unwrap_or_default()
+                            .chars()
+                            .take(200)
+                            .collect();
+                        warn!(
+                            "Section '{}' skipped (schema mismatch): {}\nValue preview: {}",
+                            $key, e, preview
+                        );
+                        skipped.push($key.to_string());
+                    })
                     .ok()
             })
         };
     }
 
-    Ok(SdsRoot {
+    let sds = SdsRoot {
         datasheet: section!("Datasheet", Datasheet),
         identification: section!("Identification", Identification),
         hazard_identification: section!("HazardIdentification", HazardIdentification),
@@ -439,5 +694,81 @@ fn lenient_deserialize(json_str: &str) -> Result<SdsRoot, SdsError> {
         transport_information: section!("TransportInformation", TransportInformation),
         regulatory_information: section!("RegulatoryInformation", RegulatoryInformation),
         other_information: section!("OtherInformation", OtherInformation),
-    })
+    };
+
+    Ok((sds, skipped))
+}
+
+// ---------------------------------------------------------------------------
+// Unit tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strip_fences_bare_json() {
+        assert_eq!(strip_code_fences("{}"), "{}");
+    }
+
+    #[test]
+    fn strip_fences_json_tag() {
+        assert_eq!(strip_code_fences("```json\n{}\n```"), "{}");
+    }
+
+    #[test]
+    fn strip_fences_plain_backticks() {
+        assert_eq!(strip_code_fences("```\n{}\n```"), "{}");
+    }
+
+    #[test]
+    fn strip_fences_no_fences() {
+        let raw = r#"{"key": "value"}"#;
+        assert_eq!(strip_code_fences(raw), raw);
+    }
+
+    #[test]
+    fn strip_fences_whitespace_after_tag() {
+        assert_eq!(strip_code_fences("```json  \n{}\n```"), "{}");
+    }
+
+    #[test]
+    fn repair_trailing_comma_before_brace() {
+        let input = r#"{"a": 1,}"#;
+        let result = repair_json(input);
+        serde_json::from_str::<serde_json::Value>(&result).expect("should be valid JSON");
+    }
+
+    #[test]
+    fn repair_trailing_comma_before_bracket() {
+        let input = r#"{"a": [1, 2,]}"#;
+        let result = repair_json(input);
+        serde_json::from_str::<serde_json::Value>(&result).expect("should be valid JSON");
+    }
+
+    #[test]
+    fn repair_unclosed_object() {
+        let input = r#"{"a": 1, "b": {"c": 2}"#;
+        let result = repair_json(input);
+        serde_json::from_str::<serde_json::Value>(&result).expect("should be valid JSON");
+    }
+
+    #[test]
+    fn repair_already_valid_unchanged() {
+        let input = r#"{"a": 1}"#;
+        let result = repair_json(input);
+        assert_eq!(result, input);
+    }
+
+    #[test]
+    fn openai_compat_url_known_providers() {
+        assert!(openai_compat_url("openai").is_some());
+        assert!(openai_compat_url("gemini").is_some());
+        assert!(openai_compat_url("mistral").is_some());
+        assert!(openai_compat_url("groq").is_some());
+        assert!(openai_compat_url("cohere").is_some());
+        assert!(openai_compat_url("local").is_some());
+        assert!(openai_compat_url("unknown").is_none());
+    }
 }

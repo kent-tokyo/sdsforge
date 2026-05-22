@@ -31,7 +31,7 @@ sds-converter to-json --input sds_en.pdf --output output.json --lang en
 # Batch mode — process a whole directory
 sds-converter to-json --input-dir ./pdfs/ --output-dir ./json/ --lang ja
 
-# OpenAI GPT (defaults to gpt-4o)
+# OpenAI GPT (defaults to gpt-4o-mini)
 sds-converter to-json --input input.pdf --output output.json \
   --provider openai --api-key $OPENAI_API_KEY
 
@@ -41,7 +41,7 @@ sds-converter to-json --input input.pdf --output output.json \
 
 # Local LLM via Ollama (any OpenAI-compatible endpoint)
 sds-converter to-json --input input.pdf --output output.json \
-  --provider openai --base-url http://localhost:11434/v1 \
+  --provider local --base-url http://localhost:11434/v1 \
   --model llama3.2 --api-key dummy
 
 # From pre-extracted text (skip PDF parsing)
@@ -50,15 +50,29 @@ sds-converter to-json --input extracted.txt --output output.json --lang ja
 
 | Flag | Default | Description |
 |---|---|---|
-| `--input` | — | Input PDF, DOCX, or TXT file |
-| `--input-dir` | — | Input directory (batch — processes all `.pdf`/`.docx`) |
+| `--input` | — | Input PDF, DOCX, XLSX, or TXT file |
+| `--input-dir` | — | Input directory (batch — processes all `.pdf`/`.docx`/`.xlsx`/`.xls`) |
 | `--output` | — | Output JSON file |
 | `--output-dir` | — | Output directory (batch — created if absent) |
-| `--provider` | `anthropic` | LLM provider: `anthropic`, `openai`, `gemini` |
-| `--api-key` | env var | API key (fallback: `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY`) |
-| `--model` | per-provider | Model name (defaults: `claude-sonnet-4-6` / `gpt-4o` / `gemini-2.0-flash`) |
-| `--base-url` | — | Custom OpenAI-compatible endpoint (Ollama, vLLM, etc.) |
+| `--provider` | `anthropic` | LLM provider: `anthropic`, `openai`, `gemini`, `mistral`, `groq`, `cohere`, `local` |
+| `--api-key` | env var | API key (see environment variables table below) |
+| `--model` | per-provider | Model name override (see defaults below) |
+| `--base-url` | — | Custom OpenAI-compatible endpoint (for `--provider local`) |
 | `--lang` | auto-detect | Source document language: `ja`, `en`, `zh-cn`, `zh-tw` |
+| `--quality` | `medium` | Preset: `low` (fast/cheap), `medium`, `high` (accurate) |
+| `--concurrency` | `4` | Max parallel files in batch mode |
+
+**Provider defaults:**
+
+| `--provider` | Default model | Environment variable |
+|---|---|---|
+| `anthropic` | `claude-haiku-4-5-20251001` (low/medium) · `claude-sonnet-4-6` (high) | `ANTHROPIC_API_KEY` |
+| `openai` | `gpt-4o-mini` | `OPENAI_API_KEY` |
+| `gemini` | `gemini-2.0-flash` | `GEMINI_API_KEY` |
+| `mistral` | `mistral-small-latest` | `MISTRAL_API_KEY` |
+| `groq` | `llama-3.3-70b-versatile` | `GROQ_API_KEY` |
+| `cohere` | `command-r-plus` | `COHERE_API_KEY` |
+| `local` | `llama3` | `LOCAL_LLM_API_KEY` (optional; defaults to `ollama`) |
 
 ### `to-docx` — Convert MHLW standard JSON → Word document
 
@@ -121,11 +135,14 @@ Checks that key sections (Identification, HazardIdentification, ToxicologicalInf
 ## Requirements
 
 - Rust 1.75+
-- An LLM API key (for `to-json` only)
-  - Anthropic: set `ANTHROPIC_API_KEY` or use `--api-key`
-  - OpenAI: set `OPENAI_API_KEY` or use `--api-key`
-  - Google Gemini: set `GEMINI_API_KEY` or use `--api-key`
-  - Local LLM (Ollama etc.): use `--provider openai --base-url <url> --api-key dummy`
+- An LLM API key (for `to-json` only) — set the provider's environment variable or pass `--api-key`
+  - Anthropic: `ANTHROPIC_API_KEY`
+  - OpenAI: `OPENAI_API_KEY`
+  - Google Gemini: `GEMINI_API_KEY`
+  - Mistral: `MISTRAL_API_KEY`
+  - Groq: `GROQ_API_KEY`
+  - Cohere: `COHERE_API_KEY`
+  - Local LLM (Ollama etc.): use `--provider local --base-url <url>` (no API key required)
 - Input files must be **text-based** PDF or DOCX
   - Encrypted PDFs are not supported
   - Scanned/image-only PDFs are not supported (no text to extract)

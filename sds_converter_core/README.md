@@ -46,9 +46,11 @@ async fn main() -> anyhow::Result<()> {
     let config = ConvertConfig {
         source_language: Some(Language::Japanese),
         output_language: Language::Japanese,
+        ..Default::default()
     };
 
-    let sds = convert_to_json(std::path::Path::new("input.pdf"), &backend, &config).await?;
+    let (sds, warnings) = convert_to_json(std::path::Path::new("input.pdf"), &backend, &config).await?;
+    for w in &warnings { eprintln!("WARN: {w}"); }
     std::fs::write("output.json", serde_json::to_string_pretty(&sds)?)?;
     Ok(())
 }
@@ -57,7 +59,7 @@ async fn main() -> anyhow::Result<()> {
 ### Convert JSON to Word document
 
 ```rust
-use sds_converter_core::{convert_from_json, ConvertConfig, Language, OutputFormat, SdsRoot};
+use sds_converter_core::{convert_from_json, ConvertConfig, Language, SdsRoot};
 
 fn main() -> anyhow::Result<()> {
     let json = std::fs::read_to_string("output.json")?;
@@ -66,9 +68,10 @@ fn main() -> anyhow::Result<()> {
     let config = ConvertConfig {
         source_language: None,
         output_language: Language::Japanese,
+        ..Default::default()
     };
 
-    convert_from_json(&sds, std::path::Path::new("result.docx"), OutputFormat::Docx, &config)?;
+    convert_from_json(&sds, std::path::Path::new("result.docx"), &config)?;
     Ok(())
 }
 ```
@@ -76,7 +79,7 @@ fn main() -> anyhow::Result<()> {
 ### OpenAI GPT or Google Gemini backend
 
 ```rust
-use sds_converter_core::converter::llm::{OpenAiCompatBackend, LlmConfig};
+use sds_converter_core::{OpenAiCompatBackend, LlmConfig};
 
 // OpenAI GPT
 let config = LlmConfig { model: "gpt-4o".into(), max_tokens: 8192 };
@@ -101,14 +104,15 @@ Use `extract_text` to pull the raw text out of a PDF, DOCX, or plain-text file w
 ```rust
 use sds_converter_core::extract_text;
 
-fn main() -> anyhow::Result<()> {
-    let text = extract_text(std::path::Path::new("input.pdf"))?;
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let text = extract_text(std::path::Path::new("input.pdf")).await?;
     println!("{text}");
     Ok(())
 }
 ```
 
-Supported extensions: `.pdf`, `.docx`, `.txt`.
+Supported extensions: `.pdf`, `.docx`, `.xlsx`, `.txt`.
 
 ### Validate an extracted SdsRoot
 
@@ -135,7 +139,7 @@ fn main() -> anyhow::Result<()> {
 Implement the `LlmBackend` trait to use any LLM provider:
 
 ```rust
-use sds_converter_core::{converter::llm::LlmBackend, SdsError};
+use sds_converter_core::{LlmBackend, SdsError};
 
 struct MyLlmBackend { /* ... */ }
 

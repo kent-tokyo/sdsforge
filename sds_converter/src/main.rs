@@ -1,11 +1,115 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use clap::{Parser, Subcommand, ValueEnum};
+use futures::stream::{self, StreamExt};
+use walkdir::WalkDir;
 use sds_converter_core::{
-    converter::{AnthropicBackend, LlmConfig, OpenAiCompatBackend},
+    converter::{AnthropicBackend, LlmBackend, LlmConfig, OpenAiCompatBackend, openai_compat_url},
     convert_from_json, convert_to_json, extract_text, validate, ConvertConfig, Language,
-    OutputFormat, SdsRoot,
+    SdsError, SdsRoot,
 };
+
+// ---------------------------------------------------------------------------
+// Quality presets
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Copy, ValueEnum, Default)]
+enum CliQuality {
+    /// Fast & cheap: 15,000 chars, Haiku
+    Low,
+    /// Balanced (default): 30,000 chars, Haiku
+    #[default]
+    Medium,
+    /// High accuracy: 60,000 chars, Sonnet
+    High,
+}
+
+struct QualityPreset {
+    max_chars: usize,
+    model: &'static str,
+    max_tokens: u32,
+}
+
+impl CliQuality {
+    fn preset(self) -> QualityPreset {
+        match self {
+            CliQuality::Low => QualityPreset {
+                max_chars: 15_000,
+                model: "claude-haiku-4-5-20251001",
+                max_tokens: 16_384,
+            },
+            CliQuality::Medium => QualityPreset {
+                max_chars: 30_000,
+                model: "claude-haiku-4-5-20251001",
+                max_tokens: 16_384,
+            },
+            CliQuality::High => QualityPreset {
+                max_chars: 60_000,
+                model: "claude-sonnet-4-6",
+                max_tokens: 16_384,
+            },
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            CliQuality::Low => "low",
+            CliQuality::Medium => "medium",
+            CliQuality::High => "high",
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Backend enum — allows creating the backend once and sharing via Arc
+// ---------------------------------------------------------------------------
+
+enum BackendKind {
+    Anthropic(AnthropicBackend),
+    OpenAiCompat(OpenAiCompatBackend),
+}
+
+impl LlmBackend for BackendKind {
+    async fn complete(&self, system: &str, user: &str) -> Result<String, SdsError> {
+        match self {
+            Self::Anthropic(b) => b.complete(system, user).await,
+            Self::OpenAiCompat(b) => b.complete(system, user).await,
+        }
+    }
+}
+
+fn build_backend(
+    provider: CliProvider,
+    api_key: String,
+    llm_config: LlmConfig,
+    base_url: Option<String>,
+) -> BackendKind {
+    match provider {
+        CliProvider::Anthropic => BackendKind::Anthropic(AnthropicBackend::new(api_key, llm_config)),
+        CliProvider::Gemini => {
+            BackendKind::OpenAiCompat(OpenAiCompatBackend::gemini(api_key, llm_config))
+        }
+        other => {
+            let key = provider_url_key(other);
+            let url = base_url
+                .or_else(|| key.and_then(openai_compat_url).map(str::to_string))
+                .unwrap_or_default();
+            BackendKind::OpenAiCompat(OpenAiCompatBackend::new(api_key, llm_config, url))
+        }
+    }
+}
+
+fn provider_url_key(provider: CliProvider) -> Option<&'static str> {
+    match provider {
+        CliProvider::Openai   => Some("openai"),
+        CliProvider::Mistral  => Some("mistral"),
+        CliProvider::Groq     => Some("groq"),
+        CliProvider::Cohere   => Some("cohere"),
+        CliProvider::Local    => Some("local"),
+        CliProvider::Anthropic | CliProvider::Gemini => None,
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "sds-converter", about = "Convert between SDS documents and MHLW standard JSON")]
@@ -39,13 +143,25 @@ enum CliProvider {
     Anthropic,
     Openai,
     Gemini,
+    /// Mistral AI (api.mistral.ai) — requires MISTRAL_API_KEY
+    Mistral,
+    /// Groq (api.groq.com) — requires GROQ_API_KEY, very fast inference
+    Groq,
+    /// Cohere (api.cohere.com) — requires COHERE_API_KEY
+    Cohere,
+    /// Ollama or any local/custom OpenAI-compatible server (requires --base-url)
+    Local,
 }
 
-fn default_model(provider: CliProvider) -> &'static str {
+fn default_model(provider: CliProvider, quality: CliQuality) -> &'static str {
     match provider {
-        CliProvider::Anthropic => "claude-sonnet-4-6",
-        CliProvider::Openai => "gpt-4o",
-        CliProvider::Gemini => "gemini-2.0-flash",
+        CliProvider::Anthropic => quality.preset().model,
+        CliProvider::Openai    => "gpt-4o-mini",
+        CliProvider::Gemini    => "gemini-2.0-flash",
+        CliProvider::Mistral   => "mistral-small-latest",
+        CliProvider::Groq      => "llama-3.3-70b-versatile",
+        CliProvider::Cohere    => "command-r-plus",
+        CliProvider::Local     => "llama3",
     }
 }
 
@@ -77,7 +193,7 @@ enum Commands {
         #[arg(long, value_enum)]
         lang: Option<CliLanguage>,
 
-        /// LLM model (default: claude-sonnet-4-6 / gpt-4o / gemini-2.0-flash per provider)
+        /// LLM model (default: claude-haiku-4-5-20251001 / gpt-4o-mini / gemini-2.0-flash per provider)
         #[arg(long)]
         model: Option<String>,
 
@@ -88,6 +204,14 @@ enum Commands {
         /// Custom OpenAI-compatible base URL (e.g. http://localhost:11434/v1 for Ollama)
         #[arg(long)]
         base_url: Option<String>,
+
+        /// Extraction quality: low=15k chars/Haiku, medium=30k/Haiku (default), high=60k/Sonnet
+        #[arg(long, value_enum, default_value = "medium")]
+        quality: CliQuality,
+
+        /// Number of files to convert in parallel (batch mode only)
+        #[arg(long, default_value = "4")]
+        concurrency: usize,
     },
 
     /// Convert MHLW standard JSON to a Word document
@@ -153,14 +277,24 @@ async fn main() -> anyhow::Result<()> {
             model,
             provider,
             base_url,
+            quality,
+            concurrency,
         } => {
+            let preset = quality.preset();
             let api_key = resolve_api_key(api_key, provider)?;
-            let model = model.unwrap_or_else(|| default_model(provider).to_string());
-            let llm_config = LlmConfig { model, max_tokens: 8192 };
+            let model = model.unwrap_or_else(|| default_model(provider, quality).to_string());
+            let llm_config = LlmConfig { model: model.clone(), max_tokens: preset.max_tokens };
             let convert_config = ConvertConfig {
                 source_language: lang.map(Language::from),
                 output_language: Language::default(),
+                max_chars: preset.max_chars,
             };
+            eprintln!(
+                "Quality: {} (max_chars={}, max_tokens={}, model={})",
+                quality.name(), preset.max_chars, preset.max_tokens, model
+            );
+
+            let backend = Arc::new(build_backend(provider, api_key, llm_config, base_url));
 
             match (input, input_dir) {
                 (Some(input), None) => {
@@ -168,15 +302,10 @@ async fn main() -> anyhow::Result<()> {
                         anyhow::anyhow!("--output is required when using --input")
                     })?;
                     eprintln!("Extracting text from {} ...", input.display());
-                    let sds = run_to_json(
-                        &input,
-                        &convert_config,
-                        provider,
-                        api_key,
-                        llm_config,
-                        base_url,
-                    )
-                    .await?;
+                    let (sds, warnings) = convert_to_json(&input, &*backend, &convert_config).await?;
+                    for w in &warnings {
+                        eprintln!("WARN: {w}");
+                    }
                     std::fs::write(&output, serde_json::to_string_pretty(&sds)?)?;
                     eprintln!("Saved JSON to {}", output.display());
                 }
@@ -185,16 +314,7 @@ async fn main() -> anyhow::Result<()> {
                         anyhow::anyhow!("--output-dir is required when using --input-dir")
                     })?;
                     std::fs::create_dir_all(&out_dir)?;
-                    batch_to_json(
-                        &dir,
-                        &out_dir,
-                        &convert_config,
-                        api_key,
-                        llm_config,
-                        provider,
-                        base_url,
-                    )
-                    .await?;
+                    batch_to_json(&dir, &out_dir, &convert_config, backend, concurrency).await?;
                 }
                 _ => anyhow::bail!("Specify either --input or --input-dir"),
             }
@@ -204,6 +324,7 @@ async fn main() -> anyhow::Result<()> {
             let config = ConvertConfig {
                 source_language: None,
                 output_language: Language::from(lang),
+                ..Default::default()
             };
 
             match (input, input_dir) {
@@ -214,7 +335,7 @@ async fn main() -> anyhow::Result<()> {
                     eprintln!("Reading JSON from {} ...", input.display());
                     let json = std::fs::read_to_string(&input)?;
                     let sds: SdsRoot = serde_json::from_str(&json)?;
-                    convert_from_json(&sds, &output, OutputFormat::Docx, &config)?;
+                    convert_from_json(&sds, &output, &config)?;
                     eprintln!("Saved DOCX to {}", output.display());
                 }
                 (None, Some(dir)) => {
@@ -246,7 +367,7 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Commands::ExtractText { input, output } => {
-            let text = extract_text(&input)?;
+            let text = extract_text(&input).await?;
             match output {
                 Some(path) => {
                     std::fs::write(&path, &text)?;
@@ -270,56 +391,35 @@ fn resolve_api_key(api_key: Option<String>, provider: CliProvider) -> anyhow::Re
     }
     let env_var = match provider {
         CliProvider::Anthropic => "ANTHROPIC_API_KEY",
-        CliProvider::Openai => "OPENAI_API_KEY",
-        CliProvider::Gemini => "GEMINI_API_KEY",
+        CliProvider::Openai    => "OPENAI_API_KEY",
+        CliProvider::Gemini    => "GEMINI_API_KEY",
+        CliProvider::Mistral   => "MISTRAL_API_KEY",
+        CliProvider::Groq      => "GROQ_API_KEY",
+        CliProvider::Cohere    => "COHERE_API_KEY",
+        CliProvider::Local     => {
+            return Ok(std::env::var("LOCAL_LLM_API_KEY").unwrap_or_else(|_| "ollama".to_string()))
+        }
     };
     std::env::var(env_var)
         .map_err(|_| anyhow::anyhow!("API key not provided. Set --api-key or {env_var}"))
-}
-
-async fn run_to_json(
-    input: &Path,
-    config: &ConvertConfig,
-    provider: CliProvider,
-    api_key: String,
-    llm_config: LlmConfig,
-    base_url: Option<String>,
-) -> anyhow::Result<SdsRoot> {
-    match provider {
-        CliProvider::Anthropic => {
-            let backend = AnthropicBackend::new(api_key, llm_config);
-            Ok(convert_to_json(input, &backend, config).await?)
-        }
-        CliProvider::Openai => {
-            let backend = match base_url {
-                Some(url) => OpenAiCompatBackend::new(api_key, llm_config, &url),
-                None => OpenAiCompatBackend::openai(api_key, llm_config),
-            };
-            Ok(convert_to_json(input, &backend, config).await?)
-        }
-        CliProvider::Gemini => {
-            let backend = OpenAiCompatBackend::gemini(api_key, llm_config);
-            Ok(convert_to_json(input, &backend, config).await?)
-        }
-    }
 }
 
 async fn batch_to_json(
     input_dir: &Path,
     output_dir: &Path,
     config: &ConvertConfig,
-    api_key: String,
-    llm_config: LlmConfig,
-    provider: CliProvider,
-    base_url: Option<String>,
+    backend: Arc<BackendKind>,
+    concurrency: usize,
 ) -> anyhow::Result<()> {
-    let mut files: Vec<PathBuf> = std::fs::read_dir(input_dir)?
+    let mut files: Vec<PathBuf> = WalkDir::new(input_dir)
+        .into_iter()
         .filter_map(|e| e.ok())
-        .map(|e| e.path())
+        .filter(|e| e.file_type().is_file())
+        .map(|e| e.into_path())
         .filter(|p| {
             matches!(
                 p.extension().and_then(|e| e.to_str()),
-                Some("pdf" | "docx")
+                Some("pdf" | "docx" | "xlsx" | "xls")
             )
         })
         .collect();
@@ -327,26 +427,54 @@ async fn batch_to_json(
 
     let total = files.len();
     if total == 0 {
-        eprintln!("No .pdf or .docx files found in {}", input_dir.display());
+        eprintln!("No .pdf/.docx/.xlsx files found in {}", input_dir.display());
         return Ok(());
     }
 
-    let (mut ok, mut failed) = (0usize, 0usize);
-    for (i, path) in files.iter().enumerate() {
-        let stem = path.file_stem().unwrap_or_default().to_string_lossy();
-        let out_path = output_dir.join(format!("{stem}.json"));
-        eprintln!("[{}/{}] {}", i + 1, total, path.display());
-        match run_to_json(path, config, provider, api_key.clone(), llm_config.clone(), base_url.clone()).await {
-            Ok(sds) => {
-                std::fs::write(&out_path, serde_json::to_string_pretty(&sds)?)?;
-                ok += 1;
+    let concurrency = concurrency.max(1);
+    eprintln!("Batch: {total} files, concurrency={concurrency}");
+
+    let config = Arc::new(config.clone());
+    let output_dir = Arc::new(output_dir.to_path_buf());
+    let ok = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let failed = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+    stream::iter(files.into_iter().enumerate())
+        .map(|(i, path)| {
+            let config = Arc::clone(&config);
+            let backend = Arc::clone(&backend);
+            let output_dir = Arc::clone(&output_dir);
+            let ok = Arc::clone(&ok);
+            let failed = Arc::clone(&failed);
+            async move {
+                let stem = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+                let out_path = output_dir.join(format!("{stem}.json"));
+                eprintln!("[{}/{}] {}", i + 1, total, path.display());
+                match convert_to_json(&path, &*backend, &config).await {
+                    Ok((sds, warnings)) => {
+                        for w in &warnings {
+                            eprintln!("  WARN: {w}");
+                        }
+                        if let Ok(json) = serde_json::to_string_pretty(&sds) {
+                            if std::fs::write(&out_path, json).is_ok() {
+                                ok.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                eprintln!("  [OK] {}", out_path.display());
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("  [ERROR] {}: {e}", path.display());
+                        failed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    }
+                }
             }
-            Err(e) => {
-                eprintln!("[ERROR] {}: {e}", path.display());
-                failed += 1;
-            }
-        }
-    }
+        })
+        .buffer_unordered(concurrency)
+        .collect::<Vec<_>>()
+        .await;
+
+    let ok = ok.load(std::sync::atomic::Ordering::Relaxed);
+    let failed = failed.load(std::sync::atomic::Ordering::Relaxed);
     eprintln!("Done: {ok} ok, {failed} failed");
     Ok(())
 }
@@ -356,9 +484,11 @@ fn batch_to_docx(
     output_dir: &Path,
     config: &ConvertConfig,
 ) -> anyhow::Result<()> {
-    let mut files: Vec<PathBuf> = std::fs::read_dir(input_dir)?
+    let mut files: Vec<PathBuf> = WalkDir::new(input_dir)
+        .into_iter()
         .filter_map(|e| e.ok())
-        .map(|e| e.path())
+        .filter(|e| e.file_type().is_file())
+        .map(|e| e.into_path())
         .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("json"))
         .collect();
     files.sort();
@@ -377,10 +507,7 @@ fn batch_to_docx(
         let result = std::fs::read_to_string(path)
             .map_err(anyhow::Error::from)
             .and_then(|raw| serde_json::from_str::<SdsRoot>(&raw).map_err(anyhow::Error::from))
-            .and_then(|sds| {
-                convert_from_json(&sds, &out_path, OutputFormat::Docx, config)
-                    .map_err(anyhow::Error::from)
-            });
+            .and_then(|sds| convert_from_json(&sds, &out_path, config).map_err(anyhow::Error::from));
         match result {
             Ok(_) => ok += 1,
             Err(e) => {

@@ -1,65 +1,139 @@
-use tracing::warn;
-
 use crate::schema::SdsRoot;
 
-/// Performs post-deserialization structural checks.
-/// Logs warnings for suspicious patterns; does not hard-fail so partial results are still usable.
+/// Performs post-deserialization structural checks on all 16 SDS sections.
+/// Does not hard-fail so partial results are still usable.
 pub fn validate(sds: &SdsRoot) -> Vec<String> {
-    let mut warnings = Vec::new();
+    let mut w: Vec<String> = Vec::new();
 
-    // Check that at least some content was extracted
-    let has_identification = sds.identification.is_some();
-    let has_any_section = sds.hazard_identification.is_some()
-        || sds.composition.is_some()
-        || sds.physical_chemical_properties.is_some()
-        || sds.toxicological_information.is_some();
-
-    if !has_identification && !has_any_section {
-        warnings.push(
-            "No SDS sections were extracted. The document may be scanned, image-based, or empty."
-                .to_string(),
-        );
+    macro_rules! missing {
+        ($section:literal) => {
+            w.push(format!(
+                "{}: section not extracted — check source document.",
+                $section
+            ))
+        };
     }
 
-    // Check product name
-    if let Some(id) = &sds.identification {
-        let has_name = id
-            .trade_product_identity
-            .as_ref()
-            .map(|t| t.trade_name_jp.is_some() || t.trade_name_en.is_some())
-            .unwrap_or(false);
-        if !has_name {
-            warnings.push("Section 1 (Identification): no product name (TradeNameJP/TradeNameEN) found.".to_string());
-        }
-        if id.supplier_information.is_none() {
-            warnings.push("Section 1 (Identification): SupplierInformation is missing.".to_string());
+    // ── Section 1: Identification ─────────────────────────────────────────────
+    match &sds.identification {
+        None => missing!("Section 1 (Identification)"),
+        Some(id) => {
+            let has_name = id
+                .trade_product_identity
+                .as_ref()
+                .map(|t| t.trade_name_jp.is_some() || t.trade_name_en.is_some())
+                .unwrap_or(false);
+            if !has_name {
+                w.push("Section 1 (Identification): no product name (TradeNameJP/TradeNameEN).".into());
+            }
+            if id.supplier_information.is_none() {
+                w.push("Section 1 (Identification): SupplierInformation is missing.".into());
+            }
         }
     }
 
-    // Check hazard section
-    if let Some(hz) = &sds.hazard_identification {
-        if hz.classification.is_none() && hz.hazard_labelling.is_none() {
-            warnings.push("Section 2 (HazardIdentification): neither Classification nor HazardLabelling was extracted.".to_string());
+    // ── Section 2: HazardIdentification ──────────────────────────────────────
+    match &sds.hazard_identification {
+        None => missing!("Section 2 (HazardIdentification)"),
+        Some(hz) => {
+            if hz.classification.is_none() && hz.hazard_labelling.is_none() {
+                w.push("Section 2 (HazardIdentification): neither Classification nor HazardLabelling extracted.".into());
+            }
         }
     }
 
-    // Warn if ToxicologicalInformation array is unexpectedly empty
-    if let Some(tox_list) = &sds.toxicological_information {
-        if tox_list.is_empty() {
-            warnings.push("Section 11 (ToxicologicalInformation): array is present but empty.".to_string());
+    // ── Section 3: Composition ────────────────────────────────────────────────
+    match &sds.composition {
+        None => missing!("Section 3 (Composition)"),
+        Some(comp) => {
+            let empty = comp
+                .composition_and_concentration
+                .as_ref()
+                .map(|v| v.is_empty())
+                .unwrap_or(true);
+            if empty {
+                w.push("Section 3 (Composition): CompositionAndConcentration is empty.".into());
+            }
         }
     }
 
-    // Warn if EcologicalInformation array is unexpectedly empty
-    if let Some(eco_list) = &sds.ecological_information {
-        if eco_list.is_empty() {
-            warnings.push("Section 12 (EcologicalInformation): array is present but empty.".to_string());
+    // ── Section 4: FirstAidMeasures ───────────────────────────────────────────
+    if sds.first_aid_measures.is_none() {
+        missing!("Section 4 (FirstAidMeasures)");
+    }
+
+    // ── Section 5: FireFightingMeasures ───────────────────────────────────────
+    if sds.fire_fighting_measures.is_none() {
+        missing!("Section 5 (FireFightingMeasures)");
+    }
+
+    // ── Section 6: AccidentalReleaseMeasures ─────────────────────────────────
+    if sds.accidental_release_measures.is_none() {
+        missing!("Section 6 (AccidentalReleaseMeasures)");
+    }
+
+    // ── Section 7: HandlingAndStorage ────────────────────────────────────────
+    if sds.handling_and_storage.is_none() {
+        missing!("Section 7 (HandlingAndStorage)");
+    }
+
+    // ── Section 8: ExposureControlPersonalProtection ─────────────────────────
+    if sds.exposure_control_personal_protection.is_none() {
+        missing!("Section 8 (ExposureControlPersonalProtection)");
+    }
+
+    // ── Section 9: PhysicalChemicalProperties ────────────────────────────────
+    if sds.physical_chemical_properties.is_none() {
+        missing!("Section 9 (PhysicalChemicalProperties)");
+    }
+
+    // ── Section 10: StabilityReactivity ──────────────────────────────────────
+    match &sds.stability_reactivity {
+        None => missing!("Section 10 (StabilityReactivity)"),
+        Some(sr) => {
+            if sr.stability_description.is_none() && sr.reactivity_description.is_none() {
+                w.push("Section 10 (StabilityReactivity): neither StabilityDescription nor ReactivityDescription extracted.".into());
+            }
         }
     }
 
-    for w in &warnings {
-        warn!("{w}");
+    // ── Section 11: ToxicologicalInformation ─────────────────────────────────
+    match &sds.toxicological_information {
+        None => missing!("Section 11 (ToxicologicalInformation)"),
+        Some(list) if list.is_empty() => {
+            w.push("Section 11 (ToxicologicalInformation): array is present but empty.".into());
+        }
+        _ => {}
     }
 
-    warnings
+    // ── Section 12: EcologicalInformation ────────────────────────────────────
+    match &sds.ecological_information {
+        None => missing!("Section 12 (EcologicalInformation)"),
+        Some(list) if list.is_empty() => {
+            w.push("Section 12 (EcologicalInformation): array is present but empty.".into());
+        }
+        _ => {}
+    }
+
+    // ── Section 13: DisposalConsiderations ───────────────────────────────────
+    if sds.disposal_considerations.is_none() {
+        missing!("Section 13 (DisposalConsiderations)");
+    }
+
+    // ── Section 14: TransportInformation ─────────────────────────────────────
+    if sds.transport_information.is_none() {
+        missing!("Section 14 (TransportInformation)");
+    }
+
+    // ── Section 15: RegulatoryInformation ────────────────────────────────────
+    if sds.regulatory_information.is_none() {
+        missing!("Section 15 (RegulatoryInformation)");
+    }
+
+    // ── Section 16: OtherInformation ─────────────────────────────────────────
+    if sds.other_information.is_none() {
+        missing!("Section 16 (OtherInformation)");
+    }
+
+    w
 }

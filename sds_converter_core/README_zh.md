@@ -10,10 +10,10 @@
 
 ## 功能特点
 
-- **SDS文档 → JSON**: 从PDF/DOCX中提取文本，并转换为符合MHLW SDS数据交换标准格式v1.0的JSON。
+- **SDS文档 → JSON**: 从PDF/DOCX/XLSX/TXT中提取文本，并转换为符合MHLW SDS数据交换标准格式v1.0的JSON。支持并行提取与自动重试。
 - **JSON → DOCX**: 从标准JSON生成符合JIS Z 7253规范的16节Word文档，支持多语言节标题。
 - **多语言支持**: 支持 `ja` / `en` / `zh-CN` / `zh-TW` 的输入和输出。
-- **可扩展LLM后端**: 内置Anthropic Claude、OpenAI GPT、Google Gemini实现。通过实现 `LlmBackend` trait可接入任意LLM。
+- **可扩展LLM后端**: 内置Anthropic Claude、OpenAI GPT、Google Gemini、Mistral、Groq、Cohere实现。通过实现 `LlmBackend` trait可接入任意LLM。
 
 ---
 
@@ -32,7 +32,7 @@ sds-converter-core = "0.1"
 
 ```rust
 use sds_converter_core::{
-    converter::{AnthropicBackend, LlmConfig},
+    AnthropicBackend, LlmConfig,
     convert_to_json, ConvertConfig, Language,
 };
 
@@ -46,9 +46,11 @@ async fn main() -> anyhow::Result<()> {
     let config = ConvertConfig {
         source_language: Some(Language::ChineseSimplified),
         output_language: Language::ChineseSimplified,
+        ..Default::default()
     };
 
-    let sds = convert_to_json(std::path::Path::new("input.pdf"), &backend, &config).await?;
+    let (sds, warnings) = convert_to_json(std::path::Path::new("input.pdf"), &backend, &config).await?;
+    for w in &warnings { eprintln!("WARN: {w}"); }
     std::fs::write("output.json", serde_json::to_string_pretty(&sds)?)?;
     Ok(())
 }
@@ -57,7 +59,7 @@ async fn main() -> anyhow::Result<()> {
 ### 将JSON转换为Word文档
 
 ```rust
-use sds_converter_core::{convert_from_json, ConvertConfig, Language, OutputFormat, SdsRoot};
+use sds_converter_core::{convert_from_json, ConvertConfig, Language, SdsRoot};
 
 fn main() -> anyhow::Result<()> {
     let json = std::fs::read_to_string("output.json")?;
@@ -66,9 +68,10 @@ fn main() -> anyhow::Result<()> {
     let config = ConvertConfig {
         source_language: None,
         output_language: Language::ChineseSimplified,
+        ..Default::default()
     };
 
-    convert_from_json(&sds, std::path::Path::new("result.docx"), OutputFormat::Docx, &config)?;
+    convert_from_json(&sds, std::path::Path::new("result.docx"), &config)?;
     Ok(())
 }
 ```
@@ -76,10 +79,10 @@ fn main() -> anyhow::Result<()> {
 ### OpenAI GPT / Google Gemini 后端
 
 ```rust
-use sds_converter_core::converter::llm::{OpenAiCompatBackend, LlmConfig};
+use sds_converter_core::{OpenAiCompatBackend, LlmConfig};
 
 // OpenAI GPT
-let config = LlmConfig { model: "gpt-4o".into(), max_tokens: 8192 };
+let config = LlmConfig { model: "gpt-4o-mini".into(), max_tokens: 8192 };
 let backend = OpenAiCompatBackend::openai(std::env::var("OPENAI_API_KEY")?, config);
 
 // Google Gemini
@@ -96,19 +99,20 @@ let backend = OpenAiCompatBackend::new(
 
 ### 从文档中提取原始文本
 
-无需调用LLM即可从PDF/DOCX中提取文本。可用于构建自定义处理流程或检查LLM接收的输入内容。
+无需调用LLM即可从PDF/DOCX/XLSX中提取文本。可用于构建自定义处理流程或检查LLM接收的输入内容。
 
 ```rust
 use sds_converter_core::extract_text;
 
-fn main() -> anyhow::Result<()> {
-    let text = extract_text(std::path::Path::new("input.pdf"))?;
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let text = extract_text(std::path::Path::new("input.pdf")).await?;
     println!("{text}");
     Ok(())
 }
 ```
 
-支持的扩展名：`.pdf`、`.docx`、`.txt`
+支持的扩展名：`.pdf`、`.docx`、`.xlsx`、`.txt`
 
 ### 验证SdsRoot的结构完整性
 
@@ -135,7 +139,7 @@ fn main() -> anyhow::Result<()> {
 实现 `LlmBackend` trait即可接入任意LLM提供商：
 
 ```rust
-use sds_converter_core::{converter::llm::LlmBackend, SdsError};
+use sds_converter_core::{LlmBackend, SdsError};
 
 struct MyLlmBackend { /* ... */ }
 
@@ -193,7 +197,7 @@ impl LlmBackend for MyLlmBackend {
   - Anthropic: [获取API密钥](https://console.anthropic.com/)
   - OpenAI: [获取API密钥](https://platform.openai.com/)
   - Google Gemini: [获取API密钥](https://aistudio.google.com/)
-- 输入文件须为基于文本的PDF或DOCX
+- 输入文件须为基于文本的PDF/DOCX/XLSX/TXT
   - 不支持加密PDF（文本提取将失败）
   - 不支持扫描图像PDF（无文本可提取）
 

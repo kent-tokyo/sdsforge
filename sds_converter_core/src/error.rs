@@ -11,8 +11,8 @@ pub enum SdsError {
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
 
-    #[error("PDF extraction failed: {0}")]
-    PdfExtract(String),
+    #[error("Extraction failed: {0}")]
+    Extract(String),
 
     #[error("DOCX error: {0}")]
     Docx(String),

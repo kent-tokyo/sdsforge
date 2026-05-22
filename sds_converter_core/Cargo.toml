@@ -33,5 +33,6 @@ tracing = { workspace = true }
 pdf-extract = "0.8"
 docx-rust = "0.1"
 docx-rs = "0.4"
+calamine = "0.26"
 
 [dev-dependencies]

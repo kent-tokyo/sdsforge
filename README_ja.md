@@ -11,16 +11,16 @@
 | クレート | 説明 |
 |---|---|
 | [`sds-converter-core`](./sds_converter_core/) | Rustライブラリ — LLMによる抽出・DOCX生成・MHLWスキーマ |
-| [`sds-converter`](./sds_converter/) | CLIバイナリ — `to-json`・`to-docx` サブコマンド |
+| [`sds-converter`](./sds_converter/) | CLIバイナリ — `to-json`・`to-docx`・`validate`・`extract-text` サブコマンド |
 
 ---
 
 ## 特徴
 
-- **SDS文書 → JSON**: PDF/DOCXからテキストを抽出し、厚生労働省のSDS情報交換標準フォーマット v1.0（JSON）に変換します。
+- **SDS文書 → JSON**: PDF/DOCX/XLSX/TXTからテキストを抽出し、厚生労働省のSDS情報交換標準フォーマット v1.0（JSON）に変換します。並列抽出・自動リトライ対応。
 - **JSON → DOCX**: 標準JSONからJIS Z 7253準拠の16項目Word文書を生成します。言語別の項目見出しに対応。
 - **多言語対応**: `ja` / `en` / `zh-CN` / `zh-TW` の入出力に対応。
-- **LLMバックエンドを拡張可能**: Anthropic Claude、OpenAI GPT、Google Gemini の実装を同梱。`LlmBackend`トレイトを実装すれば任意のLLMを使用可能。
+- **LLMバックエンドを拡張可能**: Anthropic Claude、OpenAI GPT、Google Gemini、Mistral、Groq、Cohere の実装を同梱。`LlmBackend`トレイトを実装すれば任意のLLMを使用可能。
 - **ライブラリ + CLI**: Rustライブラリとして組み込み利用、またはCLIとして単独利用できます。
 
 ---

@@ -11,16 +11,16 @@ Supports documents in **Japanese**, **English**, **Simplified Chinese**, and **T
 | Crate | Description |
 |---|---|
 | [`sds-converter-core`](./sds_converter_core/) | Rust library — LLM-based extraction, DOCX generation, MHLW schema |
-| [`sds-converter`](./sds_converter/) | CLI binary — `to-json` and `to-docx` subcommands |
+| [`sds-converter`](./sds_converter/) | CLI binary — `to-json`, `to-docx`, `validate`, `extract-text` subcommands |
 
 ---
 
 ## Features
 
-- **SDS document → JSON**: Extracts text from PDF/DOCX and converts it to the MHLW SDS data exchange format v1.0 via LLM API.
+- **SDS document → JSON**: Extracts text from PDF/DOCX/XLSX/TXT and converts it to the MHLW SDS data exchange format v1.0 via LLM API. Parallel extraction with automatic retry.
 - **JSON → DOCX**: Generates a JIS Z 7253-compliant 16-section Word document from the standard JSON, with localized section headings.
 - **Multilingual**: Handles source documents in `ja` / `en` / `zh-CN` / `zh-TW`.
-- **Extensible LLM backend**: Ships with Anthropic Claude, OpenAI GPT, and Google Gemini backends. Bring your own by implementing `LlmBackend`.
+- **Extensible LLM backend**: Ships with Anthropic Claude, OpenAI GPT, Google Gemini, Mistral, Groq, and Cohere backends. Bring your own by implementing `LlmBackend`.
 - **Library + CLI**: Use as a Rust library or as a standalone command-line tool.
 
 ---

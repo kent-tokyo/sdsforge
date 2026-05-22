@@ -11,16 +11,16 @@
 | 包 | 说明 |
 |---|---|
 | [`sds-converter-core`](./sds_converter_core/) | Rust库 — 基于LLM的提取、DOCX生成、MHLW模式 |
-| [`sds-converter`](./sds_converter/) | CLI工具 — `to-json` 和 `to-docx` 子命令 |
+| [`sds-converter`](./sds_converter/) | CLI工具 — `to-json`、`to-docx`、`validate`、`extract-text` 子命令 |
 
 ---
 
 ## 功能特点
 
-- **SDS文档 → JSON**: 从PDF/DOCX中提取文本，并转换为符合MHLW SDS数据交换标准格式v1.0的JSON。
+- **SDS文档 → JSON**: 从PDF/DOCX/XLSX/TXT中提取文本，并转换为符合MHLW SDS数据交换标准格式v1.0的JSON。支持并行提取与自动重试。
 - **JSON → DOCX**: 从标准JSON生成符合JIS Z 7253规范的16节Word文档，支持多语言节标题。
 - **多语言支持**: 支持 `ja` / `en` / `zh-CN` / `zh-TW` 的输入和输出。
-- **可扩展LLM后端**: 内置Anthropic Claude、OpenAI GPT、Google Gemini实现。通过实现 `LlmBackend` trait可接入任意LLM。
+- **可扩展LLM后端**: 内置Anthropic Claude、OpenAI GPT、Google Gemini、Mistral、Groq、Cohere实现。通过实现 `LlmBackend` trait可接入任意LLM。
 - **库 + CLI**: 可作为Rust库嵌入使用，也可作为独立命令行工具使用。
 
 ---
