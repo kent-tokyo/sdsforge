@@ -14,7 +14,7 @@ use crate::schema::SdsRoot;
 //   EN   — GHS Rev.10 (UN) / ISO 11014:2020 / OSHA HazCom 2012
 //   zhCN — GB/T 16483-2012 (中国国家标准)
 //   zhTW — CNS 15030 (台灣 GHS 標準)
-const SECTION_NAMES: &[(&str, &str, &str, &str)] = &[
+pub(crate) const SECTION_NAMES: &[(&str, &str, &str, &str)] = &[
     ("化学品及び会社情報",         "Identification",                            "化学品及其企业标识",   "化學品與廠商資料"),
     ("危険有害性の要約",           "Hazard(s) Identification",                  "危险性概述",           "危害辨識資料"),
     ("組成及び成分情報",           "Composition / Information on Ingredients",  "成分/组成信息",        "成分辨識資料"),
@@ -34,7 +34,7 @@ const SECTION_NAMES: &[(&str, &str, &str, &str)] = &[
 ];
 
 // Mapping: SdsRoot JSON key → section index (0-based matching SECTION_NAMES)
-const SECTION_KEYS: &[&str] = &[
+pub(crate) const SECTION_KEYS: &[&str] = &[
     "Identification",
     "HazardIdentification",
     "Composition",
@@ -53,7 +53,7 @@ const SECTION_KEYS: &[&str] = &[
     "OtherInformation",
 ];
 
-const DOCUMENT_TITLE: &[&str] = &[
+pub(crate) const DOCUMENT_TITLE: &[&str] = &[
     "安全データシート",         // Japanese (JIS Z 7253)
     "Safety Data Sheet",        // English (GHS/ISO 11014)
     "安全技术说明书",           // ChineseSimplified (GB/T 16483)
@@ -85,6 +85,11 @@ fn section_name(section_idx: usize, lang: Language) -> &'static str {
 
 /// Generates a JIS Z 7253-compliant 16-section .docx file from SDS data.
 pub fn generate_docx(sds: &SdsRoot, output_path: &Path, lang: Language) -> Result<(), SdsError> {
+    assert_eq!(
+        SECTION_NAMES.len(),
+        SECTION_KEYS.len(),
+        "SECTION_NAMES and SECTION_KEYS must have the same length"
+    );
     let title = DOCUMENT_TITLE[lang_index(lang)];
     let root_val = serde_json::to_value(sds)
         .map_err(|e| SdsError::Docx(format!("serialize error: {e}")))?;

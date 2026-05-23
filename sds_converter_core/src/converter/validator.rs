@@ -1,3 +1,4 @@
+use crate::ghs_codes;
 use crate::schema::SdsRoot;
 
 /// Performs post-deserialization structural checks on all 16 SDS sections.
@@ -39,6 +40,56 @@ pub fn validate(sds: &SdsRoot) -> Vec<String> {
             if hz.classification.is_none() && hz.hazard_labelling.is_none() {
                 w.push("Section 2 (HazardIdentification): neither Classification nor HazardLabelling extracted.".into());
             }
+            if let Some(hl) = &hz.hazard_labelling {
+                // GHS H-code validation
+                if let Some(stmts) = &hl.hazard_statement {
+                    for s in stmts {
+                        if let Some(code) = &s.hazard_statement_code {
+                            let upper = code.to_uppercase();
+                            if !ghs_codes::is_valid_h_code(&upper) {
+                                w.push(format!(
+                                    "Section 2 (HazardStatement): unknown H-code '{code}'"
+                                ));
+                            }
+                        }
+                    }
+                }
+                // GHS P-code validation
+                if let Some(ps) = &hl.precautionary_statements {
+                    let all_codes: Vec<Option<&String>> = ps
+                        .prevention
+                        .iter()
+                        .flatten()
+                        .map(|s| s.precautionary_statement_code.as_ref())
+                        .chain(
+                            ps.response
+                                .iter()
+                                .flatten()
+                                .map(|s| s.precautionary_statement_code.as_ref()),
+                        )
+                        .chain(
+                            ps.storage
+                                .iter()
+                                .flatten()
+                                .map(|s| s.precautionary_statement_code.as_ref()),
+                        )
+                        .chain(
+                            ps.disposal
+                                .iter()
+                                .flatten()
+                                .map(|s| s.precautionary_statement_code.as_ref()),
+                        )
+                        .collect();
+                    for code in all_codes.into_iter().flatten() {
+                        let upper = code.to_uppercase();
+                        if !ghs_codes::is_valid_p_code(&upper) {
+                            w.push(format!(
+                                "Section 2 (PrecautionaryStatement): unknown P-code '{code}'"
+                            ));
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -46,13 +97,25 @@ pub fn validate(sds: &SdsRoot) -> Vec<String> {
     match &sds.composition {
         None => missing!("Section 3 (Composition)"),
         Some(comp) => {
-            let empty = comp
-                .composition_and_concentration
-                .as_ref()
-                .map(|v| v.is_empty())
-                .unwrap_or(true);
-            if empty {
+            let items = comp.composition_and_concentration.as_deref().unwrap_or(&[]);
+            if items.is_empty() {
                 w.push("Section 3 (Composition): CompositionAndConcentration is empty.".into());
+            }
+            // CAS number format validation
+            for (i, item) in items.iter().enumerate() {
+                if let Some(ids) = &item.substance_identifiers {
+                    if let Some(identity) = &ids.substance_identity {
+                        if let Some(cas_node) = &identity.ca_sno {
+                            for cas in cas_node.full_text.iter().flatten() {
+                                if !validate_cas_format(cas) {
+                                    w.push(format!(
+                                        "Section 3 (Composition[{i}]): invalid CAS format '{cas}'"
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -136,4 +199,42 @@ pub fn validate(sds: &SdsRoot) -> Vec<String> {
     }
 
     w
+}
+
+/// Validate a CAS Registry Number.
+///
+/// Format: `^\d{2,7}-\d{2}-\d$`
+/// Check digit: weighted sum of all digits (right to left, weight starts at 1 for the
+/// rightmost non-check digit) mod 10 must equal the check digit.
+pub(crate) fn validate_cas_format(cas: &str) -> bool {
+    let parts: Vec<&str> = cas.split('-').collect();
+    if parts.len() != 3 {
+        return false;
+    }
+    let (a, b, c) = (parts[0], parts[1], parts[2]);
+    // Format check
+    if a.len() < 2
+        || a.len() > 7
+        || b.len() != 2
+        || c.len() != 1
+        || !a.chars().all(|c| c.is_ascii_digit())
+        || !b.chars().all(|c| c.is_ascii_digit())
+        || !c.chars().all(|c| c.is_ascii_digit())
+    {
+        return false;
+    }
+    let check_digit: u32 = c.chars().next().unwrap().to_digit(10).unwrap();
+    // Build digit string excluding check digit, then compute weighted sum
+    let digits: Vec<u32> = a
+        .chars()
+        .chain(b.chars())
+        .filter_map(|ch| ch.to_digit(10))
+        .collect();
+    let sum: u32 = digits
+        .iter()
+        .rev()
+        .enumerate()
+        .map(|(i, &d)| d * (i as u32 + 1))
+        .sum();
+    sum % 10 == check_digit
 }

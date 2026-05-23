@@ -38,16 +38,23 @@
 //!   Implement [`converter::LlmBackend`] to bring your own.
 
 pub mod converter;
+pub mod enrichment;
 pub mod error;
+pub mod ghs_codes;
 pub mod language;
 pub mod schema;
 
 pub use converter::{
-    convert_from_json, convert_from_template, convert_to_json, fill_template, openai_compat_url,
+    convert_from_json, convert_from_template, convert_to_json, convert_url_to_json,
+    fill_template, openai_compat_url,
     AnthropicBackend, LlmBackend, LlmConfig, ConvertConfig, OpenAiCompatBackend,
 };
-pub use converter::extractor::{extract_text, extract_text_limited};
+pub use converter::extractor::{
+    detect_format_str, extract_text, extract_text_from_url, extract_text_limited,
+};
 pub use converter::validator::validate;
+pub use enrichment::{enrich_composition, lookup_cas, CasInfo, CasWarning};
 pub use error::SdsError;
+pub use ghs_codes::{h_code_description, is_valid_h_code, is_valid_p_code, p_code_description};
 pub use language::Language;
 pub use schema::SdsRoot;

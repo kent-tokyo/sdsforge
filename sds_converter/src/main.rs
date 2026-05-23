@@ -6,7 +6,8 @@ use futures::stream::{self, StreamExt};
 use walkdir::WalkDir;
 use sds_converter_core::{
     converter::{AnthropicBackend, LlmBackend, LlmConfig, OpenAiCompatBackend, openai_compat_url},
-    convert_from_json, convert_from_template, convert_to_json, extract_text, validate,
+    convert_from_json, convert_from_template, convert_to_json, convert_url_to_json,
+    enrich_composition, extract_text, extract_text_from_url, validate,
     ConvertConfig, Language,
     SdsError, SdsRoot,
 };
@@ -168,11 +169,11 @@ fn default_model(provider: CliProvider, quality: CliQuality) -> &'static str {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Convert a PDF or Word document to MHLW standard JSON
+    /// Convert a PDF, Word document, HTML file, or URL to MHLW standard JSON
     ToJson {
-        /// Input PDF, DOCX, or TXT file (single-file mode)
+        /// Input file (PDF/DOCX/TXT/XLSX/HTML) or URL (http:// / https://)
         #[arg(short, long, conflicts_with = "input_dir")]
-        input: Option<PathBuf>,
+        input: Option<String>,
 
         /// Input directory — process all .pdf/.docx files (batch mode)
         #[arg(long, conflicts_with = "input")]
@@ -213,6 +214,10 @@ enum Commands {
         /// Number of files to convert in parallel (batch mode only)
         #[arg(long, default_value = "4")]
         concurrency: usize,
+
+        /// Look up each CAS number in PubChem and report mismatches (requires network)
+        #[arg(long)]
+        enrich: bool,
     },
 
     /// Convert MHLW standard JSON to a Word document
@@ -254,11 +259,57 @@ enum Commands {
         json: bool,
     },
 
-    /// Extract raw text from a PDF or DOCX file (no LLM — for inspection/debugging)
+    /// Convert MHLW standard JSON to an HTML document
+    ToHtml {
+        /// Input JSON file (single-file mode)
+        #[arg(short, long, conflicts_with = "input_dir")]
+        input: Option<PathBuf>,
+
+        /// Input directory — process all .json files (batch mode)
+        #[arg(long, conflicts_with = "input")]
+        input_dir: Option<PathBuf>,
+
+        /// Output HTML file (required in single-file mode)
+        #[arg(short, long, conflicts_with = "output_dir")]
+        output: Option<PathBuf>,
+
+        /// Output directory for batch mode (created if absent)
+        #[arg(long, conflicts_with = "output")]
+        output_dir: Option<PathBuf>,
+
+        /// Output document language
+        #[arg(long, value_enum, default_value = "ja")]
+        lang: CliLanguage,
+    },
+
+    /// Convert MHLW standard JSON to a PDF via LibreOffice (requires `soffice` in PATH)
+    ToPdf {
+        /// Input JSON file (single-file mode)
+        #[arg(short, long, conflicts_with = "input_dir")]
+        input: Option<PathBuf>,
+
+        /// Input directory — process all .json files (batch mode)
+        #[arg(long, conflicts_with = "input")]
+        input_dir: Option<PathBuf>,
+
+        /// Output PDF file (required in single-file mode)
+        #[arg(short, long, conflicts_with = "output_dir")]
+        output: Option<PathBuf>,
+
+        /// Output directory for batch mode (created if absent)
+        #[arg(long, conflicts_with = "output")]
+        output_dir: Option<PathBuf>,
+
+        /// Output document language
+        #[arg(long, value_enum, default_value = "ja")]
+        lang: CliLanguage,
+    },
+
+    /// Extract raw text from a PDF, DOCX file, or URL (no LLM — for inspection/debugging)
     ExtractText {
-        /// Input PDF or DOCX file
+        /// Input file (PDF/DOCX/TXT/XLSX/HTML) or URL (http:// / https://)
         #[arg(short, long)]
-        input: PathBuf,
+        input: String,
 
         /// Output .txt file (omit to print to stdout)
         #[arg(short, long)]
@@ -285,20 +336,21 @@ async fn main() -> anyhow::Result<()> {
             base_url,
             quality,
             concurrency,
+            enrich,
         } => {
             let preset = quality.preset();
             let api_key = resolve_api_key(api_key, provider)?;
             let model = model.unwrap_or_else(|| default_model(provider, quality).to_string());
-            let llm_config = LlmConfig { model: model.clone(), max_tokens: preset.max_tokens };
+            eprintln!(
+                "Quality: {} (max_chars={}, max_tokens={}, model={})",
+                quality.name(), preset.max_chars, preset.max_tokens, model
+            );
+            let llm_config = LlmConfig { model, max_tokens: preset.max_tokens };
             let convert_config = ConvertConfig {
                 source_language: lang.map(Language::from),
                 output_language: Language::default(),
                 max_chars: preset.max_chars,
             };
-            eprintln!(
-                "Quality: {} (max_chars={}, max_tokens={}, model={})",
-                quality.name(), preset.max_chars, preset.max_tokens, model
-            );
 
             let backend = Arc::new(build_backend(provider, api_key, llm_config, base_url));
 
@@ -307,12 +359,28 @@ async fn main() -> anyhow::Result<()> {
                     let output = output.ok_or_else(|| {
                         anyhow::anyhow!("--output is required when using --input")
                     })?;
-                    eprintln!("Extracting text from {} ...", input.display());
-                    let (sds, warnings) = convert_to_json(&input, &*backend, &convert_config).await?;
+                    use anyhow::Context as _;
+                    eprintln!("Extracting text from {input} ...");
+                    let is_url = input.starts_with("http://") || input.starts_with("https://");
+                    let (sds, warnings) = if is_url {
+                        convert_url_to_json(&input, &*backend, &convert_config).await?
+                    } else {
+                        convert_to_json(std::path::Path::new(&input), &*backend, &convert_config).await?
+                    };
                     for w in &warnings {
                         eprintln!("WARN: {w}");
                     }
-                    std::fs::write(&output, serde_json::to_string_pretty(&sds)?)?;
+                    if enrich {
+                        let client = reqwest::Client::builder()
+                            .timeout(std::time::Duration::from_secs(30))
+                            .build()?;
+                        let cas_warnings = enrich_composition(&sds, &client).await;
+                        for w in &cas_warnings {
+                            eprintln!("CAS: {w}");
+                        }
+                    }
+                    std::fs::write(&output, serde_json::to_string_pretty(&sds)?)
+                        .with_context(|| format!("writing {}", output.display()))?;
                     eprintln!("Saved JSON to {}", output.display());
                 }
                 (None, Some(dir)) => {
@@ -338,8 +406,11 @@ async fn main() -> anyhow::Result<()> {
                     let output = output.ok_or_else(|| {
                         anyhow::anyhow!("--output is required when using --input")
                     })?;
+                    use anyhow::Context as _;
                     eprintln!("Reading JSON from {} ...", input.display());
-                    let json = std::fs::read_to_string(&input)?;
+                    check_json_file_size(&input)?;
+                    let json = std::fs::read_to_string(&input)
+                        .with_context(|| format!("reading {}", input.display()))?;
                     let sds: SdsRoot = serde_json::from_str(&json)?;
                     if let Some(tmpl) = &template {
                         eprintln!("Filling template {} ...", tmpl.display());
@@ -361,7 +432,10 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Commands::Validate { input, json } => {
-            let raw = std::fs::read_to_string(&input)?;
+            use anyhow::Context as _;
+            check_json_file_size(&input)?;
+            let raw = std::fs::read_to_string(&input)
+                .with_context(|| format!("reading {}", input.display()))?;
             let sds: SdsRoot = serde_json::from_str(&raw)?;
             let warnings = validate(&sds);
 
@@ -378,13 +452,89 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Commands::ExtractText { input, output } => {
-            let text = extract_text(&input).await?;
+            use anyhow::Context as _;
+            let is_url = input.starts_with("http://") || input.starts_with("https://");
+            let text = if is_url {
+                extract_text_from_url(&input).await?
+            } else {
+                extract_text(std::path::Path::new(&input)).await?
+            };
             match output {
                 Some(path) => {
-                    std::fs::write(&path, &text)?;
+                    std::fs::write(&path, &text)
+                        .with_context(|| format!("writing {}", path.display()))?;
                     eprintln!("Saved text to {}", path.display());
                 }
                 None => print!("{text}"),
+            }
+        }
+
+        Commands::ToHtml { input, input_dir, output, output_dir, lang } => {
+            use anyhow::Context as _;
+            let config = ConvertConfig {
+                source_language: None,
+                output_language: Language::from(lang),
+                ..Default::default()
+            };
+            match (input, input_dir) {
+                (Some(input), None) => {
+                    let output = output.ok_or_else(|| {
+                        anyhow::anyhow!("--output is required when using --input")
+                    })?;
+                    check_json_file_size(&input)?;
+                    let json = std::fs::read_to_string(&input)
+                        .with_context(|| format!("reading {}", input.display()))?;
+                    let sds: SdsRoot = serde_json::from_str(&json)?;
+                    let html = sds_converter_core::converter::html::generate_html(&sds, config.output_language)?;
+                    std::fs::write(&output, html)
+                        .with_context(|| format!("writing {}", output.display()))?;
+                    eprintln!("Saved HTML to {}", output.display());
+                }
+                (None, Some(dir)) => {
+                    let out_dir = output_dir.ok_or_else(|| {
+                        anyhow::anyhow!("--output-dir is required when using --input-dir")
+                    })?;
+                    std::fs::create_dir_all(&out_dir)?;
+                    batch_to_html(&dir, &out_dir, &config)?;
+                }
+                _ => anyhow::bail!("Specify either --input or --input-dir"),
+            }
+        }
+
+        Commands::ToPdf { input, input_dir, output, output_dir, lang } => {
+            use anyhow::Context as _;
+            let config = ConvertConfig {
+                source_language: None,
+                output_language: Language::from(lang),
+                ..Default::default()
+            };
+            // Verify soffice is available
+            if std::process::Command::new("soffice").arg("--version").output().is_err() {
+                anyhow::bail!(
+                    "PDF output requires LibreOffice. Install from https://www.libreoffice.org/ \
+                     and ensure `soffice` is in your PATH."
+                );
+            }
+            match (input, input_dir) {
+                (Some(input), None) => {
+                    let output = output.ok_or_else(|| {
+                        anyhow::anyhow!("--output is required when using --input")
+                    })?;
+                    check_json_file_size(&input)?;
+                    let json = std::fs::read_to_string(&input)
+                        .with_context(|| format!("reading {}", input.display()))?;
+                    let sds: SdsRoot = serde_json::from_str(&json)?;
+                    docx_to_pdf(&sds, &output, &config)?;
+                    eprintln!("Saved PDF to {}", output.display());
+                }
+                (None, Some(dir)) => {
+                    let out_dir = output_dir.ok_or_else(|| {
+                        anyhow::anyhow!("--output-dir is required when using --input-dir")
+                    })?;
+                    std::fs::create_dir_all(&out_dir)?;
+                    batch_to_pdf(&dir, &out_dir, &config)?;
+                }
+                _ => anyhow::bail!("Specify either --input or --input-dir"),
             }
         }
     }
@@ -398,6 +548,10 @@ async fn main() -> anyhow::Result<()> {
 
 fn resolve_api_key(api_key: Option<String>, provider: CliProvider) -> anyhow::Result<String> {
     if let Some(k) = api_key {
+        eprintln!(
+            "Warning: passing --api-key on the command line may expose it to other local \
+             processes. Prefer setting the environment variable instead."
+        );
         return Ok(k);
     }
     let env_var = match provider {
@@ -415,6 +569,40 @@ fn resolve_api_key(api_key: Option<String>, provider: CliProvider) -> anyhow::Re
         .map_err(|_| anyhow::anyhow!("API key not provided. Set --api-key or {env_var}"))
 }
 
+const MAX_JSON_INPUT_BYTES: u64 = 100 * 1024 * 1024; // 100 MB
+
+fn check_json_file_size(path: &Path) -> anyhow::Result<()> {
+    let size = std::fs::metadata(path)
+        .map_err(|e| anyhow::anyhow!("file stat failed for {}: {e}", path.display()))?
+        .len();
+    if size > MAX_JSON_INPUT_BYTES {
+        anyhow::bail!(
+            "input file too large ({} bytes, limit {} MB): {}",
+            size,
+            MAX_JSON_INPUT_BYTES / 1024 / 1024,
+            path.display()
+        );
+    }
+    Ok(())
+}
+
+fn collect_files(dir: &Path, extensions: &[&str]) -> Vec<PathBuf> {
+    let mut files: Vec<PathBuf> = WalkDir::new(dir)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .map(|e| e.into_path())
+        .filter(|p| {
+            p.extension()
+                .and_then(|e| e.to_str())
+                .map(|e| extensions.iter().any(|x| x.eq_ignore_ascii_case(e)))
+                .unwrap_or(false)
+        })
+        .collect();
+    files.sort();
+    files
+}
+
 async fn batch_to_json(
     input_dir: &Path,
     output_dir: &Path,
@@ -422,19 +610,7 @@ async fn batch_to_json(
     backend: Arc<BackendKind>,
     concurrency: usize,
 ) -> anyhow::Result<()> {
-    let mut files: Vec<PathBuf> = WalkDir::new(input_dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .map(|e| e.into_path())
-        .filter(|p| {
-            matches!(
-                p.extension().and_then(|e| e.to_str()),
-                Some("pdf" | "docx" | "xlsx" | "xls")
-            )
-        })
-        .collect();
-    files.sort();
+    let files = collect_files(input_dir, &["pdf", "docx", "xlsx", "xls"]);
 
     let total = files.len();
     if total == 0 {
@@ -458,7 +634,14 @@ async fn batch_to_json(
             let ok = Arc::clone(&ok);
             let failed = Arc::clone(&failed);
             async move {
-                let stem = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+                let stem = match path.file_stem().and_then(|s| s.to_str()).filter(|s| !s.is_empty()) {
+                    Some(s) => s.to_string(),
+                    None => {
+                        eprintln!("  [SKIP] {}: no file stem", path.display());
+                        failed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        return;
+                    }
+                };
                 let out_path = output_dir.join(format!("{stem}.json"));
                 eprintln!("[{}/{}] {}", i + 1, total, path.display());
                 match convert_to_json(&path, &*backend, &config).await {
@@ -466,10 +649,20 @@ async fn batch_to_json(
                         for w in &warnings {
                             eprintln!("  WARN: {w}");
                         }
-                        if let Ok(json) = serde_json::to_string_pretty(&sds) {
-                            if std::fs::write(&out_path, json).is_ok() {
-                                ok.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                                eprintln!("  [OK] {}", out_path.display());
+                        match serde_json::to_string_pretty(&sds) {
+                            Ok(json) => match std::fs::write(&out_path, json) {
+                                Ok(_) => {
+                                    ok.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                    eprintln!("  [OK] {}", out_path.display());
+                                }
+                                Err(e) => {
+                                    eprintln!("  [ERROR] write {}: {e}", out_path.display());
+                                    failed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                }
+                            },
+                            Err(e) => {
+                                eprintln!("  [ERROR] serialize {}: {e}", path.display());
+                                failed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                             }
                         }
                     }
@@ -490,20 +683,129 @@ async fn batch_to_json(
     Ok(())
 }
 
+fn batch_to_html(
+    input_dir: &Path,
+    output_dir: &Path,
+    config: &ConvertConfig,
+) -> anyhow::Result<()> {
+    let files = collect_files(input_dir, &["json"]);
+    let total = files.len();
+    if total == 0 {
+        eprintln!("No .json files found in {}", input_dir.display());
+        return Ok(());
+    }
+    let (mut ok, mut failed) = (0usize, 0usize);
+    for (i, path) in files.iter().enumerate() {
+        let stem = match path.file_stem().and_then(|s| s.to_str()).filter(|s| !s.is_empty()) {
+            Some(s) => s.to_string(),
+            None => { failed += 1; continue; }
+        };
+        let out_path = output_dir.join(format!("{stem}.html"));
+        eprintln!("[{}/{}] {}", i + 1, total, path.display());
+        let result = check_json_file_size(path)
+            .and_then(|_| std::fs::read_to_string(path).map_err(anyhow::Error::from))
+            .and_then(|raw| serde_json::from_str::<SdsRoot>(&raw).map_err(anyhow::Error::from))
+            .and_then(|sds| {
+                sds_converter_core::converter::html::generate_html(&sds, config.output_language)
+                    .map_err(anyhow::Error::from)
+            })
+            .and_then(|html| std::fs::write(&out_path, html).map_err(anyhow::Error::from));
+        match result {
+            Ok(_) => ok += 1,
+            Err(e) => { eprintln!("[ERROR] {}: {e}", path.display()); failed += 1; }
+        }
+    }
+    eprintln!("Done: {ok} ok, {failed} failed");
+    Ok(())
+}
+
+/// Generate a temporary DOCX then convert it to PDF via `soffice --headless`.
+fn docx_to_pdf(sds: &SdsRoot, output: &Path, config: &ConvertConfig) -> anyhow::Result<()> {
+    use anyhow::Context as _;
+
+    let tmp_dir = std::env::temp_dir();
+    let tmp_docx = tmp_dir.join(format!(
+        "sds_converter_{}.docx",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    ));
+
+    convert_from_json(sds, &tmp_docx, config)
+        .with_context(|| "generating intermediate DOCX")?;
+
+    let out_dir = output
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let status = std::process::Command::new("soffice")
+        .args([
+            "--headless",
+            "--convert-to",
+            "pdf",
+            "--outdir",
+            out_dir.to_str().unwrap_or("."),
+            tmp_docx.to_str().unwrap_or(""),
+        ])
+        .status()
+        .with_context(|| "running soffice")?;
+
+    let _ = std::fs::remove_file(&tmp_docx);
+
+    if !status.success() {
+        anyhow::bail!("soffice exited with status {status}");
+    }
+
+    // soffice places the PDF as <stem>.pdf in out_dir; rename to the requested output path.
+    let stem = tmp_docx.file_stem().unwrap_or_default().to_string_lossy();
+    let generated = out_dir.join(format!("{stem}.pdf"));
+    if generated != output {
+        std::fs::rename(&generated, output)
+            .with_context(|| format!("renaming {} to {}", generated.display(), output.display()))?;
+    }
+
+    Ok(())
+}
+
+fn batch_to_pdf(
+    input_dir: &Path,
+    output_dir: &Path,
+    config: &ConvertConfig,
+) -> anyhow::Result<()> {
+    let files = collect_files(input_dir, &["json"]);
+    let total = files.len();
+    if total == 0 {
+        eprintln!("No .json files found in {}", input_dir.display());
+        return Ok(());
+    }
+    let (mut ok, mut failed) = (0usize, 0usize);
+    for (i, path) in files.iter().enumerate() {
+        let stem = match path.file_stem().and_then(|s| s.to_str()).filter(|s| !s.is_empty()) {
+            Some(s) => s.to_string(),
+            None => { failed += 1; continue; }
+        };
+        let out_path = output_dir.join(format!("{stem}.pdf"));
+        eprintln!("[{}/{}] {}", i + 1, total, path.display());
+        let result = check_json_file_size(path)
+            .and_then(|_| std::fs::read_to_string(path).map_err(anyhow::Error::from))
+            .and_then(|raw| serde_json::from_str::<SdsRoot>(&raw).map_err(anyhow::Error::from))
+            .and_then(|sds| docx_to_pdf(&sds, &out_path, config));
+        match result {
+            Ok(_) => ok += 1,
+            Err(e) => { eprintln!("[ERROR] {}: {e}", path.display()); failed += 1; }
+        }
+    }
+    eprintln!("Done: {ok} ok, {failed} failed");
+    Ok(())
+}
+
 fn batch_to_docx(
     input_dir: &Path,
     output_dir: &Path,
     config: &ConvertConfig,
     template: Option<&Path>,
 ) -> anyhow::Result<()> {
-    let mut files: Vec<PathBuf> = WalkDir::new(input_dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .map(|e| e.into_path())
-        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("json"))
-        .collect();
-    files.sort();
+    let files = collect_files(input_dir, &["json"]);
 
     let total = files.len();
     if total == 0 {
@@ -513,11 +815,18 @@ fn batch_to_docx(
 
     let (mut ok, mut failed) = (0usize, 0usize);
     for (i, path) in files.iter().enumerate() {
-        let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+        let stem = match path.file_stem().and_then(|s| s.to_str()).filter(|s| !s.is_empty()) {
+            Some(s) => s.to_string(),
+            None => {
+                eprintln!("  [SKIP] {}: no file stem", path.display());
+                failed += 1;
+                continue;
+            }
+        };
         let out_path = output_dir.join(format!("{stem}.docx"));
         eprintln!("[{}/{}] {}", i + 1, total, path.display());
-        let result = std::fs::read_to_string(path)
-            .map_err(anyhow::Error::from)
+        let result = check_json_file_size(path)
+            .and_then(|_| std::fs::read_to_string(path).map_err(anyhow::Error::from))
             .and_then(|raw| serde_json::from_str::<SdsRoot>(&raw).map_err(anyhow::Error::from))
             .and_then(|sds| {
                 if let Some(tmpl) = template {
@@ -537,3 +846,4 @@ fn batch_to_docx(
     eprintln!("Done: {ok} ok, {failed} failed");
     Ok(())
 }
+

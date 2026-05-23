@@ -5,6 +5,9 @@ use std::path::Path;
 use crate::error::SdsError;
 use crate::schema::SdsRoot;
 
+const MAX_TEMPLATE_BYTES: u64 = 50 * 1024 * 1024; // 50 MB
+const MAX_ENTRY_BYTES: u64 = 100 * 1024 * 1024; // 100 MB per ZIP entry
+
 /// Fill a Word (.docx) template by replacing `{{FieldName}}` placeholders with
 /// values from an [`SdsRoot`]. Placeholders use the leaf field name (e.g.
 /// `{{TradeNameJP}}`, `{{CompanyName}}`). Full dot-path keys are also supported
@@ -17,7 +20,17 @@ pub fn fill_template(
     template_path: &Path,
     output_path: &Path,
 ) -> Result<(), SdsError> {
-    let values = flatten_sds(sds);
+    let values = flatten_sds(sds)?;
+
+    let meta = std::fs::metadata(template_path)
+        .map_err(|e| SdsError::Extract(format!("template stat failed: {e}")))?;
+    if meta.len() > MAX_TEMPLATE_BYTES {
+        return Err(SdsError::Extract(format!(
+            "template file too large ({} bytes, limit {} MB)",
+            meta.len(),
+            MAX_TEMPLATE_BYTES / 1024 / 1024
+        )));
+    }
 
     let template_bytes = std::fs::read(template_path)
         .map_err(|e| SdsError::Extract(format!("template open failed: {e}")))?;
@@ -36,51 +49,50 @@ pub fn fill_template(
 /// Each leaf string/number/bool gets two entries:
 ///   - short key  (`TradeNameJP`)
 ///   - full path  (`Identification.TradeProductIdentity.TradeNameJP`)
+///
 /// Vec<String> values are joined with `\n`.
-pub(crate) fn flatten_sds(sds: &SdsRoot) -> HashMap<String, String> {
-    let v = serde_json::to_value(sds).unwrap_or_default();
+pub(crate) fn flatten_sds(sds: &SdsRoot) -> Result<HashMap<String, String>, SdsError> {
+    let v = serde_json::to_value(sds)
+        .map_err(|e| SdsError::Extract(format!("SDS serialize error: {e}")))?;
     let mut map = HashMap::new();
     flatten_value("", &v, &mut map);
-    map
+    Ok(map)
 }
 
 fn flatten_value(prefix: &str, value: &serde_json::Value, map: &mut HashMap<String, String>) {
-    match value {
-        serde_json::Value::Object(obj) => {
-            for (k, v) in obj {
-                let full = if prefix.is_empty() {
-                    k.clone()
-                } else {
-                    format!("{prefix}.{k}")
-                };
-                match v {
-                    serde_json::Value::String(s) if !s.is_empty() => {
-                        map.entry(k.clone()).or_insert_with(|| s.clone());
-                        map.insert(full, s.clone());
-                    }
-                    serde_json::Value::Number(n) => {
-                        let s = n.to_string();
-                        map.entry(k.clone()).or_insert_with(|| s.clone());
-                        map.insert(full, s);
-                    }
-                    serde_json::Value::Bool(b) => {
-                        let s = b.to_string();
-                        map.entry(k.clone()).or_insert_with(|| s.clone());
-                        map.insert(full, s);
-                    }
-                    serde_json::Value::Array(arr) => {
-                        let s: Vec<&str> = arr.iter().filter_map(|v| v.as_str()).collect();
-                        if !s.is_empty() {
-                            let joined = s.join("\n");
-                            map.entry(k.clone()).or_insert_with(|| joined.clone());
-                            map.insert(full, joined);
-                        }
-                    }
-                    _ => flatten_value(&full, v, map),
+    if let serde_json::Value::Object(obj) = value {
+        for (k, v) in obj {
+            let full = if prefix.is_empty() {
+                k.clone()
+            } else {
+                format!("{prefix}.{k}")
+            };
+            match v {
+                serde_json::Value::String(s) if !s.is_empty() => {
+                    map.entry(k.clone()).or_insert_with(|| s.clone());
+                    map.insert(full, s.clone());
                 }
+                serde_json::Value::Number(n) => {
+                    let s = n.to_string();
+                    map.entry(k.clone()).or_insert_with(|| s.clone());
+                    map.insert(full, s);
+                }
+                serde_json::Value::Bool(b) => {
+                    let s = b.to_string();
+                    map.entry(k.clone()).or_insert_with(|| s.clone());
+                    map.insert(full, s);
+                }
+                serde_json::Value::Array(arr) => {
+                    let s: Vec<&str> = arr.iter().filter_map(|v| v.as_str()).collect();
+                    if !s.is_empty() {
+                        let joined = s.join("\n");
+                        map.entry(k.clone()).or_insert_with(|| joined.clone());
+                        map.insert(full, joined);
+                    }
+                }
+                _ => flatten_value(&full, v, map),
             }
         }
-        _ => {}
     }
 }
 
@@ -105,7 +117,7 @@ fn fill_docx_bytes(
     let mut writer = ZipWriter::new(Cursor::new(&mut out));
 
     for name in &names {
-        let mut entry = archive
+        let entry = archive
             .by_name(name)
             .map_err(|e| SdsError::Extract(format!("ZIP entry '{name}' read failed: {e}")))?;
 
@@ -120,6 +132,7 @@ fn fill_docx_bytes(
         if is_content_xml(name) {
             let mut xml = String::new();
             entry
+                .take(MAX_ENTRY_BYTES)
                 .read_to_string(&mut xml)
                 .map_err(|e| SdsError::Extract(format!("read '{name}' failed: {e}")))?;
             let filled = apply_substitutions(&xml, values);
@@ -129,6 +142,7 @@ fn fill_docx_bytes(
         } else {
             let mut buf = Vec::new();
             entry
+                .take(MAX_ENTRY_BYTES)
                 .read_to_end(&mut buf)
                 .map_err(|e| SdsError::Extract(format!("read '{name}' failed: {e}")))?;
             writer
@@ -146,30 +160,36 @@ fn fill_docx_bytes(
 
 /// Returns true for XML parts that may contain user-authored text with placeholders.
 fn is_content_xml(name: &str) -> bool {
-    matches!(
-        name,
-        "word/document.xml"
-            | "word/header1.xml"
-            | "word/header2.xml"
-            | "word/header3.xml"
-            | "word/footer1.xml"
-            | "word/footer2.xml"
-            | "word/footer3.xml"
-    ) || (name.starts_with("word/header") && name.ends_with(".xml"))
+    name == "word/document.xml"
+        || (name.starts_with("word/header") && name.ends_with(".xml"))
         || (name.starts_with("word/footer") && name.ends_with(".xml"))
 }
 
 /// Normalize split placeholders then replace `{{key}}` with values.
+/// Uses a single O(doc_size) pass instead of O(keys × doc_size) repeated replacements.
 fn apply_substitutions(xml: &str, values: &HashMap<String, String>) -> String {
     let normalized = normalize_split_runs(xml);
-    let mut result = normalized;
-    for (key, value) in values {
-        let placeholder = format!("{{{{{key}}}}}");
-        if result.contains(&placeholder) {
-            result = result.replace(&placeholder, &escape_xml(value));
+    let mut out = String::with_capacity(normalized.len());
+    let mut rest = normalized.as_str();
+    while let Some(start) = rest.find("{{") {
+        out.push_str(&rest[..start]);
+        rest = &rest[start + 2..];
+        if let Some(end) = rest.find("}}") {
+            let key = &rest[..end];
+            if let Some(value) = values.get(key) {
+                out.push_str(&escape_xml(value));
+            } else {
+                out.push_str("{{");
+                out.push_str(key);
+                out.push_str("}}");
+            }
+            rest = &rest[end + 2..];
+        } else {
+            out.push_str("{{");
         }
     }
-    result
+    out.push_str(rest);
+    out
 }
 
 /// Remove XML run-boundary tags that appear *inside* a `{{...}}` placeholder.
@@ -177,49 +197,57 @@ fn apply_substitutions(xml: &str, values: &HashMap<String, String>) -> String {
 /// Word sometimes splits a typed word across multiple `<w:r>` runs (especially
 /// after spell-check or autocorrect). This state-machine pass merges such splits
 /// so that `{{Trade</w:t></w:r><w:r><w:t>NameJP}}` becomes `{{TradeNameJP}}`.
+///
+/// Uses slice-based output to correctly handle multi-byte UTF-8 characters
+/// (e.g. Japanese text in fixed parts of the template).
 fn normalize_split_runs(xml: &str) -> String {
     let mut out = String::with_capacity(xml.len());
     let bytes = xml.as_bytes();
     let n = bytes.len();
     let mut i = 0;
+    let mut copy_start = 0;
 
     while i < n {
-        // Detect `{{` — start of a placeholder.
         if i + 1 < n && bytes[i] == b'{' && bytes[i + 1] == b'{' {
-            out.push('{');
-            out.push('{');
+            // Flush verbatim bytes before this placeholder
+            out.push_str(&xml[copy_start..i]);
+            out.push_str("{{");
             i += 2;
+            copy_start = i;
 
-            // Collect placeholder text, skipping any XML tags until `}}`.
             loop {
                 if i >= n {
                     break;
                 }
                 if i + 1 < n && bytes[i] == b'}' && bytes[i + 1] == b'}' {
-                    out.push('}');
-                    out.push('}');
+                    // Flush placeholder text and close
+                    out.push_str(&xml[copy_start..i]);
+                    out.push_str("}}");
                     i += 2;
+                    copy_start = i;
                     break;
                 }
                 if bytes[i] == b'<' {
-                    // Skip XML tag (including attributes).
+                    // Flush placeholder text before this tag, then skip the tag
+                    out.push_str(&xml[copy_start..i]);
                     while i < n && bytes[i] != b'>' {
                         i += 1;
                     }
                     if i < n {
                         i += 1; // consume '>'
                     }
+                    copy_start = i;
                 } else {
-                    out.push(bytes[i] as char);
                     i += 1;
                 }
             }
         } else {
-            out.push(bytes[i] as char);
             i += 1;
         }
     }
 
+    // Flush remaining bytes
+    out.push_str(&xml[copy_start..]);
     out
 }
 
@@ -227,6 +255,8 @@ fn escape_xml(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -239,6 +269,18 @@ mod tests {
     fn normalize_no_split() {
         let xml = "<w:t>{{TradeNameJP}}</w:t>";
         assert_eq!(normalize_split_runs(xml), xml);
+    }
+
+    #[test]
+    fn normalize_preserves_cjk_in_fixed_text() {
+        let xml = "<w:t>製品名：{{TradeName}}</w:t>";
+        assert_eq!(normalize_split_runs(xml), xml);
+    }
+
+    #[test]
+    fn normalize_split_with_cjk_around_placeholder() {
+        let xml = "<w:t>会社：{{Co</w:t></w:r><w:r><w:t>mp}}様</w:t>";
+        assert_eq!(normalize_split_runs(xml), "<w:t>会社：{{Comp}}様</w:t>");
     }
 
     #[test]
@@ -282,7 +324,7 @@ mod tests {
             }),
             ..Default::default()
         };
-        let map = flatten_sds(&sds);
+        let map = flatten_sds(&sds).unwrap();
         assert_eq!(map.get("IssueDate").map(String::as_str), Some("2024-01-01"));
         assert!(map.contains_key("Datasheet.IssueDate"));
     }

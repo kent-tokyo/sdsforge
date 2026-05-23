@@ -6,25 +6,41 @@ use crate::error::SdsError;
 /// Default maximum characters to send to the LLM — consistent with ConvertConfig::default().
 const DEFAULT_MAX_LLM_CHARS: usize = 80_000;
 
+const MAX_BINARY_INPUT_BYTES: u64 = 500 * 1024 * 1024; // 500 MB for binary formats
+const MAX_TEXT_INPUT_BYTES: u64 = 100 * 1024 * 1024; // 100 MB for text formats
+
 pub enum InputFormat {
     Pdf,
     Docx,
     Txt,
     Xlsx,
+    Html,
+    Url,
 }
 
 pub fn detect_format(path: &Path) -> Result<InputFormat, SdsError> {
-    match path
+    detect_format_str(
+        path.to_str()
+            .ok_or_else(|| SdsError::UnsupportedFormat("(invalid path)".to_string()))?,
+    )
+}
+
+/// Detect input format from a file path or URL string.
+pub fn detect_format_str(input: &str) -> Result<InputFormat, SdsError> {
+    if input.starts_with("http://") || input.starts_with("https://") {
+        return Ok(InputFormat::Url);
+    }
+    let ext = std::path::Path::new(input)
         .extension()
         .and_then(|e| e.to_str())
-        .map(|e| e.to_ascii_lowercase())
-        .as_deref()
-    {
+        .map(|e| e.to_ascii_lowercase());
+    match ext.as_deref() {
         Some("pdf") => Ok(InputFormat::Pdf),
         Some("docx") => Ok(InputFormat::Docx),
         Some("txt") => Ok(InputFormat::Txt),
         Some("xlsx") | Some("xls") | Some("xlsm") => Ok(InputFormat::Xlsx),
-        Some(ext) => Err(SdsError::UnsupportedFormat(ext.to_string())),
+        Some("html") | Some("htm") => Ok(InputFormat::Html),
+        Some(e) => Err(SdsError::UnsupportedFormat(e.to_string())),
         None => Err(SdsError::UnsupportedFormat("(no extension)".to_string())),
     }
 }
@@ -33,11 +49,42 @@ pub async fn extract_text(path: &Path) -> Result<String, SdsError> {
     extract_text_limited(path, DEFAULT_MAX_LLM_CHARS).await
 }
 
+/// Extract text from a URL (fetches HTML and strips tags).
+pub async fn extract_text_from_url(url: &str) -> Result<String, SdsError> {
+    extract_text_from_url_limited(url, DEFAULT_MAX_LLM_CHARS).await
+}
+
+/// Like [`extract_text_from_url`] but truncates to `max_chars` after cleaning.
+pub async fn extract_text_from_url_limited(url: &str, max_chars: usize) -> Result<String, SdsError> {
+    let html = reqwest::get(url)
+        .await
+        .map_err(|e| SdsError::Extract(format!("HTTP GET failed: {e}")))?
+        .text()
+        .await
+        .map_err(|e| SdsError::Extract(format!("response body failed: {e}")))?;
+    let raw = extract_text_from_html_str(&html);
+    Ok(clean_extracted_text(&raw, max_chars))
+}
+
 /// Like [`extract_text`] but truncates to `max_chars` after cleaning.
 pub async fn extract_text_limited(path: &Path, max_chars: usize) -> Result<String, SdsError> {
-    let raw = match detect_format(path)? {
+    let input_format = detect_format(path)?;
+    let size_limit = match &input_format {
+        InputFormat::Txt | InputFormat::Html => MAX_TEXT_INPUT_BYTES,
+        _ => MAX_BINARY_INPUT_BYTES,
+    };
+    let file_size = std::fs::metadata(path)
+        .map_err(|e| SdsError::Extract(format!("file stat failed: {e}")))?
+        .len();
+    if file_size > size_limit {
+        return Err(SdsError::Extract(format!(
+            "input file too large ({} bytes, limit {} MB)",
+            file_size,
+            size_limit / 1024 / 1024
+        )));
+    }
+    let raw = match input_format {
         InputFormat::Pdf => {
-            // Run synchronous PDF parsing on a blocking thread to avoid stalling async workers.
             let path = path.to_path_buf();
             tokio::task::spawn_blocking(move || {
                 pdf_extract::extract_text(&path).map_err(|e| SdsError::Extract(e.to_string()))
@@ -45,11 +92,41 @@ pub async fn extract_text_limited(path: &Path, max_chars: usize) -> Result<Strin
             .await
             .unwrap_or_else(|e| Err(SdsError::Extract(e.to_string())))?
         }
-        InputFormat::Docx => extract_text_from_docx(path)?,
-        InputFormat::Txt => {
-            std::fs::read_to_string(path).map_err(|e| SdsError::Extract(e.to_string()))?
+        InputFormat::Docx => {
+            let path = path.to_path_buf();
+            tokio::task::spawn_blocking(move || extract_text_from_docx(&path))
+                .await
+                .unwrap_or_else(|e| Err(SdsError::Extract(e.to_string())))?
         }
-        InputFormat::Xlsx => extract_text_from_xlsx(path)?,
+        InputFormat::Txt => {
+            let path = path.to_path_buf();
+            tokio::task::spawn_blocking(move || {
+                std::fs::read_to_string(&path).map_err(|e| SdsError::Extract(e.to_string()))
+            })
+            .await
+            .unwrap_or_else(|e| Err(SdsError::Extract(e.to_string())))?
+        }
+        InputFormat::Xlsx => {
+            let path = path.to_path_buf();
+            tokio::task::spawn_blocking(move || extract_text_from_xlsx(&path))
+                .await
+                .unwrap_or_else(|e| Err(SdsError::Extract(e.to_string())))?
+        }
+        InputFormat::Html => {
+            let path = path.to_path_buf();
+            tokio::task::spawn_blocking(move || {
+                let html = std::fs::read_to_string(&path)
+                    .map_err(|e| SdsError::Extract(e.to_string()))?;
+                Ok(extract_text_from_html_str(&html))
+            })
+            .await
+            .unwrap_or_else(|e| Err(SdsError::Extract(e.to_string())))?
+        }
+        InputFormat::Url => {
+            return Err(SdsError::Extract(
+                "Use extract_text_from_url() for URL inputs".to_string(),
+            ));
+        }
     };
     Ok(clean_extracted_text(&raw, max_chars))
 }
@@ -84,7 +161,7 @@ pub fn clean_extracted_text(text: &str, max_chars: usize) -> String {
                     | '·' | '•' | '~' | '/' | '\\' | '|' | '+' | '#'
                 )
             })
-            && trimmed.len() >= 3
+            && trimmed.chars().count() >= 3
         {
             continue;
         }
@@ -170,6 +247,93 @@ pub fn extract_text_from_xlsx(path: &Path) -> Result<String, SdsError> {
         }
     }
     Ok(out)
+}
+
+/// Extract visible text from an HTML string, skipping script/style/nav elements.
+/// Table cells are tab-separated; rows are newline-separated.
+pub fn extract_text_from_html_str(html: &str) -> String {
+    use scraper::{Html, Selector};
+
+    let document = Html::parse_document(html);
+    let row_sel = Selector::parse("tr").unwrap();
+    let cell_sel = Selector::parse("td, th").unwrap();
+    let body_sel = Selector::parse("body").unwrap();
+
+    let body = match document.select(&body_sel).next() {
+        Some(b) => b,
+        None => return String::new(),
+    };
+
+    let mut out = String::new();
+
+    for node in body.children() {
+        collect_node_text(
+            scraper::ElementRef::wrap(node),
+            &row_sel,
+            &cell_sel,
+            &mut out,
+        );
+    }
+
+    out
+}
+
+fn collect_node_text(
+    node: Option<scraper::ElementRef<'_>>,
+    row_sel: &scraper::Selector,
+    cell_sel: &scraper::Selector,
+    out: &mut String,
+) {
+    let Some(el) = node else { return };
+    let tag = el.value().name();
+
+    if tag == "table" {
+        for row in el.select(row_sel) {
+            let cells: Vec<String> = row
+                .select(cell_sel)
+                .map(|c| c.text().collect::<String>().trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            if !cells.is_empty() {
+                out.push_str(&cells.join("\t"));
+                out.push('\n');
+            }
+        }
+        return;
+    }
+
+    // Skip noise elements
+    if matches!(tag, "script" | "style" | "nav" | "header" | "footer" | "noscript") {
+        return;
+    }
+
+    // For block-like elements emit a newline before and after.
+    let is_block = matches!(
+        tag,
+        "p" | "div" | "section" | "article" | "li" | "dt" | "dd"
+            | "h1" | "h2" | "h3" | "h4" | "h5" | "h6"
+            | "br" | "hr" | "blockquote" | "pre"
+    );
+
+    if is_block && !out.ends_with('\n') {
+        out.push('\n');
+    }
+
+    for child in el.children() {
+        if let Some(text) = child.value().as_text() {
+            let t = text.trim();
+            if !t.is_empty() {
+                out.push_str(t);
+                out.push(' ');
+            }
+        } else if let Some(child_el) = scraper::ElementRef::wrap(child) {
+            collect_node_text(Some(child_el), row_sel, cell_sel, out);
+        }
+    }
+
+    if is_block && !out.ends_with('\n') {
+        out.push('\n');
+    }
 }
 
 #[cfg(test)]

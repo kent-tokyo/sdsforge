@@ -1,5 +1,6 @@
 pub mod extractor;
 pub mod generator;
+pub mod html;
 pub mod llm;
 pub mod template;
 pub mod validator;
@@ -67,6 +68,25 @@ pub fn convert_from_json(
     config: &ConvertConfig,
 ) -> Result<(), SdsError> {
     generate_docx(sds, output_path, config.output_language)
+}
+
+/// Fetch an HTML page from `url`, extract its text, and convert it to [`SdsRoot`] via LLM.
+pub async fn convert_url_to_json<B: LlmBackend + Sync>(
+    url: &str,
+    backend: &B,
+    config: &ConvertConfig,
+) -> Result<(SdsRoot, Vec<String>), SdsError> {
+    let text = extractor::extract_text_from_url_limited(url, config.max_chars).await?;
+    if text.trim().is_empty() {
+        return Err(SdsError::Extract(
+            "No text extracted from URL — page may be empty or JavaScript-rendered".into(),
+        ));
+    }
+    let (sds, mut warnings) =
+        llm::extract_sds_from_text(backend, &text, config.source_language).await?;
+    let validation_warnings = validator::validate(&sds);
+    warnings.extend(validation_warnings);
+    Ok((sds, warnings))
 }
 
 /// Fill a Word template (`.docx`) with data from an [`SdsRoot`].
