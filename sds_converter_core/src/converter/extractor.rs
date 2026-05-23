@@ -56,7 +56,12 @@ pub async fn extract_text_from_url(url: &str) -> Result<String, SdsError> {
 
 /// Like [`extract_text_from_url`] but truncates to `max_chars` after cleaning.
 pub async fn extract_text_from_url_limited(url: &str, max_chars: usize) -> Result<String, SdsError> {
-    let html = reqwest::get(url)
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .map_err(|e| SdsError::Extract(e.to_string()))?;
+    let html = client.get(url)
+        .send()
         .await
         .map_err(|e| SdsError::Extract(format!("HTTP GET failed: {e}")))?
         .text()

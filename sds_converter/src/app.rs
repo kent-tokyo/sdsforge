@@ -599,6 +599,14 @@ impl SdsApp {
             self.log_push(format!("[START] batch {} files", inputs.len()));
 
             self.rt.spawn(async move {
+                if let Err(e) = std::fs::create_dir_all(&out_dir) {
+                    if let Ok(mut v) = log_err.lock() {
+                        v.push(format!("[ERROR] 出力フォルダを作成できません: {e}"));
+                    }
+                    busy.store(false, Ordering::Relaxed);
+                    ctx2.request_repaint();
+                    return;
+                }
                 let total = inputs.len();
                 let mut ok = 0usize;
                 for path in &inputs {
@@ -627,6 +635,11 @@ impl SdsApp {
             let output = PathBuf::from(self.conv_output.trim());
             if input.is_empty() {
                 self.log_push(self.s().err_no_input);
+                busy.store(false, Ordering::Relaxed);
+                return;
+            }
+            if output.as_os_str().is_empty() {
+                self.log_push("[ERROR] 出力パスを指定してください。");
                 busy.store(false, Ordering::Relaxed);
                 return;
             }
@@ -813,6 +826,7 @@ impl SdsApp {
 
     fn start_validate(&mut self, ctx: &egui::Context) {
         self.val_results.clear();
+        if let Ok(mut slot) = self.val_pending.lock() { *slot = None; }
         let log_fn  = self.make_log_fn();
         let busy    = Arc::clone(&self.busy);
         let ctx2    = ctx.clone();
