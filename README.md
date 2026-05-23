@@ -18,9 +18,12 @@ Supports documents in **Japanese**, **English**, **Simplified Chinese**, and **T
 
 → [All releases & changelogs](https://github.com/kent-tokyo/sds-converter/releases)
 
-> **macOS note:** On first launch, right-click the app and choose **"Open"** instead of double-clicking.
-> If a warning appears, click **"Open"** in the dialog.
-> Alternatively, run `xattr -cr /path/to/sds-converter.app` in Terminal.
+> **macOS note:** macOS may block the app because it is not notarized. To open it, run the following command in Terminal:
+> ```
+> xattr -cr ~/Downloads/sds-converter.app
+> ```
+> Then double-click the app as usual.
+> Alternatively, go to **System Settings → Privacy & Security** and click **"Open Anyway"**.
 >
 > **Windows note:** If Windows SmartScreen shows "Windows protected your PC", click **"More info" → "Run anyway"**.
 

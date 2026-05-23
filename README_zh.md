@@ -18,9 +18,12 @@
 
 → [全部版本与更新日志](https://github.com/kent-tokyo/sds-converter/releases)
 
-> **macOS 注意事项：** 首次启动时，请**右键点击**应用程序并选择**「打开」**，而不是直接双击。
-> 若出现警告对话框，点击**「打开」**即可启动。
-> 或在终端中执行 `xattr -cr /path/to/sds-converter.app`。
+> **macOS 注意事项：** 由于未经公证，macOS 可能会阻止运行。请在终端中执行以下命令：
+> ```
+> xattr -cr ~/Downloads/sds-converter.app
+> ```
+> 之后直接双击即可正常启动。
+> 或前往 **系统设置 → 隐私与安全性**，点击**「仍要打开」**。
 >
 > **Windows 注意事项：** 若 SmartScreen 显示「Windows 已保护你的电脑」，请点击**「更多信息」→「仍要运行」**。
 
