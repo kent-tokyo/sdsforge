@@ -12,6 +12,7 @@ Supports documents in **Japanese**, **English**, **Simplified Chinese**, and **T
 
 | Platform | Download |
 |---|---|
+| **macOS** (Homebrew — recommended) | `brew install kent-tokyo/sds-converter/sds-converter` |
 | **macOS** (Universal — Apple Silicon + Intel) | [sds-converter-macos.zip](https://github.com/kent-tokyo/sds-converter/releases/latest/download/sds-converter-macos.zip) |
 | **Windows** (Portable .exe — no install required) | [sds-converter-windows-portable.zip](https://github.com/kent-tokyo/sds-converter/releases/latest/download/sds-converter-windows-portable.zip) |
 | **Rust / CLI** | `cargo install sds-converter` |
