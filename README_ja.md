@@ -12,20 +12,12 @@
 
 | プラットフォーム | ダウンロード |
 |---|---|
-| **macOS**（Homebrew — 推奨） | `brew install kent-tokyo/sds-converter/sds-converter` |
-| **macOS**（ユニバーサル — Apple Silicon + Intel） | [sds-converter-macos.zip](https://github.com/kent-tokyo/sds-converter/releases/latest/download/sds-converter-macos.zip) |
+| **macOS**（Homebrew） | `brew install kent-tokyo/sds-converter/sds-converter` |
 | **Windows**（ポータブル .exe — インストール不要） | [sds-converter-windows-portable.zip](https://github.com/kent-tokyo/sds-converter/releases/latest/download/sds-converter-windows-portable.zip) |
 | **Rust / CLI** | `cargo install sds-converter` |
 
 → [全リリース・更新履歴](https://github.com/kent-tokyo/sds-converter/releases)
 
-> **macOS の注意：** 公証未対応のため、macOS にブロックされる場合があります。以下のコマンドをターミナルで実行してください：
-> ```
-> xattr -d com.apple.quarantine ~/Downloads/sds-converter.app
-> ```
-> その後、通常通りダブルクリックで起動できます。
-> または **システム設定 → プライバシーとセキュリティ** を開き、**「このまま開く」**をクリックしてください。
->
 > **Windows の注意：** SmartScreen に「Windows によって PC が保護されました」と表示された場合は、**「詳細情報」→「実行」**をクリックしてください。
 
 ---

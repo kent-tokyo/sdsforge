@@ -12,20 +12,12 @@ Supports documents in **Japanese**, **English**, **Simplified Chinese**, and **T
 
 | Platform | Download |
 |---|---|
-| **macOS** (Homebrew — recommended) | `brew install kent-tokyo/sds-converter/sds-converter` |
-| **macOS** (Universal — Apple Silicon + Intel) | [sds-converter-macos.zip](https://github.com/kent-tokyo/sds-converter/releases/latest/download/sds-converter-macos.zip) |
+| **macOS** (Homebrew) | `brew install kent-tokyo/sds-converter/sds-converter` |
 | **Windows** (Portable .exe — no install required) | [sds-converter-windows-portable.zip](https://github.com/kent-tokyo/sds-converter/releases/latest/download/sds-converter-windows-portable.zip) |
 | **Rust / CLI** | `cargo install sds-converter` |
 
 → [All releases & changelogs](https://github.com/kent-tokyo/sds-converter/releases)
 
-> **macOS note:** macOS may block the app because it is not notarized. To open it, run the following command in Terminal:
-> ```
-> xattr -d com.apple.quarantine ~/Downloads/sds-converter.app
-> ```
-> Then double-click the app as usual.
-> Alternatively, go to **System Settings → Privacy & Security** and click **"Open Anyway"**.
->
 > **Windows note:** If Windows SmartScreen shows "Windows protected your PC", click **"More info" → "Run anyway"**.
 
 ---
