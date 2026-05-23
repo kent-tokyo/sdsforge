@@ -21,6 +21,8 @@ Supports documents in **Japanese**, **English**, **Simplified Chinese**, and **T
 > **macOS note:** On first launch, right-click the app and choose **"Open"** instead of double-clicking.
 > If a warning appears, click **"Open"** in the dialog.
 > Alternatively, run `xattr -cr /path/to/sds-converter.app` in Terminal.
+>
+> **Windows note:** If Windows SmartScreen shows "Windows protected your PC", click **"More info" → "Run anyway"**.
 
 ---
 
