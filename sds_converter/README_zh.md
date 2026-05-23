@@ -18,6 +18,35 @@ cargo install sds-converter
 
 ---
 
+## GUI模式
+
+无参数运行 `sds-converter` 即可启动图形界面：
+
+```bash
+sds-converter
+```
+
+将打开一个包含五个标签页的窗口（820×640）：
+
+| 标签页 | 功能 |
+|---|---|
+| **转换** | SDS文档（PDF/DOCX/XLSX/HTML/URL）→ MHLW标准JSON |
+| **文档生成** | MHLW JSON → DOCX / HTML / PDF（支持DOCX模板） |
+| **验证** | MHLW JSON结构验证（✅⚠❌彩色显示） |
+| **文本提取** | 从文档提取原始文本（无需LLM API） |
+| **设置** | API密钥、模型名称、Base URL、质量、语言、界面语言 |
+
+| 转换标签页 | 文档生成标签页 | 文本提取标签页 |
+|---|---|---|
+| ![转换标签页](../docs/tab_convert.png) | ![文档生成标签页](../docs/tab_generate.png) | ![文本提取标签页](../docs/tab_extract.png) |
+
+将文件拖放至任意标签页可自动填充输入字段。
+
+设置保存至 `~/.config/sds-converter/config.toml`，下次启动时自动恢复。
+GUI与CLI共用相同的转换引擎（`tasks.rs`），转换结果完全一致。
+
+---
+
 ## 命令
 
 ### `to-json` — PDF/Word → MHLW标准JSON

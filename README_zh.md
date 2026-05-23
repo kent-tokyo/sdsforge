@@ -11,7 +11,7 @@
 | 包 | 说明 |
 |---|---|
 | [`sds-converter-core`](./sds_converter_core/) | Rust库 — 基于LLM的提取、DOCX/HTML生成、MHLW模式 |
-| [`sds-converter`](./sds_converter/) | CLI工具 — `to-json`、`to-docx`、`to-html`、`to-pdf`、`validate`、`extract-text` 子命令 |
+| [`sds-converter`](./sds_converter/) | CLI工具 + GUI应用程序 — `to-json`、`to-docx`、`to-html`、`to-pdf`、`validate`、`extract-text` 子命令 |
 
 ---
 
@@ -21,6 +21,7 @@
 - **JSON → DOCX**: 从标准JSON生成符合JIS Z 7253规范的16节Word文档，支持多语言节标题。
 - **JSON → HTML**: 生成包含内联CSS和`@media print`支持的自包含UTF-8 HTML5文档（`to-html`）。
 - **JSON → PDF**: 通过LibreOffice CLI转换为PDF（`to-pdf`，需要`soffice`）。
+- **GUI应用程序**（eframe/egui）：无参数启动时自动显示图形界面。包含转换、文档生成、验证、文本提取、设置五个标签页，支持拖放操作和配置持久化。
 - **GHS/CAS验证**: 依据GHS Rev.10验证H码（H200–H420）和P码（P101–P503），验证CAS编号格式及校验位。支持`--enrich`标志通过PubChem交叉核验成分信息。
 - **多语言支持**: 支持 `ja` / `en` / `zh-CN` / `zh-TW` 的输入和输出。
 - **可扩展LLM后端**: 内置Anthropic Claude、OpenAI GPT、Google Gemini、Mistral、Groq、Cohere实现。通过实现 `LlmBackend` trait可接入任意LLM。
@@ -131,7 +132,7 @@ sds-converter to-json --input input.pdf --output output.json --enrich
 - [ ] 发布至crates.io（`sds-converter-core` → `sds-converter`）
 
 ### 计划中
-- [ ] GUI应用程序（eframe/egui）— 文件选择、API密钥输入、进度显示
+- [x] GUI应用程序（eframe/egui）— 转换/生成/验证/文本提取/设置标签页，支持拖放、配置持久化和三语言界面
 - [ ] 在HTML和DOCX输出中嵌入GHS象形图
 
 ### 依赖外部进展

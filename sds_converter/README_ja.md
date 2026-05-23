@@ -18,6 +18,35 @@ cargo install sds-converter
 
 ---
 
+## GUIモード
+
+`sds-converter` を**引数なし**で起動するとGUIウィンドウが開きます:
+
+```bash
+sds-converter
+```
+
+5つのタブを持つウィンドウ（820×640）が起動します:
+
+| タブ | 機能 |
+|---|---|
+| **変換** | SDS文書（PDF/DOCX/XLSX/HTML/URL）→ MHLW標準JSON |
+| **文書生成** | MHLW JSON → DOCX / HTML / PDF（DOCXテンプレート対応） |
+| **検証** | MHLW JSONの構造検証（✅⚠❌カラー表示） |
+| **テキスト抽出** | 文書からテキスト抽出（LLM API不要） |
+| **設定** | APIキー・モデル名・base URL・品質・言語・UI言語 |
+
+| 変換タブ | 文書生成タブ | テキスト抽出タブ |
+|---|---|---|
+| ![変換タブ](../docs/tab_convert.png) | ![文書生成タブ](../docs/tab_generate.png) | ![テキスト抽出タブ](../docs/tab_extract.png) |
+
+ファイルを任意のタブにドラッグ&ドロップすると入力フィールドに自動入力されます。
+
+設定は `~/.config/sds-converter/config.toml` に保存され、次回起動時に復元されます。
+GUIとCLIは同じ変換エンジン（`tasks.rs`）を使用するため、変換結果は同一です。
+
+---
+
 ## コマンド
 
 ### `to-json` — PDF/Word → 厚生労働省標準JSON

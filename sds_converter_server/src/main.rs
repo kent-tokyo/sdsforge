@@ -154,6 +154,22 @@ fn parse_lang(s: Option<&str>) -> Option<Language> {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+fn sanitize_filename(name: &str) -> String {
+    // Keep only the final component and only alphanumeric + safe chars
+    let base = std::path::Path::new(name)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("upload");
+    base.chars()
+        .filter(|c| c.is_alphanumeric() || matches!(c, '.' | '-' | '_'))
+        .take(255)
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
 // Route: GET /api/health
 // ---------------------------------------------------------------------------
 
@@ -206,6 +222,8 @@ async fn to_json(
             _ => {}
         }
     }
+
+    let filename = sanitize_filename(&filename);
 
     let data = file_bytes
         .ok_or_else(|| anyhow::anyhow!("Missing 'file' field in multipart body"))?;

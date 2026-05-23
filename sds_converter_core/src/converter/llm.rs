@@ -242,7 +242,7 @@ async fn send_with_retry(
     };
     if !response.status().is_success() {
         let status = response.status().as_u16();
-        let message = response.text().await.unwrap_or_default();
+        let message = response.text().await.unwrap_or_else(|e| format!("<body read error: {e}>"));
         return Err(SdsError::LlmApi { status, message });
     }
     Ok(response)
@@ -267,8 +267,8 @@ fn strip_code_fences(text: &str) -> String {
 /// - Unclosed braces/brackets due to context-limit truncation
 fn repair_json(s: &str) -> String {
     let mut s = s.to_string();
-    loop {
-        let rep = s
+    for _ in 0..10 {
+        let next = s
             .replace(",}", "}")
             .replace(",]", "]")
             .replace(", }", "}")
@@ -277,10 +277,8 @@ fn repair_json(s: &str) -> String {
             .replace(",\n]", "]")
             .replace(",\r\n}", "}")
             .replace(",\r\n]", "]");
-        if rep == s {
-            break;
-        }
-        s = rep;
+        if next == s { break; }
+        s = next;
     }
 
     // Close unclosed braces/brackets using a stack
@@ -557,6 +555,37 @@ fn merge_sds(a: SdsRoot, b: SdsRoot) -> SdsRoot {
         transport_information: a.transport_information.or(b.transport_information),
         regulatory_information: a.regulatory_information.or(b.regulatory_information),
         other_information: a.other_information.or(b.other_information),
+    }
+}
+
+/// Enum-dispatch wrapper so callers can hold a heap-allocated `dyn`-free backend.
+pub enum AnyBackend {
+    Anthropic(AnthropicBackend),
+    OpenAiCompat(OpenAiCompatBackend),
+}
+
+impl LlmBackend for AnyBackend {
+    async fn complete(&self, system: &str, user: &str) -> Result<String, crate::error::SdsError> {
+        match self {
+            Self::Anthropic(b)    => b.complete(system, user).await,
+            Self::OpenAiCompat(b) => b.complete(system, user).await,
+        }
+    }
+}
+
+/// Build an [`AnyBackend`] from a provider name string, API key, and config.
+///
+/// Provider names: `"anthropic"`, `"openai"`, `"gemini"`, `"mistral"`, `"groq"`,
+/// `"cohere"`, `"local"`. Anything else defaults to Anthropic.
+pub fn build_any_backend(provider: &str, api_key: String, config: LlmConfig) -> AnyBackend {
+    match provider {
+        "gemini" => AnyBackend::OpenAiCompat(OpenAiCompatBackend::gemini(api_key, config)),
+        p => match openai_compat_url(p) {
+            Some(url) => AnyBackend::OpenAiCompat(
+                OpenAiCompatBackend::new(api_key, config, url.to_string()),
+            ),
+            None => AnyBackend::Anthropic(AnthropicBackend::new(api_key, config)),
+        },
     }
 }
 

@@ -3,6 +3,7 @@
 /// Uses the PubChem PUG REST API to verify CAS numbers and retrieve
 /// compound metadata. Network calls are optional — call only when the
 /// `--enrich` flag is passed.
+use crate::converter::validator::validate_cas_format;
 use crate::error::SdsError;
 use crate::schema::SdsRoot;
 
@@ -40,7 +41,9 @@ pub async fn lookup_cas(
     cas: &str,
     client: &reqwest::Client,
 ) -> Result<Option<CasInfo>, SdsError> {
-    // CAS numbers contain only digits and dashes — safe to embed directly in URL.
+    if !validate_cas_format(cas) {
+        return Err(SdsError::Extract(format!("Invalid CAS number: {cas:?}")));
+    }
     let url = format!(
         "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{cas}/property/IUPACName,MolecularFormula,CID/JSON"
     );

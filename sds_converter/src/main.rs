@@ -299,7 +299,12 @@ async fn run_cli() -> anyhow::Result<()> {
         }
 
         Commands::ToPdf { input, input_dir, output, output_dir, lang } => {
-            if std::process::Command::new("soffice").arg("--version").output().is_err() {
+            let soffice_ok = std::process::Command::new("soffice")
+                .arg("--version")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            if !soffice_ok {
                 anyhow::bail!(
                     "PDF output requires LibreOffice. Install from https://www.libreoffice.org/ \
                      and ensure `soffice` is in your PATH."

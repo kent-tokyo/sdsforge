@@ -11,6 +11,7 @@ pub struct AppConfig {
     pub quality: String,
     pub ui_lang: String,
     pub enrich: bool,
+    pub base_url: String,
 }
 
 impl Default for AppConfig {
@@ -23,6 +24,7 @@ impl Default for AppConfig {
             quality: "medium".into(),
             ui_lang: "ja".into(),
             enrich: false,
+            base_url: String::new(),
         }
     }
 }
@@ -30,6 +32,10 @@ impl Default for AppConfig {
 impl AppConfig {
     fn config_path() -> Option<PathBuf> {
         dirs::config_dir().map(|d| d.join("sds-converter").join("config.toml"))
+    }
+
+    pub fn config_path_pub() -> Option<PathBuf> {
+        Self::config_path()
     }
 
     pub fn load() -> Self {
@@ -49,6 +55,11 @@ impl AppConfig {
             std::fs::create_dir_all(parent)?;
         }
         std::fs::write(&path, toml::to_string_pretty(self)?)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+        }
         Ok(())
     }
 }

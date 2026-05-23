@@ -13,7 +13,7 @@ Supports documents in **Japanese**, **English**, **Simplified Chinese**, and **T
 | Crate | Description |
 |---|---|
 | [`sds-converter-core`](./sds_converter_core/) | Rust library — LLM-based extraction, DOCX/HTML generation, MHLW schema |
-| [`sds-converter`](./sds_converter/) | CLI binary — `to-json`, `to-docx`, `to-html`, `to-pdf`, `validate`, `extract-text` subcommands |
+| [`sds-converter`](./sds_converter/) | CLI + GUI binary — `to-json`, `to-docx`, `to-html`, `to-pdf`, `validate`, `extract-text` subcommands |
 
 ---
 
@@ -23,6 +23,7 @@ Supports documents in **Japanese**, **English**, **Simplified Chinese**, and **T
 - **JSON → DOCX**: Generates a JIS Z 7253-compliant 16-section Word document from the standard JSON, with localized section headings.
 - **JSON → HTML**: Generates a self-contained UTF-8 HTML5 document with inline CSS and `@media print` support (`to-html`).
 - **JSON → PDF**: Converts to PDF via LibreOffice CLI (`to-pdf`). Requires `soffice` in PATH.
+- **GUI application** (eframe/egui): Cross-platform graphical interface. Launches automatically when invoked without arguments. Includes Convert, Generate, Validate, Extract Text, and Settings tabs with drag-and-drop support and persistent configuration.
 - **GHS/CAS validation**: Validates H-codes (H200–H420) and P-codes (P101–P503) against GHS Rev.10. Validates CAS number format and check-digit. Optional PubChem enrichment (`--enrich`) for composition cross-checking.
 - **Multilingual**: Handles source documents in `ja` / `en` / `zh-CN` / `zh-TW`.
 - **Extensible LLM backend**: Ships with Anthropic Claude, OpenAI GPT, Google Gemini, Mistral, Groq, and Cohere backends. Bring your own by implementing `LlmBackend`.
@@ -133,7 +134,7 @@ See the [`sds-converter` README](./sds_converter/README.md) for full CLI referen
 - [ ] Publish to crates.io (`sds-converter-core` + `sds-converter`)
 
 ### Planned
-- [ ] GUI application (eframe/egui) — file picker, API key input, progress display
+- [x] GUI application (eframe/egui) — Convert / Generate / Validate / Extract Text / Settings tabs with drag-and-drop, persistent config, and 3-language UI
 - [ ] GHS pictogram embedding in HTML and DOCX output
 
 ### External dependency

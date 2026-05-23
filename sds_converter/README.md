@@ -18,6 +18,35 @@ cargo install sds-converter
 
 ---
 
+## GUI Mode
+
+Launch the graphical interface by running `sds-converter` **without any arguments**:
+
+```bash
+sds-converter
+```
+
+The GUI window (820×640) opens with five tabs:
+
+| Tab | Function |
+|---|---|
+| **Convert** | SDS document (PDF/DOCX/XLSX/HTML/URL) → MHLW standard JSON |
+| **Generate** | MHLW JSON → DOCX / HTML / PDF (with optional DOCX template) |
+| **Validate** | Structural validation of MHLW JSON with colored ✅⚠❌ results |
+| **Extract Text** | Raw text extraction from documents — no LLM API required |
+| **Settings** | API key, model name, base URL, quality, language, UI language |
+
+| Convert tab | Generate tab | Extract Text tab |
+|---|---|---|
+| ![Convert tab](../docs/tab_convert.png) | ![Generate tab](../docs/tab_generate.png) | ![Extract Text tab](../docs/tab_extract.png) |
+
+**Drag & drop** files onto any tab to fill the input field automatically.
+
+Settings are saved to `~/.config/sds-converter/config.toml` and restored on next launch.
+The GUI and CLI share the same conversion engine (`tasks.rs`), so results are identical.
+
+---
+
 ## Commands
 
 ### `to-json` — Convert PDF/Word → MHLW standard JSON

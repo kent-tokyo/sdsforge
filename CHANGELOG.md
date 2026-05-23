@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **GUI application (eframe/egui)**: Hybrid launcher — runs as a GUI window when invoked with no
+  arguments; falls back to CLI mode when arguments are present. Cross-platform (macOS, Windows,
+  Linux). Five tabs: SDS→JSON Convert, Document Generate, Validate, Extract Text, Settings.
+
+- **Extract Text tab** (`app.rs`, `tasks.rs`): New fifth tab for raw text extraction without
+  LLM. Accepts local files (PDF, DOCX, XLSX, TXT, HTML) and URLs (`http://`/`https://`). Result
+  is shown inline (capped at 50,000 characters) with an option to save to a file.
+  `run_extract_text` function added to `tasks.rs`.
+
+- **Model name and base URL fields** (`app.rs`, `config.rs`): Settings tab now exposes model name
+  and base URL text fields. `config.base_url: String` added to `AppConfig`; both values are
+  forwarded to `ToJsonParams` at conversion time.
+
+- **DOCX template picker** (`app.rs`): Generate tab shows a template file picker when the DOCX
+  output format is selected. The chosen path maps to the existing `ToDocxParams.template` field.
+
+- **Drag & drop input** (`app.rs`): Files dropped anywhere on the window are routed to the
+  appropriate tab's input field. A semi-transparent overlay reading "Drop files here" appears on
+  hover.
+
+- **Settings persistence** (`config.rs`): App configuration is written to and read from
+  `~/.config/sds-converter/config.toml` (created with Unix 0o600 permissions). Includes API keys,
+  provider, model name, base URL, output directory, language, and quality preset.
+
+- **BusyGuard RAII, error modals, and log panel** (`app.rs`): `BusyGuard` ensures the busy flag
+  is always cleared on drop. Recoverable errors surface as modal dialogs. A collapsible log panel
+  retains the last 500 lines.
+
+- **Batch mode** (`app.rs`): Convert and Validate tabs support multi-file batch processing.
+
+- **Multi-language UI** (`app.rs`): Interface strings are available in Japanese, English, and
+  Simplified Chinese; selected via the Settings tab.
+
+- **Provider API key links and onboarding banner** (`app.rs`): Settings tab displays clickable
+  links to the API key page for each provider. First-run onboarding banner guides new users.
+
 ## [0.2.0] - 2026-05-23
 
 ### Fixed

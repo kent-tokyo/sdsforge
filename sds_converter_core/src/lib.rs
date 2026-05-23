@@ -48,7 +48,8 @@ pub use converter::{
     convert_bytes_to_json, convert_from_json, convert_from_template,
     convert_to_json, convert_url_to_json,
     fill_template, openai_compat_url,
-    AnthropicBackend, LlmBackend, LlmConfig, ConvertConfig, OpenAiCompatBackend,
+    AnthropicBackend, AnyBackend, build_any_backend,
+    LlmBackend, LlmConfig, ConvertConfig, OpenAiCompatBackend,
 };
 pub use converter::extractor::{
     detect_format_str, extract_text, extract_text_from_url, extract_text_limited,

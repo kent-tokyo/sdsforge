@@ -7,7 +7,7 @@ use eframe::egui;
 
 use crate::config::AppConfig;
 use crate::tasks::{
-    LogFn, Provider, Quality, ToDocxParams, ToHtmlParams, ToJsonParams, ToPdfParams,
+    ExtractTextParams, LogFn, Provider, Quality, ToDocxParams, ToHtmlParams, ToJsonParams, ToPdfParams,
 };
 
 // ---------------------------------------------------------------------------
@@ -41,6 +41,7 @@ struct Strings {
     btn_convert: &'static str,
     btn_converting: &'static str,
     btn_clear_files: &'static str,
+    btn_switch_single: &'static str,
     lbl_output_dir: &'static str,
     // Generate tab
     heading_generate: &'static str,
@@ -54,6 +55,7 @@ struct Strings {
     btn_validate: &'static str,
     btn_validating: &'static str,
     msg_no_issues: &'static str,
+    lbl_validate_legend: &'static str,
     // Settings tab
     heading_settings: &'static str,
     lbl_def_provider: &'static str,
@@ -65,18 +67,43 @@ struct Strings {
     btn_save: &'static str,
     msg_api_key_warn: &'static str,
     msg_saved: &'static str,
+    lbl_get_api_key: &'static str,
+    lbl_recommended: &'static str,
+    banner_no_api_key: &'static str,
     // Log panel
     lbl_log: &'static str,
     btn_clear: &'static str,
-    // Errors
+    // Errors / status
     err_no_api_key: &'static str,
     err_no_input: &'static str,
+    err_create_dir: &'static str,
+    msg_start: &'static str,
+    msg_done_batch: &'static str,
     // About / Manual
     about_title: &'static str,
-    about_body: &'static str,
+    about_desc: &'static str,
     menu_manual: &'static str,
     manual_title: &'static str,
     manual_body: &'static str,
+    // Quality tooltips
+    tooltip_quality_low: &'static str,
+    tooltip_quality_med: &'static str,
+    tooltip_quality_high: &'static str,
+    // Settings — advanced LLM fields
+    lbl_model: &'static str,
+    lbl_base_url: &'static str,
+    // Generate tab — template
+    lbl_template: &'static str,
+    // Extract tab
+    tab_extract: &'static str,
+    heading_extract: &'static str,
+    lbl_extract_input: &'static str,
+    lbl_extract_output: &'static str,
+    btn_extract: &'static str,
+    btn_extracting: &'static str,
+    lbl_extract_result: &'static str,
+    // Drag & drop
+    msg_drop_files: &'static str,
 }
 
 fn get_strings(ui_lang: &str) -> Strings {
@@ -86,8 +113,8 @@ fn get_strings(ui_lang: &str) -> Strings {
             menu_quit:        "Quit",
             menu_help:        "Help",
             menu_about:       "About",
-            tab_convert:      "Convert (to-json)",
-            tab_generate:     "Generate (docx/html)",
+            tab_convert:      "SDS → JSON",
+            tab_generate:     "Generate Document",
             tab_validate:     "Validate",
             tab_settings:     "Settings",
             heading_convert:  "SDS Document → MHLW Standard JSON",
@@ -96,7 +123,7 @@ fn get_strings(ui_lang: &str) -> Strings {
             lbl_provider:     "Provider:",
             lbl_quality:      "Quality:",
             lbl_lang:         "Language:",
-            lbl_enrich:       "PubChem lookup (--enrich)",
+            lbl_enrich:       "PubChem lookup",
             lbl_files:        "file(s) selected",
             btn_browse:       "Browse...",
             btn_browse_multi: "Select files...",
@@ -105,6 +132,7 @@ fn get_strings(ui_lang: &str) -> Strings {
             btn_convert:      "Convert",
             btn_converting:   "Converting...",
             btn_clear_files:  "Clear selection",
+            btn_switch_single: "Switch to single file",
             lbl_output_dir:   "Output folder:",
             heading_generate: "MHLW JSON → Document",
             lbl_input_json:   "Input JSON:",
@@ -116,6 +144,7 @@ fn get_strings(ui_lang: &str) -> Strings {
             btn_validate:     "Validate",
             btn_validating:   "Validating...",
             msg_no_issues:    "OK: no issues found",
+            lbl_validate_legend: "✅ No issues  ⚠ Warning  ❌ Error",
             heading_settings: "Settings",
             lbl_def_provider: "Default Provider:",
             lbl_def_lang:     "Default Language:",
@@ -126,15 +155,18 @@ fn get_strings(ui_lang: &str) -> Strings {
             btn_save:         "Save",
             msg_api_key_warn: "⚠ API key is stored in plain text",
             msg_saved:        "Saved",
+            lbl_get_api_key:  "Get API key:",
+            lbl_recommended:  "recommended",
+            banner_no_api_key: "No API key set — go to Settings to enter your key.",
             lbl_log:          "Log",
             btn_clear:        "Clear",
             err_no_api_key:   "[ERROR] API key not set. Enter it in Settings.",
             err_no_input:     "[ERROR] Please specify an input file.",
+            err_create_dir:   "Failed to create output folder",
+            msg_start:        "▶ Start",
+            msg_done_batch:   "✓ Done",
             about_title:      "About sds-converter",
-            about_body:       concat!(
-                "sds-converter v", env!("CARGO_PKG_VERSION"),
-                "\n\nConverts SDS documents to/from MHLW standard JSON.\nhttps://github.com/kent-tokyo/sds-converter"
-            ),
+            about_desc:       "Converts SDS documents to/from MHLW standard JSON",
             menu_manual: "Manual",
             manual_title: "How to use sds-converter",
             manual_body: "\
@@ -166,14 +198,28 @@ Multiple files can be selected at once.
 【Tips】
 • Set RUST_LOG=info for verbose CLI logging
 • Use --help for CLI usage: sds-converter --help",
+            tooltip_quality_low:  "Low accuracy, fast & cheap (Haiku)",
+            tooltip_quality_med:  "Standard accuracy & speed (Haiku)",
+            tooltip_quality_high: "High accuracy, slow & costly (Sonnet)",
+            lbl_model:            "Model (optional):",
+            lbl_base_url:         "Base URL (optional):",
+            lbl_template:         "Template (optional):",
+            tab_extract:          "Extract Text",
+            heading_extract:      "Extract Raw Text from Document",
+            lbl_extract_input:    "Input (file/URL):",
+            lbl_extract_output:   "Save to (optional):",
+            btn_extract:          "Extract",
+            btn_extracting:       "Extracting...",
+            lbl_extract_result:   "Extracted text:",
+            msg_drop_files:       "Drop files here",
         },
         "zh-cn" => Strings {
             menu_file:        "文件",
             menu_quit:        "退出",
             menu_help:        "帮助",
             menu_about:       "关于",
-            tab_convert:      "转换 (to-json)",
-            tab_generate:     "生成 (docx/html)",
+            tab_convert:      "SDS → JSON 转换",
+            tab_generate:     "生成文档",
             tab_validate:     "验证",
             tab_settings:     "设置",
             heading_convert:  "SDS文档 → MHLW标准JSON",
@@ -182,7 +228,7 @@ Multiple files can be selected at once.
             lbl_provider:     "提供商:",
             lbl_quality:      "质量:",
             lbl_lang:         "语言:",
-            lbl_enrich:       "PubChem查询 (--enrich)",
+            lbl_enrich:       "PubChem查询",
             lbl_files:        "个文件已选择",
             btn_browse:       "浏览...",
             btn_browse_multi: "选择文件...",
@@ -191,6 +237,7 @@ Multiple files can be selected at once.
             btn_convert:      "开始转换",
             btn_converting:   "转换中...",
             btn_clear_files:  "清除选择",
+            btn_switch_single: "切换单文件",
             lbl_output_dir:   "输出文件夹:",
             heading_generate: "MHLW JSON → 文档生成",
             lbl_input_json:   "输入 JSON:",
@@ -202,6 +249,7 @@ Multiple files can be selected at once.
             btn_validate:     "验证",
             btn_validating:   "验证中...",
             msg_no_issues:    "OK: 未发现问题",
+            lbl_validate_legend: "✅ 无问题  ⚠ 警告  ❌ 错误",
             heading_settings: "设置",
             lbl_def_provider: "默认提供商:",
             lbl_def_lang:     "默认语言:",
@@ -212,15 +260,18 @@ Multiple files can be selected at once.
             btn_save:         "保存",
             msg_api_key_warn: "⚠ API密钥以明文保存",
             msg_saved:        "已保存",
+            lbl_get_api_key:  "获取API密钥:",
+            lbl_recommended:  "推荐",
+            banner_no_api_key: "未设置API密钥 — 请前往设置页面输入密钥。",
             lbl_log:          "日志",
             btn_clear:        "清除",
             err_no_api_key:   "[ERROR] 未设置API密钥，请在设置中输入。",
             err_no_input:     "[ERROR] 请指定输入文件。",
+            err_create_dir:   "无法创建输出文件夹",
+            msg_start:        "▶ 开始",
+            msg_done_batch:   "✓ 完成",
             about_title:      "关于 sds-converter",
-            about_body:       concat!(
-                "sds-converter v", env!("CARGO_PKG_VERSION"),
-                "\n\n将SDS文档转换为MHLW标准JSON。\nhttps://github.com/kent-tokyo/sds-converter"
-            ),
+            about_desc:       "将SDS文档转换为MHLW标准JSON的工具",
             menu_manual: "使用手册",
             manual_title: "sds-converter 使用说明",
             manual_body: "\
@@ -245,15 +296,33 @@ Multiple files can be selected at once.
 【设置标签】
 • API密钥：输入所选LLM提供商的密钥
 • 默认提供商/语言/质量：启动时的默认值
-• PubChem查询：通过PubChem API丰富成分数据",
+• PubChem查询：通过PubChem API丰富成分数据
+
+【提示】
+• 设置 RUST_LOG=info 可查看详细日志（CUI模式）
+• CLI用法: sds-converter --help",
+            tooltip_quality_low:  "低精度·快速·低成本 (Haiku)",
+            tooltip_quality_med:  "标准精度·标准速度 (Haiku)",
+            tooltip_quality_high: "高精度·慢速·高成本 (Sonnet)",
+            lbl_model:            "模型名（可选）:",
+            lbl_base_url:         "Base URL（可选）:",
+            lbl_template:         "模板（可选）:",
+            tab_extract:          "文本提取",
+            heading_extract:      "从文档中提取原始文本",
+            lbl_extract_input:    "输入 (文件/URL):",
+            lbl_extract_output:   "保存到（可选）:",
+            btn_extract:          "提取",
+            btn_extracting:       "提取中...",
+            lbl_extract_result:   "提取结果:",
+            msg_drop_files:       "拖放文件到此处",
         },
         _ => Strings {  // Japanese (ja, default)
             menu_file:        "ファイル",
             menu_quit:        "終了",
             menu_help:        "ヘルプ",
             menu_about:       "バージョン情報",
-            tab_convert:      "変換 (to-json)",
-            tab_generate:     "生成 (docx/html)",
+            tab_convert:      "SDS → JSON 変換",
+            tab_generate:     "文書生成",
             tab_validate:     "検証",
             tab_settings:     "設定",
             heading_convert:  "SDS文書 → MHLW標準JSON",
@@ -262,7 +331,7 @@ Multiple files can be selected at once.
             lbl_provider:     "プロバイダ:",
             lbl_quality:      "品質:",
             lbl_lang:         "言語:",
-            lbl_enrich:       "PubChem照合 (--enrich)",
+            lbl_enrich:       "PubChem照合",
             lbl_files:        "ファイル選択済み",
             btn_browse:       "参照...",
             btn_browse_multi: "複数選択...",
@@ -271,6 +340,7 @@ Multiple files can be selected at once.
             btn_convert:      "変換開始",
             btn_converting:   "変換中...",
             btn_clear_files:  "選択解除",
+            btn_switch_single: "単一ファイルに切替",
             lbl_output_dir:   "出力フォルダ:",
             heading_generate: "MHLW JSON → 文書生成",
             lbl_input_json:   "入力 JSON:",
@@ -282,6 +352,7 @@ Multiple files can be selected at once.
             btn_validate:     "検証実行",
             btn_validating:   "検証中...",
             msg_no_issues:    "OK: 問題は見つかりませんでした",
+            lbl_validate_legend: "✅ 問題なし  ⚠ 警告  ❌ エラー",
             heading_settings: "設定",
             lbl_def_provider: "デフォルトプロバイダ:",
             lbl_def_lang:     "デフォルト言語:",
@@ -292,15 +363,18 @@ Multiple files can be selected at once.
             btn_save:         "保存",
             msg_api_key_warn: "⚠ APIキーはプレーンテキストで設定ファイルに保存されます",
             msg_saved:        "保存しました",
+            lbl_get_api_key:  "APIキーを取得:",
+            lbl_recommended:  "推奨",
+            banner_no_api_key: "APIキーが未設定です — 設定タブでキーを入力してください。",
             lbl_log:          "ログ",
             btn_clear:        "クリア",
             err_no_api_key:   "[ERROR] APIキーが未設定です。設定タブで入力してください。",
             err_no_input:     "[ERROR] 入力ファイルを指定してください。",
+            err_create_dir:   "出力フォルダを作成できませんでした",
+            msg_start:        "▶ 開始",
+            msg_done_batch:   "✓ 完了",
             about_title:      "sds-converter について",
-            about_body:       concat!(
-                "sds-converter v", env!("CARGO_PKG_VERSION"),
-                "\n\nSDS文書をMHLW標準JSONへ変換します。\nhttps://github.com/kent-tokyo/sds-converter"
-            ),
+            about_desc:       "SDS文書をMHLW標準JSONへ変換するツール",
             menu_manual: "マニュアル",
             manual_title: "sds-converter 使い方",
             manual_body: "\
@@ -326,12 +400,26 @@ JSONファイルを選択して「検証実行」をクリックすると警告�
 【設定タブ】
 • APIキー: LLMプロバイダのAPIキーを入力
 • デフォルトプロバイダ/言語/品質: 起動時のデフォルト値
-• PubChem照合: PubChem APIで組成情報を補完（--enrichオプション）
+• PubChem照合: PubChem APIで組成情報を補完
 • UI言語: インターフェースの表示言語を切り替え
 
 【ヒント】
 • RUST_LOG=info を設定すると詳細ログが表示されます（CUIモード）
 • CLIの使い方: sds-converter --help",
+            tooltip_quality_low:  "低精度・高速・低コスト (Haiku)",
+            tooltip_quality_med:  "標準精度・標準速度 (Haiku)",
+            tooltip_quality_high: "高精度・低速・高コスト (Sonnet)",
+            lbl_model:            "モデル名 (省略可):",
+            lbl_base_url:         "base URL (省略可):",
+            lbl_template:         "テンプレート (省略可):",
+            tab_extract:          "テキスト抽出",
+            heading_extract:      "文書からテキストを抽出",
+            lbl_extract_input:    "入力 (ファイル/URL):",
+            lbl_extract_output:   "保存先 (省略可):",
+            btn_extract:          "テキスト抽出",
+            btn_extracting:       "抽出中...",
+            lbl_extract_result:   "抽出結果:",
+            msg_drop_files:       "ここにドロップ",
         },
     }
 }
@@ -345,6 +433,7 @@ enum Tab {
     Convert,
     Generate,
     Validate,
+    Extract,
     Settings,
 }
 
@@ -367,6 +456,7 @@ pub struct SdsApp {
     tab: Tab,
     show_about: bool,
     show_manual: bool,
+    error_modal: Option<String>,
 
     // Convert tab — batch-capable
     conv_input: String,          // URL or single file path (text box)
@@ -383,6 +473,13 @@ pub struct SdsApp {
     gen_output: String,
     gen_format: GenFormat,
     gen_lang: String,
+    gen_template: String,
+
+    // Extract tab
+    extract_input: String,
+    extract_output: String,
+    extract_result: Arc<Mutex<Option<String>>>,
+    extract_result_display: String,
 
     // Validate tab — batch-capable
     val_input: String,
@@ -413,6 +510,7 @@ impl SdsApp {
             tab:          Tab::Convert,
             show_about:   false,
             show_manual:  false,
+            error_modal:  None,
             conv_input:   String::new(),
             conv_inputs:  Vec::new(),
             conv_output:  String::new(),
@@ -420,6 +518,11 @@ impl SdsApp {
             gen_input:    String::new(),
             gen_output:   String::new(),
             gen_format:   GenFormat::Docx,
+            gen_template: String::new(),
+            extract_input:          String::new(),
+            extract_output:         String::new(),
+            extract_result:         Arc::new(Mutex::new(None)),
+            extract_result_display: String::new(),
             val_input:    String::new(),
             val_inputs:   Vec::new(),
             val_results:  Vec::new(),
@@ -457,9 +560,12 @@ impl SdsApp {
         let batch = !self.conv_inputs.is_empty();
 
         if batch {
-            // Batch mode: show file count + clear button
+            // Batch mode: show file count + switch-to-single + clear button
             ui.horizontal(|ui| {
                 ui.label(format!("{} {}", self.conv_inputs.len(), s.lbl_files));
+                if ui.button(s.btn_switch_single).clicked() {
+                    self.conv_inputs.clear();
+                }
                 if ui.small_button(s.btn_clear_files).clicked() {
                     self.conv_inputs.clear();
                 }
@@ -542,9 +648,12 @@ impl SdsApp {
                 .selected_text(&self.conv_quality)
                 .width(85.0)
                 .show_ui(ui, |ui| {
-                    for &q in Quality::all() {
-                        ui.selectable_value(&mut self.conv_quality, q.to_string(), q);
-                    }
+                    ui.selectable_value(&mut self.conv_quality, "low".to_string(), "low")
+                        .on_hover_text(s.tooltip_quality_low);
+                    ui.selectable_value(&mut self.conv_quality, "medium".to_string(), "medium")
+                        .on_hover_text(s.tooltip_quality_med);
+                    ui.selectable_value(&mut self.conv_quality, "high".to_string(), "high")
+                        .on_hover_text(s.tooltip_quality_high);
                 });
             ui.add_space(8.0);
             ui.label(s.lbl_lang);
@@ -568,6 +677,7 @@ impl SdsApp {
         let quality  = Quality::from_str(&self.conv_quality);
         let lang     = lang_from_str(&self.conv_lang);
         let enrich   = self.conv_enrich;
+        let s        = self.s();
 
         let api_key = {
             let k = self.config.api_key.clone();
@@ -576,11 +686,16 @@ impl SdsApp {
             } else { k }
         };
         if api_key.is_empty() {
-            self.log_push(self.s().err_no_api_key);
+            self.log_push(s.err_no_api_key);
             return;
         }
 
-        let model = provider.default_model(quality).to_string();
+        let model = if self.config.model.is_empty() {
+            provider.default_model(quality).to_string()
+        } else {
+            self.config.model.clone()
+        };
+        let base_url = if self.config.base_url.is_empty() { None } else { Some(self.config.base_url.clone()) };
         let log_fn  = self.make_log_fn();
         let log_err = Arc::clone(&self.log);
         let busy    = Arc::clone(&self.busy);
@@ -596,12 +711,15 @@ impl SdsApp {
             } else {
                 self.conv_output_dir.clone()
             });
-            self.log_push(format!("[START] batch {} files", inputs.len()));
+            let msg_start = s.msg_start.to_string();
+            let err_create_dir = s.err_create_dir.to_string();
+            let msg_done_batch = s.msg_done_batch.to_string();
+            self.log_push(format!("{} batch {} files", msg_start, inputs.len()));
 
             self.rt.spawn(async move {
                 if let Err(e) = std::fs::create_dir_all(&out_dir) {
                     if let Ok(mut v) = log_err.lock() {
-                        v.push(format!("[ERROR] 出力フォルダを作成できません: {e}"));
+                        v.push(format!("[ERROR] {}: {e}", err_create_dir));
                     }
                     busy.store(false, Ordering::Relaxed);
                     ctx2.request_repaint();
@@ -616,7 +734,7 @@ impl SdsApp {
                         input: path.to_string_lossy().into_owned(),
                         output,
                         provider, api_key: api_key.clone(), model: model.clone(),
-                        quality, lang, base_url: None, enrich,
+                        quality, lang, base_url: base_url.clone(), enrich,
                     }, Arc::clone(&log_fn)).await;
                     match res {
                         Ok(_)  => ok += 1,
@@ -624,7 +742,7 @@ impl SdsApp {
                     }
                 }
                 if let Ok(mut v) = log_err.lock() {
-                    v.push(format!("[DONE] {ok}/{total} converted"));
+                    v.push(format!("{} {ok}/{total} converted", msg_done_batch));
                 }
                 busy.store(false, Ordering::Relaxed);
                 ctx2.request_repaint();
@@ -634,7 +752,7 @@ impl SdsApp {
             let input  = self.conv_input.trim().to_string();
             let output = PathBuf::from(self.conv_output.trim());
             if input.is_empty() {
-                self.log_push(self.s().err_no_input);
+                self.error_modal = Some(s.err_no_input.to_string());
                 busy.store(false, Ordering::Relaxed);
                 return;
             }
@@ -643,11 +761,12 @@ impl SdsApp {
                 busy.store(false, Ordering::Relaxed);
                 return;
             }
-            self.log_push(format!("[START] {} → {}", input, output.display()));
+            let msg_start = s.msg_start.to_string();
+            self.log_push(format!("{} {} → {}", msg_start, input, output.display()));
 
             self.rt.spawn(async move {
                 if let Err(e) = crate::tasks::run_to_json(ToJsonParams {
-                    input, output, provider, api_key, model, quality, lang, base_url: None, enrich,
+                    input, output, provider, api_key, model, quality, lang, base_url, enrich,
                 }, log_fn).await {
                     if let Ok(mut v) = log_err.lock() { v.push(format!("[ERROR] {e}")); }
                 }
@@ -700,12 +819,37 @@ impl SdsApp {
             }
         });
 
+        // Template picker — shown only when DOCX is selected
+        if self.gen_format == GenFormat::Docx {
+            ui.horizontal(|ui| {
+                ui.label(s.lbl_template);
+                ui.add_sized([220.0, 20.0], egui::TextEdit::singleline(&mut self.gen_template));
+                if ui.button(s.btn_browse).clicked() {
+                    if let Some(p) = rfd::FileDialog::new().add_filter("Word", &["docx"]).pick_file() {
+                        self.gen_template = p.to_string_lossy().into_owned();
+                    }
+                }
+                if !self.gen_template.is_empty() && ui.small_button("✕").clicked() {
+                    self.gen_template.clear();
+                }
+            });
+        }
+
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             ui.label(s.lbl_format);
-            ui.selectable_value(&mut self.gen_format, GenFormat::Docx, "DOCX");
-            ui.selectable_value(&mut self.gen_format, GenFormat::Html, "HTML");
-            ui.selectable_value(&mut self.gen_format, GenFormat::Pdf,  "PDF");
+            egui::ComboBox::from_id_salt("gen_format")
+                .selected_text(match self.gen_format {
+                    GenFormat::Docx => "DOCX",
+                    GenFormat::Html => "HTML",
+                    GenFormat::Pdf  => "PDF",
+                })
+                .width(90.0)
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut self.gen_format, GenFormat::Docx, "DOCX");
+                    ui.selectable_value(&mut self.gen_format, GenFormat::Html, "HTML");
+                    ui.selectable_value(&mut self.gen_format, GenFormat::Pdf,  "PDF");
+                });
             ui.add_space(12.0);
             ui.label(s.lbl_lang);
             lang_combo(ui, "gen_lang", &mut self.gen_lang);
@@ -722,26 +866,30 @@ impl SdsApp {
     }
 
     fn start_generate(&mut self, ctx: &egui::Context) {
+        let s = self.s();
         if self.gen_input.is_empty() {
-            self.log_push(self.s().err_no_input);
+            self.error_modal = Some(s.err_no_input.to_string());
             return;
         }
-        let input  = PathBuf::from(self.gen_input.trim());
-        let output = PathBuf::from(self.gen_output.trim());
-        let lang   = lang_from_str(&self.gen_lang).unwrap_or(sds_converter_core::Language::Japanese);
-        let format = self.gen_format;
+        let input    = PathBuf::from(self.gen_input.trim());
+        let output   = PathBuf::from(self.gen_output.trim());
+        let lang     = lang_from_str(&self.gen_lang).unwrap_or(sds_converter_core::Language::Japanese);
+        let format   = self.gen_format;
+        let template = if self.gen_template.is_empty() { None }
+                       else { Some(PathBuf::from(self.gen_template.trim())) };
 
         let log_fn  = self.make_log_fn();
         let log_err = Arc::clone(&self.log);
         let busy    = Arc::clone(&self.busy);
         let ctx2    = ctx.clone();
         busy.store(true, Ordering::Relaxed);
-        self.log_push(format!("[START] {} → {}", input.display(), output.display()));
+        let msg_start = s.msg_start.to_string();
+        self.log_push(format!("{} {} → {}", msg_start, input.display(), output.display()));
 
         self.rt.spawn(async move {
             let result = match format {
                 GenFormat::Docx => crate::tasks::run_to_docx(
-                    ToDocxParams { input, output, lang, template: None }, log_fn).await,
+                    ToDocxParams { input, output, lang, template }, log_fn).await,
                 GenFormat::Html => crate::tasks::run_to_html(
                     ToHtmlParams { input, output, lang }, log_fn).await,
                 GenFormat::Pdf  => crate::tasks::run_to_pdf(
@@ -769,6 +917,10 @@ impl SdsApp {
         if batch {
             ui.horizontal(|ui| {
                 ui.label(format!("{} {}", self.val_inputs.len(), s.lbl_files));
+                if ui.button(s.btn_switch_single).clicked() {
+                    self.val_inputs.clear();
+                    self.val_results.clear();
+                }
                 if ui.small_button(s.btn_clear_files).clicked() {
                     self.val_inputs.clear();
                     self.val_results.clear();
@@ -809,11 +961,12 @@ impl SdsApp {
         if !self.val_results.is_empty() {
             ui.add_space(8.0);
             ui.separator();
+            ui.small(s.lbl_validate_legend);
             egui::ScrollArea::vertical().max_height(180.0).show(ui, |ui| {
                 for w in &self.val_results {
-                    let color = if w.starts_with("OK") || w.starts_with("[OK]") {
+                    let color = if w.starts_with("✅") {
                         egui::Color32::GREEN
-                    } else if w.starts_with("[ERROR]") {
+                    } else if w.starts_with("❌") || w.starts_with("[ERROR]") {
                         egui::Color32::RED
                     } else {
                         egui::Color32::YELLOW
@@ -844,6 +997,10 @@ impl SdsApp {
             return;
         };
 
+        let ok_prefix  = "✅ ".to_string();
+        let warn_prefix = "⚠ ".to_string();
+        let err_prefix  = "❌ ".to_string();
+
         self.rt.spawn(async move {
             let mut all_results: Vec<String> = Vec::new();
             for path in &inputs {
@@ -854,17 +1011,102 @@ impl SdsApp {
                 };
                 match crate::tasks::run_validate(path.clone(), Arc::clone(&log_fn)).await {
                     Ok(warnings) if warnings.is_empty() => {
-                        all_results.push(format!("{}OK: 問題なし", prefix));
+                        all_results.push(format!("{}{}問題なし", prefix, ok_prefix));
                     }
                     Ok(warnings) => {
-                        for w in warnings { all_results.push(format!("{prefix}{w}")); }
+                        for w in warnings { all_results.push(format!("{prefix}{warn_prefix}{w}")); }
                     }
                     Err(e) => {
-                        all_results.push(format!("{prefix}[ERROR] {e}"));
+                        all_results.push(format!("{prefix}{err_prefix}{e}"));
                     }
                 }
             }
             if let Ok(mut slot) = pending.lock() { *slot = Some(all_results); }
+            busy.store(false, Ordering::Relaxed);
+            ctx2.request_repaint();
+        });
+    }
+
+    // -----------------------------------------------------------------------
+    // Extract tab
+    // -----------------------------------------------------------------------
+
+    fn ui_extract_tab(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let s = self.s();
+        ui.heading(s.heading_extract);
+        ui.add_space(6.0);
+
+        ui.horizontal(|ui| {
+            ui.label(s.lbl_extract_input);
+            ui.add_sized([280.0, 20.0], egui::TextEdit::singleline(&mut self.extract_input));
+            if ui.button(s.btn_browse).clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Document", &["pdf", "docx", "xlsx", "txt", "html"])
+                    .pick_file()
+                {
+                    self.extract_input = path.to_string_lossy().into_owned();
+                }
+            }
+        });
+
+        ui.horizontal(|ui| {
+            ui.label(s.lbl_extract_output);
+            ui.add_sized([280.0, 20.0], egui::TextEdit::singleline(&mut self.extract_output));
+            if ui.button(s.btn_save_to).clicked() {
+                if let Some(p) = rfd::FileDialog::new().add_filter("Text", &["txt"]).save_file() {
+                    self.extract_output = p.to_string_lossy().into_owned();
+                }
+            }
+        });
+
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            let label = if self.is_busy() { s.btn_extracting } else { s.btn_extract };
+            if ui.add_enabled(!self.is_busy(), egui::Button::new(label)).clicked() {
+                self.start_extract(ctx);
+            }
+            if self.is_busy() { ui.spinner(); }
+        });
+
+        if !self.extract_result_display.is_empty() {
+            ui.add_space(8.0);
+            ui.separator();
+            ui.label(s.lbl_extract_result);
+            egui::ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
+                ui.add(egui::TextEdit::multiline(&mut self.extract_result_display)
+                    .desired_width(f32::INFINITY)
+                    .font(egui::TextStyle::Monospace));
+            });
+        }
+    }
+
+    fn start_extract(&mut self, ctx: &egui::Context) {
+        let s = self.s();
+        if self.extract_input.is_empty() {
+            self.error_modal = Some(s.err_no_input.to_string());
+            return;
+        }
+        let params = ExtractTextParams {
+            input: self.extract_input.trim().to_string(),
+            output: if self.extract_output.is_empty() { None }
+                    else { Some(PathBuf::from(self.extract_output.trim())) },
+        };
+        let log_fn  = self.make_log_fn();
+        let log_err = Arc::clone(&self.log);
+        let busy    = Arc::clone(&self.busy);
+        let ctx2    = ctx.clone();
+        let result_sink = Arc::clone(&self.extract_result);
+        busy.store(true, Ordering::Relaxed);
+
+        self.rt.spawn(async move {
+            match crate::tasks::run_extract_text(params, log_fn).await {
+                Ok(text) => {
+                    if let Ok(mut slot) = result_sink.lock() { *slot = Some(text); }
+                }
+                Err(e) => {
+                    if let Ok(mut v) = log_err.lock() { v.push(format!("[ERROR] {e}")); }
+                }
+            }
             busy.store(false, Ordering::Relaxed);
             ctx2.request_repaint();
         });
@@ -876,6 +1118,19 @@ impl SdsApp {
 
     fn ui_settings_tab(&mut self, ui: &mut egui::Ui) {
         let s = self.s();
+
+        // B6: onboarding banner when no key is saved
+        if self.config.api_key.is_empty() {
+            egui::Frame::none()
+                .fill(egui::Color32::from_rgb(55, 45, 0))
+                .inner_margin(egui::Margin::symmetric(8.0, 6.0))
+                .rounding(egui::Rounding::same(4.0))
+                .show(ui, |ui| {
+                    ui.colored_label(egui::Color32::from_rgb(255, 220, 60), s.banner_no_api_key);
+                });
+            ui.add_space(4.0);
+        }
+
         ui.heading(s.heading_settings);
         ui.add_space(6.0);
 
@@ -886,9 +1141,22 @@ impl SdsApp {
                 .width(130.0)
                 .show_ui(ui, |ui| {
                     for &p in Provider::all() {
-                        ui.selectable_value(&mut self.config.provider, p.to_string(), p);
+                        let label = if p == "anthropic" {
+                            format!("{p} ({})", s.lbl_recommended)
+                        } else {
+                            p.to_string()
+                        };
+                        ui.selectable_value(&mut self.config.provider, p.to_string(), label);
                     }
                 });
+            ui.end_row();
+
+            ui.label(s.lbl_model);
+            ui.add(egui::TextEdit::singleline(&mut self.config.model).desired_width(240.0));
+            ui.end_row();
+
+            ui.label(s.lbl_base_url);
+            ui.add(egui::TextEdit::singleline(&mut self.config.base_url).desired_width(240.0));
             ui.end_row();
 
             ui.label(s.lbl_def_lang);
@@ -911,6 +1179,24 @@ impl SdsApp {
                 .password(true).desired_width(240.0));
             ui.end_row();
 
+            // B4: API key link per provider
+            ui.label(s.lbl_get_api_key);
+            let link = match self.config.provider.as_str() {
+                "openai"  => Some(("OpenAI Platform", "https://platform.openai.com/api-keys")),
+                "gemini"  => Some(("Google AI Studio", "https://aistudio.google.com/app/apikey")),
+                "mistral" => Some(("Mistral Console",  "https://console.mistral.ai/api-keys/")),
+                "groq"    => Some(("Groq Console",     "https://console.groq.com/keys")),
+                "cohere"  => Some(("Cohere Dashboard", "https://dashboard.cohere.com/api-keys")),
+                "local"   => None,
+                _         => Some(("Anthropic Console", "https://console.anthropic.com/settings/keys")),
+            };
+            if let Some((label, url)) = link {
+                ui.hyperlink_to(label, url);
+            } else {
+                ui.label("(local server — no key required)");
+            }
+            ui.end_row();
+
             ui.label(s.lbl_ui_lang);
             let ui_langs = [("ja", "日本語"), ("en", "English"), ("zh-cn", "简体中文")];
             let cur_label = ui_langs.iter().find(|(k, _)| *k == self.config.ui_lang.as_str())
@@ -931,7 +1217,11 @@ impl SdsApp {
         });
 
         ui.add_space(4.0);
+        // B5: show warning + config file path
         ui.colored_label(egui::Color32::YELLOW, s.msg_api_key_warn);
+        if let Some(path) = crate::config::AppConfig::config_path_pub() {
+            ui.small(path.to_string_lossy().as_ref());
+        }
         ui.add_space(8.0);
 
         if ui.button(s.btn_save).clicked() {
@@ -967,7 +1257,71 @@ impl eframe::App for SdsApp {
             }
         }
 
+        // Drain async extract results
+        if let Ok(mut slot) = self.extract_result.try_lock() {
+            if let Some(text) = slot.take() {
+                self.extract_result_display = if text.len() > 50_000 {
+                    format!("{}\n...(truncated)", &text[..50_000])
+                } else {
+                    text
+                };
+            }
+        }
+
         let s = self.s();
+
+        // B11: Escape key closes modals
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            if self.error_modal.is_some() { self.error_modal = None; }
+            else if self.show_manual { self.show_manual = false; }
+            else if self.show_about { self.show_about = false; }
+        }
+
+        // --- Drag & drop ---
+        let hovered = ctx.input(|i| !i.raw.hovered_files.is_empty());
+        if hovered {
+            egui::Area::new(egui::Id::new("drop_overlay"))
+                .fixed_pos(egui::pos2(0.0, 0.0))
+                .show(ctx, |ui| {
+                    let screen = ctx.screen_rect();
+                    ui.painter().rect_filled(screen, 0.0, egui::Color32::from_black_alpha(120));
+                    ui.painter().text(
+                        screen.center(),
+                        egui::Align2::CENTER_CENTER,
+                        s.msg_drop_files,
+                        egui::FontId::proportional(32.0),
+                        egui::Color32::WHITE,
+                    );
+                });
+        }
+        let dropped: Vec<PathBuf> = ctx.input(|i| {
+            i.raw.dropped_files.iter().filter_map(|f| f.path.clone()).collect()
+        });
+        if !dropped.is_empty() {
+            match self.tab {
+                Tab::Convert => {
+                    if dropped.len() == 1 && self.conv_inputs.is_empty() {
+                        self.conv_input = dropped[0].to_string_lossy().into_owned();
+                    } else {
+                        self.conv_inputs.extend(dropped);
+                    }
+                }
+                Tab::Generate => {
+                    if let Some(p) = dropped.first() {
+                        self.gen_input = p.to_string_lossy().into_owned();
+                    }
+                }
+                Tab::Validate => {
+                    self.val_inputs.extend(dropped);
+                }
+                Tab::Extract => {
+                    if let Some(p) = dropped.first() {
+                        self.extract_input = p.to_string_lossy().into_owned();
+                    }
+                }
+                Tab::Settings => {}
+            }
+        }
 
         // --- Menu bar ---
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
@@ -996,6 +1350,7 @@ impl eframe::App for SdsApp {
                 ui.selectable_value(&mut self.tab, Tab::Convert,  s.tab_convert);
                 ui.selectable_value(&mut self.tab, Tab::Generate, s.tab_generate);
                 ui.selectable_value(&mut self.tab, Tab::Validate, s.tab_validate);
+                ui.selectable_value(&mut self.tab, Tab::Extract,  s.tab_extract);
                 ui.selectable_value(&mut self.tab, Tab::Settings, s.tab_settings);
             });
         });
@@ -1003,7 +1358,8 @@ impl eframe::App for SdsApp {
         // --- Log panel ---
         egui::TopBottomPanel::bottom("log_panel").resizable(true).min_height(60.0).show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.label(s.lbl_log);
+                // B13: show max-500 note
+                ui.label(format!("{} (max 500)", s.lbl_log));
                 if ui.small_button(s.btn_clear).clicked() {
                     if let Ok(mut v) = self.log.lock() { v.clear(); }
                 }
@@ -1014,7 +1370,7 @@ impl eframe::App for SdsApp {
                 for line in &lines {
                     let color = if line.starts_with("[ERROR]") { egui::Color32::RED }
                         else if line.starts_with("WARN") || line.starts_with("CAS:") { egui::Color32::YELLOW }
-                        else if line.starts_with("[OK]") || line.starts_with("Saved") || line.starts_with("OK") || line.starts_with("[DONE]") { egui::Color32::GREEN }
+                        else if line.starts_with("[OK]") || line.starts_with("Saved") || line.starts_with("OK") || line.starts_with("[DONE]") || line.starts_with("✓") { egui::Color32::GREEN }
                         else { ui.visuals().text_color() };
                     ui.colored_label(color, line);
                 }
@@ -1028,11 +1384,27 @@ impl eframe::App for SdsApp {
                 Tab::Convert  => self.ui_convert_tab(ui, &ctx2),
                 Tab::Generate => self.ui_generate_tab(ui, &ctx2),
                 Tab::Validate => self.ui_validate_tab(ui, &ctx2),
+                Tab::Extract  => self.ui_extract_tab(ui, &ctx2),
                 Tab::Settings => self.ui_settings_tab(ui),
             }
         });
 
-        // --- About dialog ---
+        // --- Error modal (B1, B11) ---
+        if let Some(ref msg) = self.error_modal.clone() {
+            egui::Window::new("Error")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.label(msg.as_str());
+                    ui.add_space(8.0);
+                    if ui.button("OK").clicked() {
+                        self.error_modal = None;
+                    }
+                });
+        }
+
+        // --- About dialog (B14) ---
         if self.show_about {
             let s = self.s();
             egui::Window::new(s.about_title)
@@ -1040,7 +1412,11 @@ impl eframe::App for SdsApp {
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .show(ctx, |ui| {
-                    ui.label(s.about_body);
+                    ui.label(concat!("sds-converter v", env!("CARGO_PKG_VERSION")));
+                    ui.add_space(4.0);
+                    ui.label(s.about_desc);
+                    ui.add_space(4.0);
+                    ui.hyperlink_to("GitHub", "https://github.com/kent-tokyo/sds-converter");
                     ui.add_space(8.0);
                     if ui.button("OK").clicked() { self.show_about = false; }
                 });
@@ -1137,7 +1513,7 @@ pub fn run_gui() -> anyhow::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("sds-converter")
-            .with_inner_size([760.0, 580.0]),
+            .with_inner_size([820.0, 640.0]),
         ..Default::default()
     };
     eframe::run_native(

@@ -13,7 +13,10 @@ use crate::schema::SdsRoot;
 
 pub use extractor::InputFormat;
 pub use generator::generate_docx;
-pub use llm::{openai_compat_url, AnthropicBackend, LlmBackend, LlmConfig, OpenAiCompatBackend};
+pub use llm::{
+    openai_compat_url, AnthropicBackend, AnyBackend, build_any_backend,
+    LlmBackend, LlmConfig, OpenAiCompatBackend,
+};
 pub use template::fill_template;
 
 /// Configuration for document conversion.
@@ -91,13 +94,15 @@ pub async fn convert_bytes_to_json<B: LlmBackend + Sync>(
             .map_err(|e| SdsError::Extract(format!("tempfile write: {e}")))?;
         f.flush()
             .map_err(|e| SdsError::Extract(format!("tempfile flush: {e}")))?;
-        Ok::<_, SdsError>(f)
+        // Convert to TempPath to close the write handle (needed on Windows
+        // to avoid sharing-violation errors when the extractor opens the file).
+        Ok::<_, SdsError>(f.into_temp_path())
     })
     .await
     .map_err(|e| SdsError::Extract(format!("spawn_blocking panicked: {e}")))??;
 
-    convert_to_json(tmp.path(), backend, config).await
-    // `tmp` is dropped here — the temp file is deleted automatically.
+    convert_to_json(tmp.as_ref(), backend, config).await
+    // `tmp` (TempPath) is dropped here — the temp file is deleted automatically.
 }
 
 /// Convert an [`SdsRoot`] to a `.docx` file using the built-in layout.

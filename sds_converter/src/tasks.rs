@@ -8,6 +8,7 @@ use sds_converter_core::{
     converter::{AnthropicBackend, LlmBackend, LlmConfig, OpenAiCompatBackend, openai_compat_url},
     convert_from_json, convert_from_template, convert_to_json, convert_url_to_json,
     enrich_composition, validate,
+    extract_text, extract_text_from_url,
     ConvertConfig, Language, SdsError, SdsRoot,
 };
 
@@ -223,6 +224,11 @@ pub struct ToPdfParams {
     pub lang: Language,
 }
 
+pub struct ExtractTextParams {
+    pub input: String,
+    pub output: Option<PathBuf>,
+}
+
 // ---------------------------------------------------------------------------
 // Task runners — shared by CLI and GUI
 // ---------------------------------------------------------------------------
@@ -366,6 +372,26 @@ pub async fn run_to_pdf(params: ToPdfParams, log: LogFn) -> anyhow::Result<()> {
     Ok(())
 }
 
+pub async fn run_extract_text(params: ExtractTextParams, log: LogFn) -> anyhow::Result<String> {
+    log(format!("Extracting text from {} ...", params.input));
+    let is_url = params.input.starts_with("http://") || params.input.starts_with("https://");
+    let text = if is_url {
+        extract_text_from_url(&params.input).await
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+    } else {
+        extract_text(Path::new(&params.input)).await
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+    };
+    if let Some(out) = &params.output {
+        std::fs::write(out, &text)
+            .with_context(|| format!("writing {}", out.display()))?;
+        log(format!("Saved text to {}", out.display()));
+    } else {
+        log(format!("[OK] Extracted {} chars", text.len()));
+    }
+    Ok(text)
+}
+
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
@@ -404,6 +430,25 @@ pub fn collect_files(dir: &Path, extensions: &[&str]) -> Vec<PathBuf> {
     files
 }
 
+fn run_libreoffice(input: &Path, out_dir: &Path) -> anyhow::Result<PathBuf> {
+    let in_str = input.to_str()
+        .ok_or_else(|| anyhow::anyhow!("input path contains non-UTF-8 characters"))?;
+    let out_str = out_dir.to_str()
+        .ok_or_else(|| anyhow::anyhow!("output dir contains non-UTF-8 characters"))?;
+
+    let status = std::process::Command::new("soffice")
+        .args(["--headless", "--convert-to", "pdf", "--outdir", out_str, in_str])
+        .status()
+        .with_context(|| "running soffice")?;
+
+    if !status.success() {
+        anyhow::bail!("soffice exited with status {status}");
+    }
+
+    let stem = input.file_stem().unwrap_or_default().to_string_lossy();
+    Ok(out_dir.join(format!("{stem}.pdf")))
+}
+
 pub fn docx_to_pdf_impl(sds: &SdsRoot, output: &Path, config: &ConvertConfig) -> anyhow::Result<()> {
     let tmp_dir = std::env::temp_dir();
     let tmp_docx = tmp_dir.join(format!(
@@ -418,23 +463,10 @@ pub fn docx_to_pdf_impl(sds: &SdsRoot, output: &Path, config: &ConvertConfig) ->
         .with_context(|| "generating intermediate DOCX")?;
 
     let out_dir = output.parent().unwrap_or_else(|| Path::new("."));
-    let status = std::process::Command::new("soffice")
-        .args([
-            "--headless", "--convert-to", "pdf", "--outdir",
-            out_dir.to_str().unwrap_or("."),
-            tmp_docx.to_str().unwrap_or(""),
-        ])
-        .status()
-        .with_context(|| "running soffice")?;
+    let generated = run_libreoffice(&tmp_docx, out_dir)?;
 
     let _ = std::fs::remove_file(&tmp_docx);
 
-    if !status.success() {
-        anyhow::bail!("soffice exited with status {status}");
-    }
-
-    let stem = tmp_docx.file_stem().unwrap_or_default().to_string_lossy();
-    let generated = out_dir.join(format!("{stem}.pdf"));
     if generated != output {
         std::fs::rename(&generated, output)
             .with_context(|| format!("renaming {} to {}", generated.display(), output.display()))?;
