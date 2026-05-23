@@ -31,6 +31,7 @@ reqwest = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+harumi = { version = "0.4", features = ["html"] }
 pdf-extract = "0.8"
 docx-rust = "0.1"
 docx-rs = "0.4"

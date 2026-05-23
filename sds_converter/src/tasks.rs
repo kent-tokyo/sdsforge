@@ -350,20 +350,19 @@ pub async fn run_validate(input: PathBuf, log: LogFn) -> anyhow::Result<Vec<Stri
 }
 
 pub async fn run_to_pdf(params: ToPdfParams, log: LogFn) -> anyhow::Result<()> {
-    let config = ConvertConfig {
-        source_language: None,
-        output_language: params.lang,
-        ..Default::default()
-    };
     let input = params.input.clone();
     let output = params.output.clone();
+    let lang = params.lang;
 
     tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
         check_json_file_size(&input)?;
         let json = std::fs::read_to_string(&input)
             .with_context(|| format!("reading {}", input.display()))?;
         let sds: SdsRoot = serde_json::from_str(&json)?;
-        docx_to_pdf_impl(&sds, &output, &config)
+        let bytes = sds_converter_core::converter::generate_pdf(&sds, lang)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        std::fs::write(&output, bytes)
+            .with_context(|| format!("writing {}", output.display()))
     })
     .await
     .unwrap_or_else(|e| Err(anyhow::anyhow!("task panicked: {e}")))?;
@@ -430,46 +429,3 @@ pub fn collect_files(dir: &Path, extensions: &[&str]) -> Vec<PathBuf> {
     files
 }
 
-fn run_libreoffice(input: &Path, out_dir: &Path) -> anyhow::Result<PathBuf> {
-    let in_str = input.to_str()
-        .ok_or_else(|| anyhow::anyhow!("input path contains non-UTF-8 characters"))?;
-    let out_str = out_dir.to_str()
-        .ok_or_else(|| anyhow::anyhow!("output dir contains non-UTF-8 characters"))?;
-
-    let status = std::process::Command::new("soffice")
-        .args(["--headless", "--convert-to", "pdf", "--outdir", out_str, in_str])
-        .status()
-        .with_context(|| "running soffice")?;
-
-    if !status.success() {
-        anyhow::bail!("soffice exited with status {status}");
-    }
-
-    let stem = input.file_stem().unwrap_or_default().to_string_lossy();
-    Ok(out_dir.join(format!("{stem}.pdf")))
-}
-
-pub fn docx_to_pdf_impl(sds: &SdsRoot, output: &Path, config: &ConvertConfig) -> anyhow::Result<()> {
-    let tmp_dir = std::env::temp_dir();
-    let tmp_docx = tmp_dir.join(format!(
-        "sds_converter_{}.docx",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0)
-    ));
-
-    convert_from_json(sds, &tmp_docx, config)
-        .with_context(|| "generating intermediate DOCX")?;
-
-    let out_dir = output.parent().unwrap_or_else(|| Path::new("."));
-    let generated = run_libreoffice(&tmp_docx, out_dir)?;
-
-    let _ = std::fs::remove_file(&tmp_docx);
-
-    if generated != output {
-        std::fs::rename(&generated, output)
-            .with_context(|| format!("renaming {} to {}", generated.display(), output.display()))?;
-    }
-    Ok(())
-}

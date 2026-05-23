@@ -75,16 +75,6 @@ pub fn generate_html(sds: &SdsRoot, lang: Language) -> Result<String, SdsError> 
     font-weight: bold;
     width: 35%;
   }}
-  dl {{
-    margin: 0.3em 0;
-  }}
-  dt {{
-    font-weight: bold;
-    color: #444;
-  }}
-  dd {{
-    margin: 0 0 0.4em 1.5em;
-  }}
   ul {{
     margin: 0.2em 0;
     padding-left: 1.5em;
@@ -118,7 +108,7 @@ pub fn generate_html(sds: &SdsRoot, lang: Language) -> Result<String, SdsError> 
             html_escape(section_label)
         ));
         if let Some(val) = obj.get(*key) {
-            html.push_str(&render_value_html(val, 0));
+            html.push_str(&render_value_html(val));
         } else {
             html.push_str("<p><em>(not extracted)</em></p>\n");
         }
@@ -163,7 +153,7 @@ fn html_escape(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-fn render_value_html(val: &serde_json::Value, depth: usize) -> String {
+fn render_value_html(val: &serde_json::Value) -> String {
     match val {
         serde_json::Value::Null => String::new(),
         serde_json::Value::Bool(b) => format!("<span>{b}</span>\n"),
@@ -175,7 +165,7 @@ fn render_value_html(val: &serde_json::Value, depth: usize) -> String {
             if arr.is_empty() {
                 return String::new();
             }
-            // If array contains objects, render as table rows
+            // If array contains objects, render as a multi-column table
             if arr.iter().all(|v| v.is_object()) {
                 let keys: Vec<&str> = arr
                     .first()
@@ -194,10 +184,7 @@ fn render_value_html(val: &serde_json::Value, depth: usize) -> String {
                     if let Some(obj) = item.as_object() {
                         out.push_str("<tr>");
                         for k in &keys {
-                            let cell = obj
-                                .get(*k)
-                                .map(value_to_text)
-                                .unwrap_or_default();
+                            let cell = obj.get(*k).map(value_to_text).unwrap_or_default();
                             out.push_str(&format!("<td>{}</td>", html_escape(&cell)));
                         }
                         out.push_str("</tr>\n");
@@ -222,11 +209,9 @@ fn render_value_html(val: &serde_json::Value, depth: usize) -> String {
             if obj.is_empty() {
                 return String::new();
             }
-            let mut out = if depth == 0 {
-                String::from("<table>\n<tbody>\n")
-            } else {
-                String::from("<dl>\n")
-            };
+            // All object depths rendered as a 2-column key/value table.
+            // This ensures harumi compatibility (no <dl>/<dt>/<dd>).
+            let mut out = String::from("<table>\n<tbody>\n");
             for (k, v) in obj {
                 if v.is_null() {
                     continue;
@@ -236,25 +221,17 @@ fn render_value_html(val: &serde_json::Value, depth: usize) -> String {
                         continue;
                     }
                 }
-                let child_html = render_value_html(v, depth + 1);
+                let child_html = render_value_html(v);
                 if child_html.trim().is_empty() {
                     continue;
                 }
-                if depth == 0 {
-                    out.push_str(&format!(
-                        "<tr><th class=\"kv-key\">{}</th><td>{}</td></tr>\n",
-                        html_escape(k),
-                        child_html.trim()
-                    ));
-                } else {
-                    out.push_str(&format!("<dt>{}</dt>\n<dd>{}</dd>\n", html_escape(k), child_html.trim()));
-                }
+                out.push_str(&format!(
+                    "<tr><th class=\"kv-key\">{}</th><td>{}</td></tr>\n",
+                    html_escape(k),
+                    child_html.trim()
+                ));
             }
-            if depth == 0 {
-                out.push_str("</tbody></table>\n");
-            } else {
-                out.push_str("</dl>\n");
-            }
+            out.push_str("</tbody></table>\n");
             out
         }
     }

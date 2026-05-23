@@ -2,6 +2,7 @@ pub mod extractor;
 pub mod generator;
 pub mod html;
 pub mod llm;
+pub mod pdf;
 pub mod template;
 pub mod validator;
 
@@ -13,6 +14,7 @@ use crate::schema::SdsRoot;
 
 pub use extractor::InputFormat;
 pub use generator::generate_docx;
+pub use pdf::generate_pdf;
 pub use llm::{
     openai_compat_url, AnthropicBackend, AnyBackend, build_any_backend,
     LlmBackend, LlmConfig, OpenAiCompatBackend,

@@ -12,7 +12,7 @@ use sds_converter_core::{Language, SdsRoot};
 
 use tasks::{
     LogFn, Provider, Quality, ToDocxParams, ToHtmlParams, ToJsonParams, ToPdfParams,
-    check_json_file_size, collect_files, docx_to_pdf_impl,
+    check_json_file_size, collect_files,
 };
 
 // ---------------------------------------------------------------------------
@@ -299,17 +299,6 @@ async fn run_cli() -> anyhow::Result<()> {
         }
 
         Commands::ToPdf { input, input_dir, output, output_dir, lang } => {
-            let soffice_ok = std::process::Command::new("soffice")
-                .arg("--version")
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false);
-            if !soffice_ok {
-                anyhow::bail!(
-                    "PDF output requires LibreOffice. Install from https://www.libreoffice.org/ \
-                     and ensure `soffice` is in your PATH."
-                );
-            }
             match (input, input_dir) {
                 (Some(input), None) => {
                     let output = output.ok_or_else(|| anyhow::anyhow!("--output required"))?;
@@ -538,12 +527,10 @@ fn batch_to_html(input_dir: &Path, output_dir: &Path, lang: Language) -> anyhow:
 }
 
 fn batch_to_pdf(input_dir: &Path, output_dir: &Path, lang: Language) -> anyhow::Result<()> {
-    use sds_converter_core::ConvertConfig;
     let files = collect_files(input_dir, &["json"]);
     let total = files.len();
     if total == 0 { eprintln!("No .json files found"); return Ok(()); }
     let pb = make_pb(total as u64);
-    let config = ConvertConfig { source_language: None, output_language: lang, ..Default::default() };
     let (mut ok, mut failed) = (0usize, 0usize);
     for path in &files {
         let stem = match path.file_stem().and_then(|s| s.to_str()).filter(|s| !s.is_empty()) {
@@ -555,7 +542,11 @@ fn batch_to_pdf(input_dir: &Path, output_dir: &Path, lang: Language) -> anyhow::
         let result = check_json_file_size(path)
             .and_then(|_| std::fs::read_to_string(path).map_err(anyhow::Error::from))
             .and_then(|raw| serde_json::from_str::<SdsRoot>(&raw).map_err(anyhow::Error::from))
-            .and_then(|sds| docx_to_pdf_impl(&sds, &out_path, &config));
+            .and_then(|sds| {
+                sds_converter_core::converter::generate_pdf(&sds, lang)
+                    .map_err(anyhow::Error::from)
+                    .and_then(|bytes| std::fs::write(&out_path, bytes).map_err(anyhow::Error::from))
+            });
         match result {
             Ok(_)  => ok += 1,
             Err(e) => { pb.println(format!("[ERROR] {}: {e}", path.display())); failed += 1; }
