@@ -9,6 +9,8 @@ pub struct AppConfig {
     pub model: String,
     pub language: String,
     pub quality: String,
+    pub ui_lang: String,
+    pub enrich: bool,
 }
 
 impl Default for AppConfig {
@@ -19,6 +21,8 @@ impl Default for AppConfig {
             model: String::new(),
             language: "ja".into(),
             quality: "medium".into(),
+            ui_lang: "ja".into(),
+            enrich: false,
         }
     }
 }
