@@ -2,6 +2,8 @@
 //!
 //! # Environment variables
 //! - `PORT`                — listen port (default 3000)
+//! - `SDS_SERVER_BIND`     — full bind address override (default 127.0.0.1:<PORT>)
+//! - `SDS_SERVER_TOKEN`    — static Bearer token for auth (auto-generated if unset)
 //! - `ANTHROPIC_API_KEY`   — Anthropic API key
 //! - `OPENAI_API_KEY`      — OpenAI API key
 //! - `GEMINI_API_KEY`      — Google Gemini API key
@@ -16,14 +18,17 @@
 
 use axum::{
     body::Body,
-    extract::{DefaultBodyLimit, Multipart, Query},
-    http::{header, Response, StatusCode},
+    extract::{DefaultBodyLimit, Multipart, Query, State},
+    http::{header, HeaderValue, Response, StatusCode},
+    middleware,
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
 use serde::Deserialize;
 use serde_json::json;
+use std::sync::Arc;
+use tower::limit::ConcurrencyLimitLayer;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
@@ -41,7 +46,20 @@ struct AppError(anyhow::Error);
 
 impl IntoResponse for AppError {
     fn into_response(self) -> axum::response::Response {
-        let body = json!({"error": self.0.to_string()});
+        tracing::error!("request error: {:?}", self.0);
+        // Sanitize: avoid leaking LLM provider response bodies to the client.
+        let safe_msg = if let Some(sds_err) = self.0.downcast_ref::<SdsError>() {
+            match sds_err {
+                SdsError::LlmApi { status, .. } => {
+                    let body = json!({"error": "LLM API request failed", "status": status});
+                    return (StatusCode::INTERNAL_SERVER_ERROR, Json(body)).into_response();
+                }
+                e => e.to_string(),
+            }
+        } else {
+            self.0.to_string()
+        };
+        let body = json!({"error": safe_msg});
         (StatusCode::INTERNAL_SERVER_ERROR, Json(body)).into_response()
     }
 }
@@ -50,7 +68,7 @@ impl From<anyhow::Error> for AppError {
     fn from(e: anyhow::Error) -> Self { AppError(e) }
 }
 impl From<SdsError> for AppError {
-    fn from(e: SdsError) -> Self { AppError(anyhow::anyhow!("{e}")) }
+    fn from(e: SdsError) -> Self { AppError(anyhow::Error::new(e)) }
 }
 impl From<axum::extract::multipart::MultipartError> for AppError {
     fn from(e: axum::extract::multipart::MultipartError) -> Self {
@@ -65,6 +83,26 @@ impl From<std::io::Error> for AppError {
 }
 
 type ApiResult<T> = Result<T, AppError>;
+
+// ---------------------------------------------------------------------------
+// Auth middleware
+// ---------------------------------------------------------------------------
+
+async fn require_auth(
+    State(token): State<Arc<String>>,
+    req: axum::http::Request<axum::body::Body>,
+    next: middleware::Next,
+) -> Result<axum::response::Response, (StatusCode, &'static str)> {
+    let auth = req
+        .headers()
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "));
+    match auth {
+        Some(t) if t == token.as_str() => Ok(next.run(req).await),
+        _ => Err((StatusCode::UNAUTHORIZED, "Unauthorized")),
+    }
+}
 
 // ---------------------------------------------------------------------------
 // LLM backend enum-dispatch (mirrors tasks.rs in the CLI crate)
@@ -202,7 +240,7 @@ async fn to_json(
     let provider = q.provider.as_deref().unwrap_or("anthropic");
     let quality  = q.quality.as_deref().unwrap_or("medium");
 
-    let api_key = resolve_api_key(provider).map_err(anyhow::Error::from)?;
+    let api_key = resolve_api_key(provider)?;
 
     // -- Read multipart fields --
     let mut file_bytes: Option<Vec<u8>> = None;
@@ -344,7 +382,7 @@ async fn validate_handler(Json(sds): Json<SdsRoot>) -> Json<Vec<String>> {
 // ---------------------------------------------------------------------------
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -357,6 +395,36 @@ async fn main() {
         .and_then(|p| p.parse().ok())
         .unwrap_or(3000);
 
+    // Fix 1: Bind to localhost by default; allow override via SDS_SERVER_BIND.
+    let bind_addr = std::env::var("SDS_SERVER_BIND")
+        .unwrap_or_else(|_| format!("127.0.0.1:{port}"));
+
+    // Fix 1: Bearer token auth — read from env or generate a random token.
+    let token: Arc<String> = Arc::new(
+        std::env::var("SDS_SERVER_TOKEN")
+            .ok()
+            .filter(|t| !t.is_empty())
+            .unwrap_or_else(|| {
+                use rand::Rng;
+                let raw: [u8; 24] = rand::thread_rng().gen();
+                let tok = raw.iter().map(|b| format!("{b:02x}")).collect::<String>();
+                println!("SDS_SERVER_TOKEN not set — generated token: {tok}");
+                tok
+            }),
+    );
+
+    // Fix 2: Restrict CORS to localhost origins only.
+    let cors = CorsLayer::new()
+        .allow_origin([
+            "http://localhost".parse::<HeaderValue>().unwrap(),
+            "http://127.0.0.1".parse::<HeaderValue>().unwrap(),
+        ])
+        .allow_methods([axum::http::Method::GET, axum::http::Method::POST])
+        .allow_headers([
+            axum::http::header::CONTENT_TYPE,
+            axum::http::header::AUTHORIZATION,
+        ]);
+
     // 512 MB upload limit
     let body_limit = DefaultBodyLimit::max(512 * 1024 * 1024);
 
@@ -366,15 +434,18 @@ async fn main() {
         .route("/api/to-docx",  post(to_docx))
         .route("/api/to-html",  post(to_html))
         .route("/api/validate", post(validate_handler))
+        .layer(middleware::from_fn_with_state(token.clone(), require_auth))
         .layer(body_limit)
-        .layer(CorsLayer::permissive())
-        .layer(TraceLayer::new_for_http());
+        .layer(cors)
+        .layer(TraceLayer::new_for_http())
+        // Fix 4: Limit concurrent in-flight requests to prevent resource exhaustion.
+        .layer(ConcurrencyLimitLayer::new(10))
+        .with_state(token);
 
-    let addr = format!("0.0.0.0:{port}");
-    tracing::info!("sds-converter API server listening on http://{addr}");
+    tracing::info!("sds-converter API server listening on http://{bind_addr}");
 
-    let listener = tokio::net::TcpListener::bind(&addr).await
-        .unwrap_or_else(|e| panic!("cannot bind to {addr}: {e}"));
-    axum::serve(listener, app).await
-        .unwrap_or_else(|e| panic!("server error: {e}"));
+    // Fix 5: Use ? instead of panic! for error propagation.
+    let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
+    axum::serve(listener, app).await?;
+    Ok(())
 }

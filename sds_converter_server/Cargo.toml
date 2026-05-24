@@ -21,5 +21,7 @@ tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 axum = { version = "0.8", features = ["multipart"] }
+tower = { version = "0.5", features = ["limit"] }
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 tempfile = "3"
+rand = "0.8"

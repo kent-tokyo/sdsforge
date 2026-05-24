@@ -54,7 +54,6 @@ struct Strings {
     heading_validate: &'static str,
     btn_validate: &'static str,
     btn_validating: &'static str,
-    msg_no_issues: &'static str,
     lbl_validate_legend: &'static str,
     // Settings tab
     heading_settings: &'static str,
@@ -105,6 +104,8 @@ struct Strings {
     btn_detect_lang: &'static str,
     // Drag & drop
     msg_drop_files: &'static str,
+    // Settings — suggested filename
+    lbl_suggested_filename: &'static str,
     // Welcome screen
     welcome_subtitle: &'static str,
     welcome_btn_convert_title: &'static str,
@@ -113,6 +114,10 @@ struct Strings {
     welcome_btn_generate_desc: &'static str,
     welcome_btn_validate_title: &'static str,
     welcome_btn_validate_desc: &'static str,
+    // Validation / status
+    no_issues: &'static str,
+    // Errors
+    no_output_path: &'static str,
 }
 
 fn get_strings(ui_lang: &str) -> Strings {
@@ -152,7 +157,6 @@ fn get_strings(ui_lang: &str) -> Strings {
             heading_validate: "JSON Validation",
             btn_validate:     "Validate",
             btn_validating:   "Validating...",
-            msg_no_issues:    "OK: no issues found",
             lbl_validate_legend: "✅ No issues  ⚠ Warning  ❌ Error",
             heading_settings: "Settings",
             lbl_def_provider: "Default Provider:",
@@ -213,6 +217,7 @@ Multiple files can be selected at once.
             lbl_model:            "Model (optional):",
             lbl_base_url:         "Base URL (optional):",
             lbl_template:         "Template (optional):",
+            lbl_suggested_filename: "Use recommended filename (SDS_Date_Code.json)",
             tab_extract:          "Extract Text",
             heading_extract:      "Extract Raw Text from Document",
             lbl_extract_input:    "Input (file/URL):",
@@ -229,6 +234,8 @@ Multiple files can be selected at once.
             welcome_btn_generate_desc: "Export JSON as DOCX / HTML / PDF",
             welcome_btn_validate_title: "Validate JSON",
             welcome_btn_validate_desc: "Check conformance to MHLW standard",
+            no_issues: "No issues found",
+            no_output_path: "[ERROR] Please specify an output path.",
         },
         "zh-cn" => Strings {
             menu_file:        "文件",
@@ -265,7 +272,6 @@ Multiple files can be selected at once.
             heading_validate: "JSON验证",
             btn_validate:     "验证",
             btn_validating:   "验证中...",
-            msg_no_issues:    "OK: 未发现问题",
             lbl_validate_legend: "✅ 无问题  ⚠ 警告  ❌ 错误",
             heading_settings: "设置",
             lbl_def_provider: "默认提供商:",
@@ -324,6 +330,7 @@ Multiple files can be selected at once.
             lbl_model:            "模型名（可选）:",
             lbl_base_url:         "Base URL（可选）:",
             lbl_template:         "模板（可选）:",
+            lbl_suggested_filename: "使用推荐文件名 (SDS_日期_品号.json)",
             tab_extract:          "文本提取",
             heading_extract:      "从文档中提取原始文本",
             lbl_extract_input:    "输入 (文件/URL):",
@@ -340,6 +347,8 @@ Multiple files can be selected at once.
             welcome_btn_generate_desc: "将JSON导出为DOCX / HTML / PDF",
             welcome_btn_validate_title: "验证JSON",
             welcome_btn_validate_desc: "检验是否符合MHLW标准",
+            no_issues: "无问题",
+            no_output_path: "[ERROR] 请指定输出路径。",
         },
         _ => Strings {  // Japanese (ja, default)
             menu_file:        "ファイル",
@@ -376,7 +385,6 @@ Multiple files can be selected at once.
             heading_validate: "JSON バリデーション",
             btn_validate:     "検証実行",
             btn_validating:   "検証中...",
-            msg_no_issues:    "OK: 問題は見つかりませんでした",
             lbl_validate_legend: "✅ 問題なし  ⚠ 警告  ❌ エラー",
             heading_settings: "設定",
             lbl_def_provider: "デフォルトプロバイダ:",
@@ -437,6 +445,7 @@ JSONファイルを選択して「検証実行」をクリックすると警告�
             lbl_model:            "モデル名 (省略可):",
             lbl_base_url:         "base URL (省略可):",
             lbl_template:         "テンプレート (省略可):",
+            lbl_suggested_filename: "推奨ファイル名で出力 (SDS_日付_品番.json)",
             tab_extract:          "テキスト抽出",
             heading_extract:      "文書からテキストを抽出",
             lbl_extract_input:    "入力 (ファイル/URL):",
@@ -453,6 +462,8 @@ JSONファイルを選択して「検証実行」をクリックすると警告�
             welcome_btn_generate_desc: "JSONをDOCX / HTML / PDFで出力",
             welcome_btn_validate_title: "JSON 検証",
             welcome_btn_validate_desc: "MHLW標準への適合を確認",
+            no_issues: "問題なし",
+            no_output_path: "[ERROR] 出力パスを指定してください。",
         },
     }
 }
@@ -571,12 +582,26 @@ impl SdsApp {
     }
 
     fn log_push(&self, msg: impl Into<String>) {
-        if let Ok(mut v) = self.log.lock() { v.push(msg.into()); }
+        if let Ok(mut v) = self.log.lock() {
+            v.push(msg.into());
+            if v.len() > 500 {
+                let excess = v.len() - 500;
+                v.drain(0..excess);
+            }
+        }
     }
 
     fn make_log_fn(&self) -> LogFn {
         let log = Arc::clone(&self.log);
-        Arc::new(move |msg| { if let Ok(mut v) = log.lock() { v.push(msg); } })
+        Arc::new(move |msg| {
+            if let Ok(mut v) = log.lock() {
+                v.push(msg);
+                if v.len() > 500 {
+                    let excess = v.len() - 500;
+                    v.drain(0..excess);
+                }
+            }
+        })
     }
 
     fn is_busy(&self) -> bool {
@@ -723,6 +748,7 @@ impl SdsApp {
         let quality  = Quality::from_str(&self.conv_quality);
         let lang     = lang_from_str(&self.conv_lang);
         let enrich   = self.conv_enrich;
+        let use_suggested_filename = self.config.use_suggested_filename;
         let s        = self.s();
 
         let api_key = {
@@ -781,6 +807,7 @@ impl SdsApp {
                         output,
                         provider, api_key: api_key.clone(), model: model.clone(),
                         quality, lang, base_url: base_url.clone(), enrich,
+                        use_suggested_filename,
                     }, Arc::clone(&log_fn)).await;
                     match res {
                         Ok(_)  => ok += 1,
@@ -803,7 +830,7 @@ impl SdsApp {
                 return;
             }
             if output.as_os_str().is_empty() {
-                self.log_push("[ERROR] 出力パスを指定してください。");
+                self.log_push(s.no_output_path);
                 busy.store(false, Ordering::Relaxed);
                 return;
             }
@@ -813,6 +840,7 @@ impl SdsApp {
             self.rt.spawn(async move {
                 if let Err(e) = crate::tasks::run_to_json(ToJsonParams {
                     input, output, provider, api_key, model, quality, lang, base_url, enrich,
+                    use_suggested_filename,
                 }, log_fn).await {
                     if let Ok(mut v) = log_err.lock() { v.push(format!("[ERROR] {e}")); }
                 }
@@ -917,8 +945,13 @@ impl SdsApp {
             self.error_modal = Some(s.err_no_input.to_string());
             return;
         }
+        let gen_output = PathBuf::from(self.gen_output.trim());
+        if gen_output.as_os_str().is_empty() {
+            self.log_push(s.no_output_path);
+            return;
+        }
         let input    = PathBuf::from(self.gen_input.trim());
-        let output   = PathBuf::from(self.gen_output.trim());
+        let output   = gen_output;
         let lang     = lang_from_str(&self.gen_lang).unwrap_or(sds_converter_core::Language::Japanese);
         let format   = self.gen_format;
         let template = if self.gen_template.is_empty() { None }
@@ -1046,6 +1079,7 @@ impl SdsApp {
         let ok_prefix  = "✅ ".to_string();
         let warn_prefix = "⚠ ".to_string();
         let err_prefix  = "❌ ".to_string();
+        let no_issues_msg = s.no_issues.to_string();
 
         self.rt.spawn(async move {
             let mut all_results: Vec<String> = Vec::new();
@@ -1057,7 +1091,7 @@ impl SdsApp {
                 };
                 match crate::tasks::run_validate(path.clone(), Arc::clone(&log_fn)).await {
                     Ok(warnings) if warnings.is_empty() => {
-                        all_results.push(format!("{}{}問題なし", prefix, ok_prefix));
+                        all_results.push(format!("{}{}{}", prefix, ok_prefix, no_issues_msg));
                     }
                     Ok(warnings) => {
                         for w in warnings { all_results.push(format!("{prefix}{warn_prefix}{w}")); }
@@ -1291,6 +1325,10 @@ impl SdsApp {
 
             ui.label(s.lbl_def_enrich);
             ui.checkbox(&mut self.config.enrich, "");
+            ui.end_row();
+
+            ui.label(s.lbl_suggested_filename);
+            ui.checkbox(&mut self.config.use_suggested_filename, "");
             ui.end_row();
         });
 

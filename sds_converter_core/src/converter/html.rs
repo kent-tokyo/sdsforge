@@ -3,7 +3,7 @@ use crate::error::SdsError;
 use crate::language::Language;
 use crate::schema::SdsRoot;
 
-use super::generator::{DOCUMENT_TITLE, SECTION_KEYS, SECTION_NAMES};
+use super::generator::{lang_index, section_name, DOCUMENT_TITLE, SECTION_KEYS};
 
 /// Generate an HTML document from an [`SdsRoot`] in the given language.
 ///
@@ -124,25 +124,6 @@ fn lang_attr(lang: Language) -> &'static str {
         Language::English => "en",
         Language::ChineseSimplified => "zh-Hans",
         Language::ChineseTraditional => "zh-Hant",
-    }
-}
-
-fn lang_index(lang: Language) -> usize {
-    match lang {
-        Language::Japanese => 0,
-        Language::English => 1,
-        Language::ChineseSimplified => 2,
-        Language::ChineseTraditional => 3,
-    }
-}
-
-fn section_name(idx: usize, lang: Language) -> &'static str {
-    let row = &SECTION_NAMES[idx];
-    match lang {
-        Language::Japanese => row.0,
-        Language::English => row.1,
-        Language::ChineseSimplified => row.2,
-        Language::ChineseTraditional => row.3,
     }
 }
 

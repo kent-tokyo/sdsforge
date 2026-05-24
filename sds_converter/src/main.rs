@@ -122,6 +122,9 @@ enum Commands {
         concurrency: usize,
         #[arg(long)]
         enrich: bool,
+        /// Use the MHLW-recommended filename: SDS_<date>_<product_code>.json
+        #[arg(long)]
+        suggested_name: bool,
     },
 
     /// Convert MHLW standard JSON to a Word document
@@ -227,7 +230,7 @@ async fn run_cli() -> anyhow::Result<()> {
     match cli.command {
         Commands::ToJson {
             input, input_dir, output, output_dir,
-            api_key, lang, model, provider, base_url, quality, concurrency, enrich,
+            api_key, lang, model, provider, base_url, quality, concurrency, enrich, suggested_name,
         } => {
             let provider = Provider::from(provider);
             let quality  = Quality::from(quality);
@@ -245,6 +248,7 @@ async fn run_cli() -> anyhow::Result<()> {
                     tasks::run_to_json(ToJsonParams {
                         input, output, provider, api_key, model, quality,
                         lang: lang.map(Language::from), base_url, enrich,
+                        use_suggested_filename: suggested_name,
                     }, Arc::clone(&log)).await?;
                 }
                 (None, Some(dir)) => {
@@ -253,6 +257,7 @@ async fn run_cli() -> anyhow::Result<()> {
                     batch_to_json(
                         &dir, &out_dir, provider, api_key, model, quality,
                         lang.map(Language::from), base_url, concurrency, enrich,
+                        suggested_name,
                     ).await;
                 }
                 _ => anyhow::bail!("Specify either --input or --input-dir"),
@@ -400,6 +405,7 @@ fn make_pb(total: u64) -> Arc<ProgressBar> {
     Arc::new(pb)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn batch_to_json(
     input_dir: &Path,
     output_dir: &Path,
@@ -411,6 +417,7 @@ async fn batch_to_json(
     base_url: Option<String>,
     concurrency: usize,
     enrich: bool,
+    use_suggested_filename: bool,
 ) {
     let files = collect_files(input_dir, &["pdf", "docx", "xlsx", "xls"]);
     let total = files.len();
@@ -423,7 +430,7 @@ async fn batch_to_json(
     let ok     = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let failed = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
-    stream::iter(files.into_iter())
+    stream::iter(files)
         .map(|path| {
             let pb         = Arc::clone(&pb);
             let output_dir = Arc::clone(&output_dir);
@@ -450,6 +457,7 @@ async fn batch_to_json(
                     input: path.to_string_lossy().into_owned(),
                     output: out_path,
                     provider, api_key, model, quality, lang, base_url, enrich,
+                    use_suggested_filename,
                 }, log).await;
                 match result {
                     Ok(_)  => { ok.fetch_add(1, std::sync::atomic::Ordering::Relaxed); }

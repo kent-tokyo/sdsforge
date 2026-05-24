@@ -12,6 +12,8 @@ pub struct AppConfig {
     pub ui_lang: String,
     pub enrich: bool,
     pub base_url: String,
+    /// Use the MHLW-recommended filename convention: SDS_日付_品番.json
+    pub use_suggested_filename: bool,
 }
 
 impl Default for AppConfig {
@@ -25,6 +27,7 @@ impl Default for AppConfig {
             ui_lang: "ja".into(),
             enrich: false,
             base_url: String::new(),
+            use_suggested_filename: false,
         }
     }
 }

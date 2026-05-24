@@ -149,7 +149,10 @@ pub async fn convert_pdf_to_json_vision(
     llm_config: &LlmConfig,
     config: &ConvertConfig,
 ) -> Result<(SdsRoot, Vec<String>), SdsError> {
-    let bytes = std::fs::read(input_path)
+    let path_owned = input_path.to_path_buf();
+    let bytes = tokio::task::spawn_blocking(move || std::fs::read(&path_owned))
+        .await
+        .map_err(|e| SdsError::Extract(format!("spawn_blocking panicked: {e}")))?
         .map_err(|e| SdsError::Extract(format!("reading PDF: {e}")))?;
     let (sds, mut warnings) =
         llm::extract_sds_from_pdf_vision(api_key, llm_config, &bytes, config.source_language)

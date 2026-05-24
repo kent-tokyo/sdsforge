@@ -47,11 +47,21 @@ pub async fn lookup_cas(
     let url = format!(
         "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{cas}/property/IUPACName,MolecularFormula,CID/JSON"
     );
-    let resp = client
+    let mut resp = client
         .get(&url)
         .send()
         .await
         .map_err(|e| SdsError::Extract(format!("PubChem request failed: {e}")))?;
+
+    // Retry once after 1 000 ms on HTTP 429 (rate limit).
+    if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+        resp = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| SdsError::Extract(format!("PubChem request failed (retry): {e}")))?;
+    }
 
     if resp.status() == reqwest::StatusCode::NOT_FOUND {
         return Ok(None);
@@ -140,6 +150,8 @@ pub async fn enrich_composition(
                     tracing::warn!("PubChem lookup error for CAS {cas}: {e}");
                 }
             }
+            // Rate-limit: 250 ms between PubChem requests to avoid HTTP 429.
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
         }
     }
 

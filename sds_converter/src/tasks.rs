@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::Context as _;
+use chrono::Local;
 use walkdir::WalkDir;
 
 use sds_converter_core::{
@@ -33,18 +34,6 @@ pub enum Provider {
 impl Provider {
     pub fn all() -> &'static [&'static str] {
         &["anthropic", "openai", "gemini", "mistral", "groq", "cohere", "local"]
-    }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Provider::Anthropic => "anthropic",
-            Provider::Openai    => "openai",
-            Provider::Gemini    => "gemini",
-            Provider::Mistral   => "mistral",
-            Provider::Groq      => "groq",
-            Provider::Cohere    => "cohere",
-            Provider::Local     => "local",
-        }
     }
 
     pub fn from_str(s: &str) -> Self {
@@ -205,6 +194,9 @@ pub struct ToJsonParams {
     pub lang: Option<Language>,
     pub base_url: Option<String>,
     pub enrich: bool,
+    /// If true, rename the output file to the MHLW-recommended convention:
+    /// `SDS_<IssueDate>_<ProductCode>.json` (with `_NNN` suffix on collision).
+    pub use_suggested_filename: bool,
 }
 
 pub struct ToDocxParams {
@@ -305,10 +297,30 @@ pub async fn run_to_json(params: ToJsonParams, log: LogFn) -> anyhow::Result<()>
             log(format!("CAS: {w}"));
         }
     }
-    let json_str = serde_json::to_string_pretty(&sds)?;
+    // Prune empty strings/arrays/objects per MHLW §3.3 before writing.
+    let json_val = serde_json::to_value(&sds)?;
+    let json_val = prune_empty_strings(json_val);
+    let json_str = serde_json::to_string_pretty(&json_val)?;
     std::fs::write(&params.output, json_str)
         .with_context(|| format!("writing {}", params.output.display()))?;
-    log(format!("Saved JSON to {}", params.output.display()));
+
+    // Optionally rename to the MHLW-recommended filename (§2.1.2).
+    let final_output = if params.use_suggested_filename {
+        let dir = params.output.parent().unwrap_or(Path::new("."));
+        let base = suggested_filename(&sds);
+        let candidate = resolve_unique_suggested_path(dir, &base, &params.output);
+        if candidate != params.output {
+            // On Windows the placeholder must be removed before rename
+            #[cfg(windows)]
+            let _ = std::fs::remove_file(&candidate);
+            std::fs::rename(&params.output, &candidate)
+                .with_context(|| format!("rename to {}", candidate.display()))?;
+        }
+        candidate
+    } else {
+        params.output.clone()
+    };
+    log(format!("Saved JSON to {}", final_output.display()));
     Ok(())
 }
 
@@ -447,6 +459,120 @@ pub fn check_json_file_size(path: &Path) -> anyhow::Result<()> {
         );
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// JSON post-processing helpers (MHLW §3.3)
+// ---------------------------------------------------------------------------
+
+/// Recursively remove empty strings, empty arrays, and empty objects from a
+/// JSON value, per MHLW §3.3: fields with no valid value should be omitted
+/// entirely rather than set to `""`.
+fn prune_empty_strings(v: serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+    match v {
+        Value::Object(map) => {
+            let pruned: serde_json::Map<_, _> = map
+                .into_iter()
+                .filter_map(|(k, v)| {
+                    let pv = prune_empty_strings(v);
+                    match &pv {
+                        Value::String(s) if s.is_empty() => None,
+                        Value::Array(a)  if a.is_empty() => None,
+                        Value::Object(o) if o.is_empty() => None,
+                        _ => Some((k, pv)),
+                    }
+                })
+                .collect();
+            Value::Object(pruned)
+        }
+        Value::Array(arr) => {
+            Value::Array(arr.into_iter().map(prune_empty_strings).collect())
+        }
+        other => other,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Recommended filename helpers (MHLW §2.1.2)
+// ---------------------------------------------------------------------------
+
+/// Sanitize a string for use as a filename component.
+/// Keeps alphanumerics and hyphens; replaces everything else with `_`.
+/// Trims leading/trailing underscores.
+fn sanitize_for_filename(s: &str) -> String {
+    let raw: String = s
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' })
+        .collect();
+    raw.trim_matches('_').to_string()
+}
+
+/// Generate the MHLW-recommended filename base (without extension or serial suffix).
+///
+/// Format: `SDS_<date>_<product_code>`
+/// - `<date>`: `Datasheet.IssueDate` with `-` removed ("2024-03-31" → "20240331").
+///   Falls back to today's date if absent.
+/// - `<product_code>`: first element of `Identification.TradeProductIdentity.ProductNoUser`,
+///   then `TradeNameEN`, then "NoCode".
+pub fn suggested_filename(sds: &SdsRoot) -> String {
+    let date = sds
+        .datasheet
+        .as_ref()
+        .and_then(|d| d.issue_date.as_ref())
+        .map(|d| d.replace('-', ""))
+        .filter(|d| !d.is_empty())
+        .unwrap_or_else(|| Local::now().format("%Y%m%d").to_string());
+
+    let code = sds
+        .identification
+        .as_ref()
+        .and_then(|id| id.trade_product_identity.as_ref())
+        .and_then(|t| {
+            t.product_no_user
+                .as_ref()
+                .and_then(|v| v.first())
+                .cloned()
+                .or_else(|| t.trade_name_en.clone())
+        })
+        .map(|s| sanitize_for_filename(&s))
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "NoCode".to_string());
+
+    format!("SDS_{date}_{code}")
+}
+
+/// Resolve a unique output path under `dir` using the suggested base name.
+/// Appends `_001`, `_002`, … when the base name is already taken.
+/// Uses atomic create-new to claim the path, avoiding TOCTOU races.
+fn resolve_unique_suggested_path(dir: &Path, base: &str, avoid: &Path) -> PathBuf {
+    // Try base.json first (atomically)
+    let candidate = dir.join(format!("{base}.json"));
+    if candidate == avoid || try_claim_path(&candidate) {
+        return candidate;
+    }
+    for n in 1u32..=9999 {
+        let c = dir.join(format!("{base}_{n:03}.json"));
+        if try_claim_path(&c) {
+            return c;
+        }
+    }
+    // Fallback: use timestamp to avoid collision
+    dir.join(format!("{base}_{}.json", std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0)))
+}
+
+/// Atomically create a placeholder file to claim the path.
+/// Returns true if the path was successfully claimed (or already owned by this process
+/// as a zero-byte file). Caller should overwrite with actual content.
+fn try_claim_path(path: &Path) -> bool {
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .is_ok()
 }
 
 pub fn collect_files(dir: &Path, extensions: &[&str]) -> Vec<PathBuf> {

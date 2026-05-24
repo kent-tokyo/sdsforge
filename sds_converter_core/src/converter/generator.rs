@@ -60,7 +60,7 @@ pub(crate) const DOCUMENT_TITLE: &[&str] = &[
     "安全資料表",               // ChineseTraditional (CNS 15030)
 ];
 
-fn lang_index(lang: Language) -> usize {
+pub(crate) fn lang_index(lang: Language) -> usize {
     match lang {
         Language::Japanese => 0,
         Language::English => 1,
@@ -69,7 +69,7 @@ fn lang_index(lang: Language) -> usize {
     }
 }
 
-fn section_name(section_idx: usize, lang: Language) -> &'static str {
+pub(crate) fn section_name(section_idx: usize, lang: Language) -> &'static str {
     let row = &SECTION_NAMES[section_idx];
     match lang {
         Language::Japanese => row.0,

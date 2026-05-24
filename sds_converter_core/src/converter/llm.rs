@@ -324,7 +324,7 @@ const MHLW_SCHEMA_HINT: &str = r#"Output a JSON object. CRITICAL: Use EXACTLY th
 {
   "Datasheet": { "IssueDate": "YYYY-MM-DD", "SDS-SchemaVersionNo": "1.0" },
   "Identification": {
-    "TradeProductIdentity": { "TradeNameJP": "...", "TradeNameEN": "..." },
+    "TradeProductIdentity": { "TradeNameJP": "...", "TradeNameEN": "...", "ProductNoUser": ["ABC-123"] },
     "SupplierInformation": { "CompanyName": "...", "Phone": "...", "Address": "..." },
     "RecommendedUseAndRestrictions": "..."
   },
@@ -503,6 +503,7 @@ fn build_system_prompt(lang: Option<Language>) -> String {
          - Dates in YYYY-MM-DD format\n\
          - Numeric values as numeric types (not strings) inside NumericRangeWithUnitAndQualifier\n\
          - For qualitative text values in PhysicalChemicalProperties, use AdditionalInfo: {{\"FullText\": [\"text\"]}} — note FullText is an ARRAY of strings\n\
+         - For multi-line text values, use \"\\n\" (backslash-n) to represent line breaks, never actual newlines inside a JSON string\n\
          - Reproduce text exactly as written in the source document; do not infer or fill in missing data\n\
          - JSON keys must match EXACTLY the key names shown in the schema example below\n\
          {TYPO_WARNINGS}\n\
@@ -608,16 +609,17 @@ pub async fn extract_sds_from_text<B: LlmBackend + Sync>(
         None => String::new(),
     };
 
+    let safe_text = text.replace("</document>", "</_document>");
     let user_a = format!(
         "{lang_prefix}Extract ONLY these sections: {}.\n\
          Output as JSON. Do not include any other sections.\n\n\
-         <document>\n{text}\n</document>",
+         <document>\n{safe_text}\n</document>",
         GROUP_A.join(", ")
     );
     let user_b = format!(
         "{lang_prefix}Extract ONLY these sections: {}.\n\
          Output as JSON. Do not include any other sections.\n\n\
-         <document>\n{text}\n</document>",
+         <document>\n{safe_text}\n</document>",
         GROUP_B.join(", ")
     );
 
@@ -649,7 +651,7 @@ pub async fn extract_sds_from_text<B: LlmBackend + Sync>(
             "{lang_prefix}Extract ONLY these sections (previous extraction had schema issues — \
              be especially precise about field types and nesting): {}.\n\
              Output as JSON.\n\n\
-             <document>\n{text}\n</document>",
+             <document>\n{safe_text}\n</document>",
             retry_keys.join(", ")
         );
         match backend.complete(&system, &user_retry).await {
@@ -786,6 +788,7 @@ fn build_vision_system_prompt(lang: Option<Language>) -> String {
          - Dates in YYYY-MM-DD format\n\
          - Numeric values as numeric types (not strings) inside NumericRangeWithUnitAndQualifier\n\
          - For qualitative text values in PhysicalChemicalProperties, use AdditionalInfo: {{\"FullText\": [\"text\"]}} — note FullText is an ARRAY of strings\n\
+         - For multi-line text values, use \"\\n\" (backslash-n) to represent line breaks, never actual newlines inside a JSON string\n\
          - Reproduce text exactly as written in the source document; do not infer or fill in missing data\n\
          - JSON keys must match EXACTLY the key names shown in the schema example below\n\
          {TYPO_WARNINGS}\n\

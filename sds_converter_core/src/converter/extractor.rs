@@ -72,19 +72,73 @@ pub async fn extract_text_from_url(url: &str) -> Result<String, SdsError> {
     extract_text_from_url_limited(url, DEFAULT_MAX_LLM_CHARS).await
 }
 
+/// Returns `true` for private, loopback, link-local, and metadata IP addresses/hostnames.
+fn is_private_host(host: &str) -> bool {
+    use std::net::IpAddr;
+    // Block numeric IPs that are private/loopback/metadata
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        return match ip {
+            IpAddr::V4(v4) => {
+                v4.is_loopback()        // 127.x.x.x
+                || v4.is_private()      // 10.x, 172.16-31.x, 192.168.x
+                || v4.is_link_local()   // 169.254.x.x (AWS metadata)
+                || v4.is_unspecified()  // 0.0.0.0
+                || v4.is_broadcast()
+            }
+            IpAddr::V6(v6) => v6.is_loopback() || v6.is_unspecified(),
+        };
+    }
+    // Block well-known metadata hostnames
+    matches!(host,
+        "localhost" | "metadata.google.internal" | "instance-data"
+    )
+}
+
 /// Like [`extract_text_from_url`] but truncates to `max_chars` after cleaning.
 pub async fn extract_text_from_url_limited(url: &str, max_chars: usize) -> Result<String, SdsError> {
+    // SSRF guard: reject private/loopback/metadata addresses before making a request.
+    let parsed = reqwest::Url::parse(url)
+        .map_err(|e| SdsError::Extract(format!("Invalid URL: {e}")))?;
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| SdsError::Extract("URL has no host".into()))?;
+    if is_private_host(host) {
+        return Err(SdsError::Extract(
+            "URL points to a private/reserved address".into(),
+        ));
+    }
+
+    const MAX_BODY_BYTES: usize = 50 * 1024 * 1024; // 50 MB
+
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60))
         .build()
         .map_err(|e| SdsError::Extract(e.to_string()))?;
-    let html = client.get(url)
+    let response = client
+        .get(url)
         .send()
         .await
-        .map_err(|e| SdsError::Extract(format!("HTTP GET failed: {e}")))?
-        .text()
+        .map_err(|e| SdsError::Extract(format!("HTTP GET failed: {e}")))?;
+
+    // Reject responses whose Content-Length header exceeds the limit.
+    if let Some(content_length) = response.content_length() {
+        if content_length > MAX_BODY_BYTES as u64 {
+            return Err(SdsError::Extract(format!(
+                "URL response too large ({} bytes, limit 50 MB)", content_length
+            )));
+        }
+    }
+
+    let bytes = response
+        .bytes()
         .await
         .map_err(|e| SdsError::Extract(format!("response body failed: {e}")))?;
+    if bytes.len() > MAX_BODY_BYTES {
+        return Err(SdsError::Extract(format!(
+            "URL response too large ({} bytes, limit 50 MB)", bytes.len()
+        )));
+    }
+    let html = String::from_utf8_lossy(&bytes).into_owned();
     let raw = extract_text_from_html_str(&html);
     Ok(clean_extracted_text(&raw, max_chars))
 }
@@ -347,13 +401,15 @@ pub fn clean_extracted_text(text: &str, max_chars: usize) -> String {
         out = deduped;
     }
 
-    // Pass 3 — truncate to max_chars at a valid UTF-8 char boundary
-    if out.len() > max_chars {
-        let mut at = max_chars;
-        while at > 0 && !out.is_char_boundary(at) {
-            at -= 1;
-        }
-        out.truncate(at);
+    // Pass 3 — truncate to max_chars (counted in Unicode scalar values, not bytes)
+    // so that Japanese/CJK text is not cut at 1/3 of the intended character limit.
+    if out.chars().count() > max_chars {
+        let byte_offset = out
+            .char_indices()
+            .nth(max_chars)
+            .map(|(i, _)| i)
+            .unwrap_or(out.len());
+        out.truncate(byte_offset);
         out.push_str("\n[テキスト省略]\n");
     }
 

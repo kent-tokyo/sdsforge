@@ -32,3 +32,16 @@ pub enum SdsError {
     #[error("PDF appears to be image-only (OCR unavailable): {0}")]
     ImageOnlyPdf(String),
 }
+
+impl SdsError {
+    /// Returns a sanitized error message safe for external/client display.
+    /// Strips verbose provider error bodies to avoid information disclosure.
+    pub fn display_safe(&self) -> String {
+        match self {
+            SdsError::LlmApi { status, .. } => {
+                format!("LLM request failed (HTTP {})", status)
+            }
+            other => other.to_string(),
+        }
+    }
+}
