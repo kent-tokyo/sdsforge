@@ -40,7 +40,6 @@ struct Strings {
     btn_save_to: &'static str,
     btn_convert: &'static str,
     btn_converting: &'static str,
-    btn_clear_files: &'static str,
     btn_switch_single: &'static str,
     lbl_output_dir: &'static str,
     // Generate tab
@@ -118,6 +117,20 @@ struct Strings {
     no_issues: &'static str,
     // Errors
     no_output_path: &'static str,
+    // Dialog buttons
+    btn_ok: &'static str,
+    btn_skip: &'static str,
+    // API key visibility toggle
+    btn_show_key: &'static str,
+    btn_hide_key: &'static str,
+    // D&D rejected files
+    msg_drop_rejected: &'static str,
+    // File filter labels
+    lbl_filter_sds: &'static str,
+    lbl_filter_json: &'static str,
+    lbl_filter_doc: &'static str,
+    lbl_filter_word: &'static str,
+    lbl_filter_txt: &'static str,
 }
 
 fn get_strings(ui_lang: &str) -> Strings {
@@ -145,7 +158,6 @@ fn get_strings(ui_lang: &str) -> Strings {
             btn_save_to:      "Save to...",
             btn_convert:      "Convert",
             btn_converting:   "Converting...",
-            btn_clear_files:  "Clear selection",
             btn_switch_single: "Switch to single file",
             lbl_output_dir:   "Output folder:",
             heading_generate: "MHLW JSON → Document",
@@ -236,6 +248,16 @@ Multiple files can be selected at once.
             welcome_btn_validate_desc: "Check conformance to MHLW standard",
             no_issues: "No issues found",
             no_output_path: "[ERROR] Please specify an output path.",
+            btn_ok:            "OK",
+            btn_skip:          "→ Skip",
+            btn_show_key:      "Show",
+            btn_hide_key:      "Hide",
+            msg_drop_rejected: "[WARN] Dropped file(s) have unsupported format for this tab.",
+            lbl_filter_sds:    "SDS Documents",
+            lbl_filter_json:   "JSON Files",
+            lbl_filter_doc:    "Documents",
+            lbl_filter_word:   "Word Documents",
+            lbl_filter_txt:    "Text Files",
         },
         "zh-cn" => Strings {
             menu_file:        "文件",
@@ -260,7 +282,6 @@ Multiple files can be selected at once.
             btn_save_to:      "保存到...",
             btn_convert:      "开始转换",
             btn_converting:   "转换中...",
-            btn_clear_files:  "清除选择",
             btn_switch_single: "切换单文件",
             lbl_output_dir:   "输出文件夹:",
             heading_generate: "MHLW JSON → 文档生成",
@@ -349,6 +370,16 @@ Multiple files can be selected at once.
             welcome_btn_validate_desc: "检验是否符合MHLW标准",
             no_issues: "无问题",
             no_output_path: "[ERROR] 请指定输出路径。",
+            btn_ok:            "确定",
+            btn_skip:          "→ 跳过",
+            btn_show_key:      "显示",
+            btn_hide_key:      "隐藏",
+            msg_drop_rejected: "[WARN] 拖放的文件格式不支持当前标签页。",
+            lbl_filter_sds:    "SDS文档",
+            lbl_filter_json:   "JSON文件",
+            lbl_filter_doc:    "文档",
+            lbl_filter_word:   "Word文档",
+            lbl_filter_txt:    "文本文件",
         },
         _ => Strings {  // Japanese (ja, default)
             menu_file:        "ファイル",
@@ -373,7 +404,6 @@ Multiple files can be selected at once.
             btn_save_to:      "保存先...",
             btn_convert:      "変換開始",
             btn_converting:   "変換中...",
-            btn_clear_files:  "選択解除",
             btn_switch_single: "単一ファイルに切替",
             lbl_output_dir:   "出力フォルダ:",
             heading_generate: "MHLW JSON → 文書生成",
@@ -464,6 +494,16 @@ JSONファイルを選択して「検証実行」をクリックすると警告�
             welcome_btn_validate_desc: "MHLW標準への適合を確認",
             no_issues: "問題なし",
             no_output_path: "[ERROR] 出力パスを指定してください。",
+            btn_ok:            "OK",
+            btn_skip:          "→ スキップ",
+            btn_show_key:      "表示",
+            btn_hide_key:      "非表示",
+            msg_drop_rejected: "[WARN] このタブでサポートされていないファイル形式がドロップされました。",
+            lbl_filter_sds:    "SDS文書",
+            lbl_filter_json:   "JSONファイル",
+            lbl_filter_doc:    "文書ファイル",
+            lbl_filter_word:   "Wordファイル",
+            lbl_filter_txt:    "テキストファイル",
         },
     }
 }
@@ -534,6 +574,13 @@ pub struct SdsApp {
 
     // Settings tab
     settings_saved_msg: Option<String>,
+    settings_saved_at: Option<std::time::Instant>,
+
+    // API key visibility
+    show_api_key: bool,
+
+    // Keyboard shortcut: open file dialog
+    open_file_dialog_requested: bool,
 
     // Welcome screen
     show_welcome: bool,
@@ -577,6 +624,9 @@ impl SdsApp {
             val_results:  Vec::new(),
             val_pending:  Arc::new(Mutex::new(None)),
             settings_saved_msg: None,
+            settings_saved_at: None,
+            show_api_key: false,
+            open_file_dialog_requested: false,
             show_welcome: true,
         }
     }
@@ -624,19 +674,17 @@ impl SdsApp {
         let batch = !self.conv_inputs.is_empty();
 
         if batch {
-            // Batch mode: show file count + switch-to-single + clear button
+            // Batch mode: show file count + switch-to-single button
             ui.horizontal(|ui| {
                 ui.label(format!("{} {}", self.conv_inputs.len(), s.lbl_files));
                 if ui.button(s.btn_switch_single).clicked() {
                     self.conv_inputs.clear();
                 }
-                if ui.small_button(s.btn_clear_files).clicked() {
-                    self.conv_inputs.clear();
-                }
             });
             ui.horizontal(|ui| {
                 ui.label(s.lbl_output_dir);
-                ui.add_sized([260.0, 20.0], egui::TextEdit::singleline(&mut self.conv_output_dir));
+                let w = (ui.available_width() - 110.0).max(150.0);
+                ui.add(egui::TextEdit::singleline(&mut self.conv_output_dir).desired_width(w));
                 if ui.button(s.btn_browse_dir).clicked() {
                     if let Some(p) = rfd::FileDialog::new().pick_folder() {
                         self.conv_output_dir = p.to_string_lossy().into_owned();
@@ -647,10 +695,12 @@ impl SdsApp {
             // Single mode: text input + browse
             ui.horizontal(|ui| {
                 ui.label(s.lbl_input);
-                ui.add_sized([280.0, 20.0], egui::TextEdit::singleline(&mut self.conv_input));
+                let w = (ui.available_width() - 100.0).max(150.0);
+                ui.add(egui::TextEdit::singleline(&mut self.conv_input).desired_width(w)
+                    .hint_text("PDF / DOCX / URL..."));
                 if ui.button(s.btn_browse).clicked() {
                     if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("SDS", &["pdf", "docx", "xlsx", "txt", "html"])
+                        .add_filter(s.lbl_filter_sds, &["pdf", "docx", "xlsx", "txt", "html"])
                         .pick_file()
                     {
                         self.conv_input = path.to_string_lossy().into_owned();
@@ -666,9 +716,11 @@ impl SdsApp {
             });
             ui.horizontal(|ui| {
                 ui.label(s.lbl_output_json);
-                ui.add_sized([280.0, 20.0], egui::TextEdit::singleline(&mut self.conv_output));
+                let w = (ui.available_width() - 110.0).max(150.0);
+                ui.add(egui::TextEdit::singleline(&mut self.conv_output).desired_width(w)
+                    .hint_text("output.json"));
                 if ui.button(s.btn_save_to).clicked() {
-                    if let Some(p) = rfd::FileDialog::new().add_filter("JSON", &["json"]).save_file() {
+                    if let Some(p) = rfd::FileDialog::new().add_filter(s.lbl_filter_json, &["json"]).save_file() {
                         self.conv_output = p.to_string_lossy().into_owned();
                     }
                 }
@@ -679,7 +731,7 @@ impl SdsApp {
         ui.horizontal(|ui| {
             if ui.button(s.btn_browse_multi).clicked() {
                 if let Some(paths) = rfd::FileDialog::new()
-                    .add_filter("SDS", &["pdf", "docx", "xlsx", "txt", "html"])
+                    .add_filter(s.lbl_filter_sds, &["pdf", "docx", "xlsx", "txt", "html"])
                     .pick_files()
                 {
                     self.conv_inputs = paths;
@@ -830,7 +882,7 @@ impl SdsApp {
                 return;
             }
             if output.as_os_str().is_empty() {
-                self.log_push(s.no_output_path);
+                self.error_modal = Some(s.no_output_path.to_string());
                 busy.store(false, Ordering::Relaxed);
                 return;
             }
@@ -861,9 +913,11 @@ impl SdsApp {
 
         ui.horizontal(|ui| {
             ui.label(s.lbl_input_json);
-            ui.add_sized([280.0, 20.0], egui::TextEdit::singleline(&mut self.gen_input));
+            let w = (ui.available_width() - 100.0).max(150.0);
+            ui.add(egui::TextEdit::singleline(&mut self.gen_input).desired_width(w)
+                .hint_text("input.json"));
             if ui.button(s.btn_browse).clicked() {
-                if let Some(path) = rfd::FileDialog::new().add_filter("JSON", &["json"]).pick_file() {
+                if let Some(path) = rfd::FileDialog::new().add_filter(s.lbl_filter_json, &["json"]).pick_file() {
                     self.gen_input = path.to_string_lossy().into_owned();
                     if self.gen_output.is_empty() {
                         let ext = match self.gen_format {
@@ -880,12 +934,14 @@ impl SdsApp {
         });
         ui.horizontal(|ui| {
             ui.label(s.lbl_output_file);
-            ui.add_sized([280.0, 20.0], egui::TextEdit::singleline(&mut self.gen_output));
+            let w = (ui.available_width() - 110.0).max(150.0);
+            ui.add(egui::TextEdit::singleline(&mut self.gen_output).desired_width(w)
+                .hint_text("result.docx"));
             if ui.button(s.btn_save_to).clicked() {
                 let (desc, exts): (&str, Vec<&str>) = match self.gen_format {
-                    GenFormat::Docx => ("Word", vec!["docx"]),
-                    GenFormat::Html => ("HTML", vec!["html"]),
-                    GenFormat::Pdf  => ("PDF",  vec!["pdf"]),
+                    GenFormat::Docx => (s.lbl_filter_word, vec!["docx"]),
+                    GenFormat::Html => ("HTML",             vec!["html"]),
+                    GenFormat::Pdf  => ("PDF",              vec!["pdf"]),
                 };
                 if let Some(p) = rfd::FileDialog::new().add_filter(desc, &exts).save_file() {
                     self.gen_output = p.to_string_lossy().into_owned();
@@ -897,9 +953,10 @@ impl SdsApp {
         if self.gen_format == GenFormat::Docx {
             ui.horizontal(|ui| {
                 ui.label(s.lbl_template);
-                ui.add_sized([220.0, 20.0], egui::TextEdit::singleline(&mut self.gen_template));
+                let tw = (ui.available_width() - 120.0).max(120.0);
+                ui.add(egui::TextEdit::singleline(&mut self.gen_template).desired_width(tw));
                 if ui.button(s.btn_browse).clicked() {
-                    if let Some(p) = rfd::FileDialog::new().add_filter("Word", &["docx"]).pick_file() {
+                    if let Some(p) = rfd::FileDialog::new().add_filter(s.lbl_filter_word, &["docx"]).pick_file() {
                         self.gen_template = p.to_string_lossy().into_owned();
                     }
                 }
@@ -947,7 +1004,7 @@ impl SdsApp {
         }
         let gen_output = PathBuf::from(self.gen_output.trim());
         if gen_output.as_os_str().is_empty() {
-            self.log_push(s.no_output_path);
+            self.error_modal = Some(s.no_output_path.to_string());
             return;
         }
         let input    = PathBuf::from(self.gen_input.trim());
@@ -1000,17 +1057,15 @@ impl SdsApp {
                     self.val_inputs.clear();
                     self.val_results.clear();
                 }
-                if ui.small_button(s.btn_clear_files).clicked() {
-                    self.val_inputs.clear();
-                    self.val_results.clear();
-                }
             });
         } else {
             ui.horizontal(|ui| {
                 ui.label(s.lbl_input_json);
-                ui.add_sized([280.0, 20.0], egui::TextEdit::singleline(&mut self.val_input));
+                let w = (ui.available_width() - 100.0).max(150.0);
+                ui.add(egui::TextEdit::singleline(&mut self.val_input).desired_width(w)
+                    .hint_text("*.json"));
                 if ui.button(s.btn_browse).clicked() {
-                    if let Some(path) = rfd::FileDialog::new().add_filter("JSON", &["json"]).pick_file() {
+                    if let Some(path) = rfd::FileDialog::new().add_filter(s.lbl_filter_json, &["json"]).pick_file() {
                         self.val_input = path.to_string_lossy().into_owned();
                         self.val_results.clear();
                     }
@@ -1021,7 +1076,7 @@ impl SdsApp {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             if ui.button(s.btn_browse_multi).clicked() {
-                if let Some(paths) = rfd::FileDialog::new().add_filter("JSON", &["json"]).pick_files() {
+                if let Some(paths) = rfd::FileDialog::new().add_filter(s.lbl_filter_json, &["json"]).pick_files() {
                     self.val_inputs = paths;
                     self.val_results.clear();
                 }
@@ -1071,7 +1126,7 @@ impl SdsApp {
         } else if !self.val_input.is_empty() {
             vec![PathBuf::from(self.val_input.trim())]
         } else {
-            self.log_push(s.err_no_input);
+            self.error_modal = Some(s.err_no_input.to_string());
             busy.store(false, Ordering::Relaxed);
             return;
         };
@@ -1118,10 +1173,12 @@ impl SdsApp {
 
         ui.horizontal(|ui| {
             ui.label(s.lbl_extract_input);
-            ui.add_sized([280.0, 20.0], egui::TextEdit::singleline(&mut self.extract_input));
+            let ew = (ui.available_width() - 100.0).max(150.0);
+            ui.add(egui::TextEdit::singleline(&mut self.extract_input).desired_width(ew)
+                .hint_text("PDF / DOCX / URL..."));
             if ui.button(s.btn_browse).clicked() {
                 if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("Document", &["pdf", "docx", "xlsx", "txt", "html"])
+                    .add_filter(s.lbl_filter_doc, &["pdf", "docx", "xlsx", "txt", "html"])
                     .pick_file()
                 {
                     self.extract_input = path.to_string_lossy().into_owned();
@@ -1131,9 +1188,11 @@ impl SdsApp {
 
         ui.horizontal(|ui| {
             ui.label(s.lbl_extract_output);
-            ui.add_sized([280.0, 20.0], egui::TextEdit::singleline(&mut self.extract_output));
+            let ow = (ui.available_width() - 110.0).max(150.0);
+            ui.add(egui::TextEdit::singleline(&mut self.extract_output).desired_width(ow)
+                .hint_text("output.txt (optional)"));
             if ui.button(s.btn_save_to).clicked() {
-                if let Some(p) = rfd::FileDialog::new().add_filter("Text", &["txt"]).save_file() {
+                if let Some(p) = rfd::FileDialog::new().add_filter(s.lbl_filter_txt, &["txt"]).save_file() {
                     self.extract_output = p.to_string_lossy().into_owned();
                 }
             }
@@ -1233,7 +1292,7 @@ impl SdsApp {
 
         // B6: onboarding banner when no key is saved
         if self.config.api_key.is_empty() {
-            egui::Frame::none()
+            egui::Frame::NONE
                 .fill(egui::Color32::from_rgb(55, 45, 0))
                 .inner_margin(egui::Margin::symmetric(8, 6))
                 .corner_radius(4_u8)
@@ -1287,8 +1346,15 @@ impl SdsApp {
             ui.end_row();
 
             ui.label(s.lbl_api_key);
-            ui.add(egui::TextEdit::singleline(&mut self.config.api_key)
-                .password(true).desired_width(240.0));
+            ui.horizontal(|ui| {
+                ui.add(egui::TextEdit::singleline(&mut self.config.api_key)
+                    .password(!self.show_api_key)
+                    .desired_width(200.0));
+                let toggle_label = if self.show_api_key { s.btn_hide_key } else { s.btn_show_key };
+                if ui.small_button(toggle_label).clicked() {
+                    self.show_api_key = !self.show_api_key;
+                }
+            });
             ui.end_row();
 
             // B4: API key link per provider
@@ -1345,8 +1411,15 @@ impl SdsApp {
                 Ok(_)  => {
                     self.conv_enrich = self.config.enrich;
                     self.settings_saved_msg = Some(s.msg_saved.to_string());
+                    self.settings_saved_at  = Some(std::time::Instant::now());
+                    // M9: schedule repaint so the auto-clear fires even when the user is idle
+                    ui.ctx().request_repaint_after(Duration::from_secs(3) + Duration::from_millis(50));
                 }
-                Err(e) => self.settings_saved_msg = Some(format!("Error: {e}")),
+                Err(e) => {
+                    self.settings_saved_msg = Some(format!("Error: {e}"));
+                    self.settings_saved_at  = Some(std::time::Instant::now());
+                    ui.ctx().request_repaint_after(Duration::from_secs(3) + Duration::from_millis(50));
+                }
             }
         }
         if let Some(msg) = &self.settings_saved_msg {
@@ -1452,7 +1525,7 @@ impl SdsApp {
             });
 
             ui.add_space(28.0);
-            if ui.small_button("→ skip").clicked() {
+            if ui.small_button(s.btn_skip).clicked() {
                 self.show_welcome = false;
             }
         });
@@ -1465,9 +1538,9 @@ impl SdsApp {
 
 impl eframe::App for SdsApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Repaint while busy
+        // Repaint while busy (250ms — background tasks call request_repaint() on completion)
         if self.is_busy() {
-            ctx.request_repaint_after(Duration::from_millis(100));
+            ctx.request_repaint_after(Duration::from_millis(250));
         }
 
         // Drain async validate results
@@ -1495,17 +1568,80 @@ impl eframe::App for SdsApp {
             }
         }
 
-        // B11: Escape key closes modals
+        // M9: Auto-clear "Saved" confirmation after 3 seconds
+        if let Some(t) = self.settings_saved_at {
+            if t.elapsed() >= Duration::from_secs(3) {
+                self.settings_saved_msg = None;
+                self.settings_saved_at  = None;
+            }
+        }
+
+        // Keyboard shortcuts (H3)
+        // Escape: close modals (egui::Modal handles its own Escape, but keep for About/Manual)
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-            if self.error_modal.is_some() { self.error_modal = None; }
-            else if self.show_manual { self.show_manual = false; }
+            if self.show_manual { self.show_manual = false; }
             else if self.show_about { self.show_about = false; }
+        }
+        // Ctrl+Q: quit
+        if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Q)) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+        // F1: open manual
+        if ctx.input(|i| i.key_pressed(egui::Key::F1)) {
+            self.show_manual = true;
+        }
+        // Ctrl+O: open file dialog (handled in ui() where tab context is available)
+        if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::O))
+            && !self.is_busy() && !self.show_welcome
+        {
+            self.open_file_dialog_requested = true;
         }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         let s = self.s();
+
+        // --- Ctrl+O: open file dialog for the current tab (H3) ---
+        if self.open_file_dialog_requested && !self.show_welcome {
+            self.open_file_dialog_requested = false;
+            match self.tab {
+                Tab::Convert => {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter(s.lbl_filter_sds, &["pdf", "docx", "xlsx", "txt", "html"])
+                        .pick_file()
+                    {
+                        self.conv_input = path.to_string_lossy().into_owned();
+                    }
+                }
+                Tab::Generate => {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter(s.lbl_filter_json, &["json"])
+                        .pick_file()
+                    {
+                        self.gen_input = path.to_string_lossy().into_owned();
+                    }
+                }
+                Tab::Validate => {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter(s.lbl_filter_json, &["json"])
+                        .pick_file()
+                    {
+                        self.val_input = path.to_string_lossy().into_owned();
+                        self.val_results.clear();
+                    }
+                }
+                Tab::Extract => {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter(s.lbl_filter_doc, &["pdf", "docx", "xlsx", "txt", "html"])
+                        .pick_file()
+                    {
+                        self.extract_input = path.to_string_lossy().into_owned();
+                    }
+                }
+                Tab::Settings => {}
+            }
+        }
 
         // --- Drag & drop ---
         let hovered = ctx.input(|i| !i.raw.hovered_files.is_empty());
@@ -1524,36 +1660,59 @@ impl eframe::App for SdsApp {
                     );
                 });
         }
+        // D&D: define accepted extensions per tab (L2)
+        let accepted_exts: &[&str] = match self.tab {
+            Tab::Convert  => &["pdf", "docx", "xlsx", "txt", "html"],
+            Tab::Generate => &["json"],
+            Tab::Validate => &["json"],
+            Tab::Extract  => &["pdf", "docx", "xlsx", "txt", "html"],
+            Tab::Settings => &[],
+        };
         let dropped: Vec<PathBuf> = ctx.input(|i| {
             i.raw.dropped_files.iter().filter_map(|f| f.path.clone()).collect()
         });
         if !dropped.is_empty() {
-            if self.show_welcome {
-                self.show_welcome = false;
-                // tab stays Convert — drop routing below handles placement
+            // L2: Validate extensions and warn on rejection
+            let (valid, rejected): (Vec<_>, Vec<_>) = dropped.into_iter().partition(|p| {
+                p.extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| accepted_exts.contains(&e.to_ascii_lowercase().as_str()))
+                    .unwrap_or(false)
+            });
+            if !rejected.is_empty() {
+                self.log_push(s.msg_drop_rejected);
             }
-            match self.tab {
-                Tab::Convert => {
-                    if dropped.len() == 1 && self.conv_inputs.is_empty() {
-                        self.conv_input = dropped[0].to_string_lossy().into_owned();
-                    } else {
-                        self.conv_inputs.extend(dropped);
+            if !valid.is_empty() {
+                if self.show_welcome {
+                    self.show_welcome = false;
+                    // tab stays Convert — drop routing below handles placement
+                }
+                match self.tab {
+                    Tab::Convert => {
+                        if valid.len() == 1 && self.conv_inputs.is_empty() {
+                            self.conv_input = valid[0].to_string_lossy().into_owned();
+                        } else {
+                            self.conv_inputs.extend(valid);
+                        }
+                    }
+                    Tab::Generate => {
+                        if let Some(p) = valid.first() {
+                            self.gen_input = p.to_string_lossy().into_owned();
+                        }
+                    }
+                    Tab::Validate => {
+                        self.val_inputs.extend(valid);
+                    }
+                    Tab::Extract => {
+                        if let Some(p) = valid.first() {
+                            self.extract_input = p.to_string_lossy().into_owned();
+                        }
+                    }
+                    Tab::Settings => {
+                        // L3: Inform user that Settings tab doesn't accept drops
+                        self.log_push(s.msg_drop_rejected);
                     }
                 }
-                Tab::Generate => {
-                    if let Some(p) = dropped.first() {
-                        self.gen_input = p.to_string_lossy().into_owned();
-                    }
-                }
-                Tab::Validate => {
-                    self.val_inputs.extend(dropped);
-                }
-                Tab::Extract => {
-                    if let Some(p) = dropped.first() {
-                        self.extract_input = p.to_string_lossy().into_owned();
-                    }
-                }
-                Tab::Settings => {}
             }
         }
 
@@ -1602,16 +1761,17 @@ impl eframe::App for SdsApp {
                 }
             });
             ui.separator();
-            let lines = self.log.lock().map(|v| v.clone()).unwrap_or_default();
-            egui::ScrollArea::vertical().stick_to_bottom(true).max_height(160.0).show(ui, |ui| {
-                for line in &lines {
-                    let color = if line.starts_with("[ERROR]") { egui::Color32::RED }
-                        else if line.starts_with("WARN") || line.starts_with("CAS:") { egui::Color32::YELLOW }
-                        else if line.starts_with("[OK]") || line.starts_with("Saved") || line.starts_with("OK") || line.starts_with("[DONE]") || line.starts_with("✓") { egui::Color32::GREEN }
-                        else { ui.visuals().text_color() };
-                    ui.colored_label(color, line);
-                }
-            });
+            if let Ok(lines) = self.log.lock() {
+                egui::ScrollArea::vertical().stick_to_bottom(true).show(ui, |ui| {
+                    for line in lines.iter() {
+                        let color = if line.starts_with("[ERROR]") { egui::Color32::RED }
+                            else if line.starts_with("WARN") || line.starts_with("CAS:") { egui::Color32::YELLOW }
+                            else if line.starts_with("[OK]") || line.starts_with("Saved") || line.starts_with("OK") || line.starts_with("[DONE]") || line.starts_with("✓") { egui::Color32::GREEN }
+                            else { ui.visuals().text_color() };
+                        ui.colored_label(color, line);
+                    }
+                });
+            }
         });
         } // end if !self.show_welcome (log panel)
 
@@ -1633,37 +1793,46 @@ impl eframe::App for SdsApp {
             }
         });
 
-        // --- Error modal (B1, B11) ---
+        // --- Error modal (H4: true modal with backdrop) ---
         if let Some(ref msg) = self.error_modal.clone() {
-            egui::Window::new("Error")
-                .collapsible(false)
-                .resizable(false)
-                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            let s = self.s();
+            let modal_resp = egui::Modal::new(egui::Id::new("error_modal_dlg"))
                 .show(&ctx, |ui| {
+                    ui.set_min_width(280.0);
+                    ui.heading("⚠");
+                    ui.add_space(4.0);
                     ui.label(msg.as_str());
                     ui.add_space(8.0);
-                    if ui.button("OK").clicked() {
-                        self.error_modal = None;
-                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.button(s.btn_ok)
+                    }).inner.clicked()
                 });
+            if modal_resp.should_close() || modal_resp.inner {
+                self.error_modal = None;
+            }
         }
 
-        // --- About dialog (B14) ---
+        // --- About dialog ---
         if self.show_about {
             let s = self.s();
-            egui::Window::new(s.about_title)
-                .collapsible(false)
-                .resizable(false)
-                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            let modal_resp = egui::Modal::new(egui::Id::new("about_dlg"))
                 .show(&ctx, |ui| {
+                    ui.set_min_width(280.0);
+                    ui.heading(s.about_title);
+                    ui.add_space(4.0);
                     ui.label(concat!("sds-converter v", env!("CARGO_PKG_VERSION")));
                     ui.add_space(4.0);
                     ui.label(s.about_desc);
                     ui.add_space(4.0);
                     ui.hyperlink_to("GitHub", "https://github.com/kent-tokyo/sds-converter");
                     ui.add_space(8.0);
-                    if ui.button("OK").clicked() { self.show_about = false; }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.button(s.btn_ok)
+                    }).inner.clicked()
                 });
+            if modal_resp.should_close() || modal_resp.inner {
+                self.show_about = false;
+            }
         }
 
         // --- Manual window ---
@@ -1679,7 +1848,7 @@ impl eframe::App for SdsApp {
                         ui.label(s.manual_body);
                     });
                     ui.add_space(8.0);
-                    if ui.button("OK").clicked() { self.show_manual = false; }
+                    if ui.button(s.btn_ok).clicked() { self.show_manual = false; }
                 });
         }
     }
@@ -1782,7 +1951,8 @@ pub fn run_gui() -> anyhow::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("sds-converter")
-            .with_inner_size([820.0, 640.0]),
+            .with_inner_size([820.0, 640.0])
+            .with_min_inner_size([640.0, 480.0]),
         ..Default::default()
     };
     eframe::run_native(
