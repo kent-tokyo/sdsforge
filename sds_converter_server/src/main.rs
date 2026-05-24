@@ -277,13 +277,16 @@ async fn to_json(
     };
     let backend = build_backend(provider, api_key, llm_config);
 
-    let (sds, warnings) = convert_bytes_to_json(&data, &filename, &backend, &config).await?;
+    let (sds, mut warnings) = convert_bytes_to_json(&data, &filename, &backend, &config).await?;
 
     if q.enrich.unwrap_or(false) {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()?;
-        enrich_composition(&sds, &client).await;
+        let enrich_warns = enrich_composition(&sds, &client).await;
+        for w in &enrich_warns {
+            warnings.push(w.to_string());
+        }
     }
 
     let warnings_str = warnings.join("; ");

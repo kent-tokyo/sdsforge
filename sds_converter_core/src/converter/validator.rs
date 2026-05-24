@@ -223,7 +223,11 @@ pub(crate) fn validate_cas_format(cas: &str) -> bool {
     {
         return false;
     }
-    let check_digit: u32 = c.chars().next().unwrap().to_digit(10).unwrap();
+    // Both unwraps are guaranteed by the format check above (c.len()==1, c is ASCII digit).
+    let check_digit: u32 = c.chars().next()
+        .expect("c has length 1 after format check")
+        .to_digit(10)
+        .expect("c is an ASCII digit after format check");
     // Build digit string excluding check digit, then compute weighted sum
     let digits: Vec<u32> = a
         .chars()

@@ -110,11 +110,7 @@ pub async fn extract_text_from_url_limited(url: &str, max_chars: usize) -> Resul
 
     const MAX_BODY_BYTES: usize = 50 * 1024 * 1024; // 50 MB
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
-        .build()
-        .map_err(|e| SdsError::Extract(e.to_string()))?;
-    let response = client
+    let response = shared_http_client()
         .get(url)
         .send()
         .await
@@ -448,15 +444,40 @@ pub fn extract_text_from_xlsx(path: &Path) -> Result<String, SdsError> {
     Ok(out)
 }
 
+/// Returns lazily-initialised, shared CSS selectors for HTML extraction.
+fn html_selectors() -> (&'static scraper::Selector, &'static scraper::Selector, &'static scraper::Selector) {
+    use scraper::Selector;
+    use std::sync::OnceLock;
+    static ROW:  OnceLock<Selector> = OnceLock::new();
+    static CELL: OnceLock<Selector> = OnceLock::new();
+    static BODY: OnceLock<Selector> = OnceLock::new();
+    (
+        ROW.get_or_init(||  Selector::parse("tr").expect("static CSS selector is valid")),
+        CELL.get_or_init(|| Selector::parse("td, th").expect("static CSS selector is valid")),
+        BODY.get_or_init(|| Selector::parse("body").expect("static CSS selector is valid")),
+    )
+}
+
+/// Returns a long-lived shared `reqwest::Client` for URL fetches.
+/// Avoids creating a new client (and TLS context) on every call.
+fn shared_http_client() -> &'static reqwest::Client {
+    use std::sync::OnceLock;
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(60))
+            .build()
+            .expect("failed to build shared HTTP client")
+    })
+}
+
 /// Extract visible text from an HTML string, skipping script/style/nav elements.
 /// Table cells are tab-separated; rows are newline-separated.
 pub fn extract_text_from_html_str(html: &str) -> String {
-    use scraper::{Html, Selector};
+    use scraper::Html;
 
     let document = Html::parse_document(html);
-    let row_sel = Selector::parse("tr").unwrap();
-    let cell_sel = Selector::parse("td, th").unwrap();
-    let body_sel = Selector::parse("body").unwrap();
+    let (row_sel, cell_sel, body_sel) = html_selectors();
 
     let body = match document.select(&body_sel).next() {
         Some(b) => b,

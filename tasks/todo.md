@@ -123,4 +123,4 @@
 ## 残タスク
 - [ ] `cargo publish` で実際に公開（core → CLI の順）— crates.io 登録済み後に実施
 - [ ] generator.rs: 表レイアウトDOCX（Section 3 Composition 4列表、Section 2 H/P 2列表、Section 9 物性 2列表）
-- [ ] harumi 対応: HTML→PDF 純Rust生成（harumi の render_html_to_pdf API 追加待ち）
+- [x] harumi 対応: HTML→PDF 純Rust生成 — harumi v0.4.0 の `html` feature で `render_html_to_pdf` を使用（`converter/pdf.rs` 実装済み）

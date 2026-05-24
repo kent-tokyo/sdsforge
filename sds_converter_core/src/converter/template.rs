@@ -5,6 +5,8 @@ use std::path::Path;
 use crate::error::SdsError;
 use crate::schema::SdsRoot;
 
+use tracing::warn;
+
 const MAX_TEMPLATE_BYTES: u64 = 50 * 1024 * 1024; // 50 MB
 const MAX_ENTRY_BYTES: u64 = 100 * 1024 * 1024; // 100 MB per ZIP entry
 
@@ -179,9 +181,8 @@ fn apply_substitutions(xml: &str, values: &HashMap<String, String>) -> String {
             if let Some(value) = values.get(key) {
                 out.push_str(&escape_xml(value));
             } else {
-                out.push_str("{{");
-                out.push_str(key);
-                out.push_str("}}");
+                warn!(key, "DOCX template placeholder not found in SDS data — leaving blank");
+                // Leave blank rather than emitting a raw "{{key}}" that confuses end-users.
             }
             rest = &rest[end + 2..];
         } else {

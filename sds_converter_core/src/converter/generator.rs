@@ -83,13 +83,14 @@ pub(crate) fn section_name(section_idx: usize, lang: Language) -> &'static str {
 // DOCX generation
 // ---------------------------------------------------------------------------
 
+// Verify the parallel arrays are in sync at compile time.
+const _: () = assert!(
+    SECTION_NAMES.len() == SECTION_KEYS.len(),
+    "SECTION_NAMES and SECTION_KEYS must have the same length"
+);
+
 /// Generates a JIS Z 7253-compliant 16-section .docx file from SDS data.
 pub fn generate_docx(sds: &SdsRoot, output_path: &Path, lang: Language) -> Result<(), SdsError> {
-    assert_eq!(
-        SECTION_NAMES.len(),
-        SECTION_KEYS.len(),
-        "SECTION_NAMES and SECTION_KEYS must have the same length"
-    );
     let title = DOCUMENT_TITLE[lang_index(lang)];
     let root_val = serde_json::to_value(sds)
         .map_err(|e| SdsError::Docx(format!("serialize error: {e}")))?;
