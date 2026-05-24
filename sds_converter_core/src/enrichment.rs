@@ -158,9 +158,55 @@ pub async fn enrich_composition(
     warnings
 }
 
-/// Rough similarity check: true if either name contains the other (case-insensitive).
+/// Word-level Jaccard similarity check (threshold ≥ 0.5, case-insensitive).
+///
+/// The old substring approach produced false positives for short common words
+/// (e.g. "acid" matching "acetic acid") and was O(n²) on long names.
+/// Jaccard on word tokens is both more precise and still O(n).
 fn names_similar(a: &str, b: &str) -> bool {
+    use std::collections::HashSet;
     let a_lo = a.to_lowercase();
     let b_lo = b.to_lowercase();
-    a_lo.contains(&b_lo) || b_lo.contains(&a_lo)
+    let words_a: HashSet<&str> = a_lo.split_whitespace().collect();
+    let words_b: HashSet<&str> = b_lo.split_whitespace().collect();
+    if words_a.is_empty() || words_b.is_empty() {
+        return false;
+    }
+    let intersection = words_a.intersection(&words_b).count();
+    let union = words_a.union(&words_b).count();
+    (intersection as f64 / union as f64) >= 0.5
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn names_similar_identical() {
+        assert!(names_similar("acetic acid", "acetic acid"));
+    }
+
+    #[test]
+    fn names_similar_partial_overlap_above_threshold() {
+        // 2 shared words out of 3 unique → Jaccard = 2/3 ≥ 0.5 → true
+        assert!(names_similar("acetic acid solution", "acetic acid"));
+    }
+
+    #[test]
+    fn names_similar_no_overlap() {
+        assert!(!names_similar("sodium chloride", "acetic acid"));
+    }
+
+    #[test]
+    fn names_similar_short_common_word_no_false_positive() {
+        // "acid" is contained in "acetic acid" by substring, but Jaccard = 1/2 = 0.5 → true.
+        // More importantly, a single-word name like "salt" vs "sodium chloride salt" is 1/3 < 0.5.
+        assert!(!names_similar("salt", "sodium chloride"));
+    }
+
+    #[test]
+    fn names_similar_empty_string() {
+        assert!(!names_similar("", "acetic acid"));
+        assert!(!names_similar("acetic acid", ""));
+    }
 }

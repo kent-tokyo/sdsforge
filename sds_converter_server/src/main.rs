@@ -16,6 +16,7 @@
 //! - `POST /api/to-html`   — JSON body (SdsRoot) → HTML
 //! - `POST /api/validate`  — JSON body (SdsRoot) → warning list
 
+use constant_time_eq::constant_time_eq;
 use axum::{
     body::Body,
     extract::{DefaultBodyLimit, Multipart, Query, State},
@@ -99,7 +100,7 @@ async fn require_auth(
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "));
     match auth {
-        Some(t) if t == token.as_str() => Ok(next.run(req).await),
+        Some(t) if constant_time_eq(t.as_bytes(), token.as_bytes()) => Ok(next.run(req).await),
         _ => Err((StatusCode::UNAUTHORIZED, "Unauthorized")),
     }
 }
@@ -428,8 +429,8 @@ async fn main() -> anyhow::Result<()> {
             axum::http::header::AUTHORIZATION,
         ]);
 
-    // 512 MB upload limit
-    let body_limit = DefaultBodyLimit::max(512 * 1024 * 1024);
+    // 50 MB upload limit — sufficient for any real SDS document.
+    let body_limit = DefaultBodyLimit::max(50 * 1024 * 1024);
 
     // Protected routes — require Bearer token auth.
     let protected = Router::new()

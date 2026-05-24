@@ -59,6 +59,7 @@ sds-converter
 - **多言語対応**: `ja` / `en` / `zh-CN` / `zh-TW` の入出力に対応。
 - **LLMバックエンドを拡張可能**: Anthropic Claude、OpenAI GPT、Google Gemini、Mistral、Groq、Cohere の実装を同梱。`LlmBackend`トレイトを実装すれば任意のLLMを使用可能。
 - **ライブラリ + CLI**: Rustライブラリとして組み込み利用、またはCLIとして単独利用できます。
+- **セキュリティ強化済みRESTサーバー**: タイミング攻撃対策済みBearer token認証（`constant_time_eq`）、IPv6フルカバレッジのSSRF対策（`fc00::/7`・`fe80::/10`・IPv4マップアドレス）、リダイレクト無効化HTTPクライアント、50MBアップロード上限。
 
 ---
 

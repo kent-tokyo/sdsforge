@@ -131,6 +131,23 @@
   - `route_layer()` + `merge()` で protected/public を分離し、health は認証不要に
   - AWS LWA（Lambda Web Adapter）/ ロードバランサのヘルスチェックが通るようになった
 
+## Phase 12: セキュリティ監査・バグ修正 ✅
+- [x] **SEC-H1** `server/main.rs`: Bearer token比較を `constant_time_eq` によるタイミング攻撃対策比較に変更
+- [x] **SEC-H2** `extractor.rs`: `shared_http_client` に `.redirect(Policy::none())` を追加 — リダイレクト経由SSRF防止
+- [x] **SEC-H3** `server/main.rs`: `DefaultBodyLimit` を512MB → 50MBに削減（実際のSDS文書に十分な上限）
+- [x] **SEC-M1** `extractor.rs`: `is_private_host` のIPv6ブランチを拡張
+  - `fc00::/7`（ULAユニークローカル）
+  - `fe80::/10`（リンクローカル）
+  - `::ffff:` IPv4マップアドレス（プライベート/ループバック）
+- [x] **H1** `llm.rs:660` / `llm.rs:926`: リトライ時の `lenient_deserialize` 失敗が `if let Ok` で無音に捨てられていたバグ修正 — `match` + `Err(e) => tracing::warn!` に変更（テキスト抽出・Vision両パス）
+- [x] **M1** `llm.rs`: `repair_json` の盲目的 `str::replace` をバイト列ステートマシン `remove_trailing_commas` に置換
+  - 文字列内の `,}` パターンを保持（例: `"ends here,}"` が壊れなくなった）
+  - 不動点ループでネスト複合トレーリングカンマも解消
+- [x] **H2** `enrichment.rs`: `names_similar` を部分文字列チェックからJaccardワード重複（閾値≥0.5）に変更 — 短い汎用語による誤検知を排除
+- [x] `llm.rs`: `section!` マクロのスキーマ不一致警告に失敗値の先頭200文字を追加
+- [x] `server/Cargo.toml`: `constant_time_eq = "0.3"` 追加
+- [x] 新規ユニットテスト8件追加（`repair_json` 3件、`names_similar` 5件）— 全44テストPASS
+
 ## 残タスク
 - [x] `cargo publish` — sds-converter-core 0.3.1 / sds-converter 0.2.1 公開済み
 - [ ] generator.rs: 表レイアウトDOCX（Section 3 Composition 4列表、Section 2 H/P 2列表、Section 9 物性 2列表）

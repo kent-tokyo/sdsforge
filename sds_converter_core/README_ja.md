@@ -14,9 +14,10 @@
 - **JSON → DOCX**: 標準JSONからJIS Z 7253準拠の16項目Word文書を生成します。言語別の項目見出しに対応。
 - **多言語対応**: `ja` / `en` / `zh-CN` / `zh-TW` の入出力に対応。
 - **LLMバックエンドを拡張可能**: Anthropic Claude、OpenAI GPT、Google Gemini、Mistral、Groq、Cohere の実装を同梱。`LlmBackend`トレイトを実装すれば任意のLLMを使用可能。
-- **SSRF対策**: URLフェッチはプライベート/ループバック/リンクローカル/メタデータIPを自動拒否
+- **SSRF対策**: URLフェッチはプライベート/ループバック/リンクローカル/メタデータIPを自動拒否。リダイレクト無効化、IPv6フルカバレッジ（`fc00::/7` ULA、`fe80::/10` リンクローカル、`::ffff:` IPv4マップアドレス）
 - **HTML/URL入力対応**: `.html`/`.htm` ファイルおよび `http(s)://` URLを入力として受け付け
 - **GHS/CASバリデーション**: GHS Rev.10準拠のH-code (H200–H420)・P-code (P101–P503) 検証、CAS番号フォーマット＋チェックデジット検証、PubChem照合（`enrich_composition`）
+- **堅牢なJSONリペア**: 文字列内コンテキストを保持するトレーリングカンマ除去（例: `"ends here,}"` を破壊しない）
 
 ---
 

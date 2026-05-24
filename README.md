@@ -59,6 +59,7 @@ Settings are saved to `~/.config/sds-converter/config.toml` and restored on next
 - **Multilingual**: Handles source documents in `ja` / `en` / `zh-CN` / `zh-TW`.
 - **Extensible LLM backend**: Ships with Anthropic Claude, OpenAI GPT, Google Gemini, Mistral, Groq, and Cohere backends. Bring your own by implementing `LlmBackend`.
 - **Library + CLI**: Use as a Rust library or as a standalone command-line tool.
+- **Security hardened REST server**: Bearer token auth with timing-safe comparison (`constant_time_eq`), SSRF protection with full IPv6 coverage (`fc00::/7`, `fe80::/10`, IPv4-mapped), redirect-disabled HTTP client, and 50 MB upload cap.
 
 ---
 

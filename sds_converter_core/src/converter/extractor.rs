@@ -85,7 +85,27 @@ fn is_private_host(host: &str) -> bool {
                 || v4.is_unspecified()  // 0.0.0.0
                 || v4.is_broadcast()
             }
-            IpAddr::V6(v6) => v6.is_loopback() || v6.is_unspecified(),
+            IpAddr::V6(v6) => {
+                v6.is_loopback()
+                    || v6.is_unspecified()
+                    // fc00::/7  — unique-local (ULA)
+                    || v6.segments()[0] & 0xfe00 == 0xfc00
+                    // fe80::/10 — link-local
+                    || v6.segments()[0] & 0xffc0 == 0xfe80
+                    // ::ffff:0:0/96 — IPv4-mapped; check the embedded IPv4 address
+                    || {
+                        let segs = v6.segments();
+                        segs[0] == 0 && segs[1] == 0 && segs[2] == 0
+                            && segs[3] == 0 && segs[4] == 0 && segs[5] == 0xffff
+                            && {
+                                let v4 = std::net::Ipv4Addr::new(
+                                    (segs[6] >> 8) as u8, segs[6] as u8,
+                                    (segs[7] >> 8) as u8, segs[7] as u8,
+                                );
+                                v4.is_loopback() || v4.is_private() || v4.is_link_local()
+                            }
+                    }
+            }
         };
     }
     // Block well-known metadata hostnames
@@ -512,6 +532,8 @@ fn shared_http_client() -> &'static reqwest::Client {
     CLIENT.get_or_init(|| {
         reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(60))
+            // Disable automatic redirect following to prevent SSRF via redirect chains.
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .expect("failed to build shared HTTP client")
     })

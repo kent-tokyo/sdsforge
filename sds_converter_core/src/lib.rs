@@ -45,20 +45,18 @@ pub mod language;
 pub mod schema;
 
 pub use converter::{
-    convert_bytes_to_json, convert_from_json, convert_from_template,
+    AnthropicBackend, AnyBackend, ConvertConfig, LlmBackend, LlmConfig, OpenAiCompatBackend,
+    build_any_backend, convert_bytes_to_json, convert_from_json, convert_from_template,
     convert_pdf_to_json_vision, convert_to_json, convert_url_to_json,
     extract_sds_from_pdf_vision, fill_template, openai_compat_url,
-    AnthropicBackend, AnyBackend, build_any_backend,
-    LlmBackend, LlmConfig, ConvertConfig, OpenAiCompatBackend,
 };
 pub use converter::extractor::{
     detect_format_str, detect_language_from_file, detect_language_from_url,
     extract_text, extract_text_from_url, extract_text_limited,
 };
-pub use language::detect_language;
 pub use converter::validator::validate;
-pub use enrichment::{enrich_composition, lookup_cas, CasInfo, CasWarning};
+pub use enrichment::{CasInfo, CasWarning, enrich_composition, lookup_cas};
 pub use error::SdsError;
 pub use ghs_codes::{h_code_description, is_valid_h_code, is_valid_p_code, p_code_description};
-pub use language::Language;
+pub use language::{detect_language, Language};
 pub use schema::SdsRoot;

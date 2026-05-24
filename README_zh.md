@@ -59,6 +59,7 @@ sds-converter
 - **多语言支持**: 支持 `ja` / `en` / `zh-CN` / `zh-TW` 的输入和输出。
 - **可扩展LLM后端**: 内置Anthropic Claude、OpenAI GPT、Google Gemini、Mistral、Groq、Cohere实现。通过实现 `LlmBackend` trait可接入任意LLM。
 - **库 + CLI**: 可作为Rust库嵌入使用，也可作为独立命令行工具使用。
+- **安全加固REST服务器**: 使用 `constant_time_eq` 实现抗时序攻击的Bearer token认证、完整IPv6覆盖的SSRF防护（`fc00::/7`、`fe80::/10`、IPv4映射地址）、禁用重定向的HTTP客户端，以及50 MB上传限制。
 
 ---
 

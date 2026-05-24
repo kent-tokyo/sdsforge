@@ -260,23 +260,82 @@ fn strip_code_fences(text: &str) -> String {
     text.strip_suffix("```").unwrap_or(text).trim().to_string()
 }
 
+/// Remove trailing commas before `}` / `]` without corrupting string values.
+///
+/// Uses a byte-level state machine to track whether we are inside a JSON string
+/// (honoring `\"` escape sequences), so a value like `"ends here,}"` is preserved.
+fn remove_trailing_commas(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let len = bytes.len();
+    let mut out: Vec<u8> = Vec::with_capacity(len);
+    let mut i = 0;
+    let mut in_string = false;
+    while i < len {
+        let b = bytes[i];
+        match (in_string, b) {
+            // Inside a string: pass escape sequences through unchanged.
+            (true, b'\\') => {
+                out.push(b);
+                i += 1;
+                if i < len {
+                    out.push(bytes[i]);
+                    i += 1;
+                }
+            }
+            // Closing quote.
+            (true, b'"') => {
+                in_string = false;
+                out.push(b);
+                i += 1;
+            }
+            // Any other byte inside a string.
+            (true, _) => {
+                out.push(b);
+                i += 1;
+            }
+            // Opening quote outside a string.
+            (false, b'"') => {
+                in_string = true;
+                out.push(b);
+                i += 1;
+            }
+            // Comma outside a string: emit only if the next non-whitespace byte is
+            // not `}` or `]` (trailing-comma elimination).
+            (false, b',') => {
+                let mut j = i + 1;
+                while j < len && matches!(bytes[j], b' ' | b'\t' | b'\n' | b'\r') {
+                    j += 1;
+                }
+                if j < len && (bytes[j] == b'}' || bytes[j] == b']') {
+                    i += 1; // skip the trailing comma
+                } else {
+                    out.push(b);
+                    i += 1;
+                }
+            }
+            // All other bytes outside a string.
+            (false, _) => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    // SAFETY: we only removed ASCII bytes (`,`) from valid UTF-8 input, so the
+    // output is still valid UTF-8.
+    unsafe { String::from_utf8_unchecked(out) }
+}
+
 /// Attempt lightweight repair of truncated or malformed JSON before parsing.
 ///
 /// Handles:
 /// - Trailing commas before `}` or `]` (common in LLM output)
 /// - Unclosed braces/brackets due to context-limit truncation
 fn repair_json(s: &str) -> String {
+    // Run the string-aware trailing-comma remover to a fixpoint (handles
+    // pathological inputs like `[1,2,,]` that need multiple passes).
     let mut s = s.to_string();
     for _ in 0..10 {
-        let next = s
-            .replace(",}", "}")
-            .replace(",]", "]")
-            .replace(", }", "}")
-            .replace(", ]", "]")
-            .replace(",\n}", "}")
-            .replace(",\n]", "]")
-            .replace(",\r\n}", "}")
-            .replace(",\r\n]", "]");
+        let next = remove_trailing_commas(&s);
         if next == s { break; }
         s = next;
     }
@@ -657,9 +716,12 @@ pub async fn extract_sds_from_text<B: LlmBackend + Sync>(
         match backend.complete(&system, &user_retry).await {
             Ok(raw_retry) => {
                 tracing::trace!("Retry JSON:\n{raw_retry}");
-                if let Ok((retry_sds, retry_skipped)) = lenient_deserialize(&raw_retry) {
-                    sds = merge_sds(sds, retry_sds);
-                    all_skipped = retry_skipped;
+                match lenient_deserialize(&raw_retry) {
+                    Ok((retry_sds, retry_skipped)) => {
+                        sds = merge_sds(sds, retry_sds);
+                        all_skipped = retry_skipped;
+                    }
+                    Err(e) => tracing::warn!("Retry JSON parse failed: {e}"),
                 }
             }
             Err(e) => tracing::warn!("LLM retry call failed: {e}"),
@@ -703,9 +765,13 @@ fn lenient_deserialize(json_str: &str) -> Result<(SdsRoot, Vec<String>), SdsErro
     macro_rules! section {
         ($key:literal, $type:ty) => {
             obj.remove($key).and_then(|v| {
+                let preview: String = v.to_string().chars().take(200).collect();
                 serde_json::from_value::<$type>(v)
                     .map_err(|e| {
-                        warn!("Section '{}' skipped (schema mismatch): {}", $key, e);
+                        warn!(
+                            "Section '{}' skipped (schema mismatch): {} | value preview: {}",
+                            $key, e, preview
+                        );
                         skipped.push($key);
                     })
                     .ok()
@@ -923,9 +989,12 @@ pub async fn extract_sds_from_pdf_vision(
         {
             Ok(raw_retry) => {
                 tracing::trace!("Vision retry JSON:\n{raw_retry}");
-                if let Ok((retry_sds, retry_skipped)) = lenient_deserialize(&raw_retry) {
-                    sds = merge_sds(sds, retry_sds);
-                    all_skipped = retry_skipped;
+                match lenient_deserialize(&raw_retry) {
+                    Ok((retry_sds, retry_skipped)) => {
+                        sds = merge_sds(sds, retry_sds);
+                        all_skipped = retry_skipped;
+                    }
+                    Err(e) => tracing::warn!("Vision retry JSON parse failed: {e}"),
                 }
             }
             Err(e) => tracing::warn!("Vision LLM retry call failed: {e}"),
@@ -1000,6 +1069,34 @@ mod tests {
         let input = r#"{"a": 1}"#;
         let result = repair_json(input);
         assert_eq!(result, input);
+    }
+
+    /// Trailing comma inside a string value must be preserved.
+    #[test]
+    fn repair_json_preserves_string_with_trailing_comma_pattern() {
+        // The value "ends here,}" contains characters that look like a trailing comma
+        // followed by a closing brace — the blind replace would corrupt this.
+        let input = r#"{"note": "ends here,}", "x": 1}"#;
+        let result = repair_json(input);
+        let v: serde_json::Value =
+            serde_json::from_str(&result).expect("should be valid JSON");
+        assert_eq!(v["note"], "ends here,}");
+    }
+
+    /// A genuine trailing comma before `}` must still be removed.
+    #[test]
+    fn repair_json_removes_trailing_comma_with_whitespace() {
+        let input = "{\"a\": 1,\n  }";
+        let result = repair_json(input);
+        serde_json::from_str::<serde_json::Value>(&result).expect("should be valid JSON");
+    }
+
+    /// Nested trailing commas (e.g. from double-serialisation) are all removed.
+    #[test]
+    fn repair_json_nested_trailing_commas() {
+        let input = r#"{"a": [1, 2,], "b": {"c": 3,},}"#;
+        let result = repair_json(input);
+        serde_json::from_str::<serde_json::Value>(&result).expect("should be valid JSON");
     }
 
     #[test]

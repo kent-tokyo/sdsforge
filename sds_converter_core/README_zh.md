@@ -14,9 +14,10 @@
 - **JSON → DOCX**: 从标准JSON生成符合JIS Z 7253规范的16节Word文档，支持多语言节标题。
 - **多语言支持**: 支持 `ja` / `en` / `zh-CN` / `zh-TW` 的输入和输出。
 - **可扩展LLM后端**: 内置Anthropic Claude、OpenAI GPT、Google Gemini、Mistral、Groq、Cohere实现。通过实现 `LlmBackend` trait可接入任意LLM。
-- **SSRF防护**: URL抓取自动拒绝私有/回环/链路本地/元数据IP地址
+- **SSRF防护**: URL抓取自动拒绝私有/回环/链路本地/元数据IP地址；禁用重定向；完整IPv6覆盖（`fc00::/7` ULA、`fe80::/10` 链路本地、`::ffff:` IPv4映射地址）
 - **HTML/URL输入支持**: 支持 `.html`/`.htm` 文件和 `http(s)://` URL作为输入
 - **GHS/CAS验证**: 依据GHS Rev.10验证H码（H200–H420）和P码（P101–P503），CAS编号格式及校验位验证，支持PubChem富集（`enrich_composition`）
+- **健壮的JSON修复**: 具有字符串上下文感知的尾随逗号删除——保留 `"ends here,}"` 等字符串值不受损坏
 
 ---
 

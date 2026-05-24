@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Timing-safe Bearer token comparison** (`sds_converter_server`): replaced `t == token.as_str()` with `constant_time_eq(t.as_bytes(), token.as_bytes())` to eliminate timing side-channel attacks on the authentication check. New dependency: `constant_time_eq = "0.3"`.
+- **HTTP redirect disabled on URL fetch client** (`extractor.rs`): `shared_http_client` now sets `.redirect(Policy::none())`. Previously, an attacker could bypass the SSRF `is_private_host` guard by redirecting through a public URL to a private address.
+- **IPv6 SSRF guard extended** (`extractor.rs`): `is_private_host` now blocks `fc00::/7` (ULA unique-local), `fe80::/10` (link-local), and `::ffff:` IPv4-mapped addresses whose embedded IPv4 is loopback/private/link-local. Previously only `::1` and `::` were blocked.
+- **Upload size limit reduced to 50 MB** (`sds_converter_server`): `DefaultBodyLimit` lowered from 512 MB to 50 MB — sufficient for any real SDS document. The previous limit allowed DoS via memory exhaustion on large uploads.
 - **REST API server now requires authentication** (`sds_converter_server`): Bearer token auth via `SDS_SERVER_TOKEN` env var (auto-generates and prints a random token if not set). Default bind address changed from `0.0.0.0` to `127.0.0.1` (`SDS_SERVER_BIND` override)
 - **CORS restricted to localhost** (`sds_converter_server`): replaced `CorsLayer::permissive()` with an allowlist of `http://localhost` and `http://127.0.0.1` only
 - **Concurrency cap on REST server** (`sds_converter_server`): `ConcurrencyLimitLayer(10)` prevents resource exhaustion from concurrent requests
@@ -66,6 +70,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`repair_json` corrupted string values containing `,}` patterns** (`llm.rs`): the blind `str::replace(",}", "}")` loop rewrote JSON string values such as `"note": "ends here,}"`, producing invalid JSON. Replaced with a byte-level state machine (`remove_trailing_commas`) that tracks `in_string` state (including `\"` escape handling), wrapped in a fixpoint loop. Existing tests still pass; 3 new regression tests added.
+- **Silent discard of retry-parse errors** (`llm.rs`): both the text-extraction retry (`llm.rs:660`) and the vision-path retry (`llm.rs:926`) used `if let Ok(...)` on the result of `lenient_deserialize`, silently swallowing parse errors. Replaced with `match` + `Err(e) => tracing::warn!(...)` so failures are always visible in logs.
+- **False-positive chemical name matching** (`enrichment.rs`): `names_similar` used substring containment (`a.contains(&b) || b.contains(&a)`), causing short generic words (e.g. `"acid"`) to match unrelated names (e.g. `"hydrochloric acid"`). Replaced with Jaccard word-overlap (intersection/union ≥ 0.5). 5 new unit tests added.
+- **`section!` macro schema-mismatch warning lacks context** (`llm.rs`): the `WARN` log only reported the serde error message. Now also logs the first 200 characters of the failing JSON value, making it much easier to diagnose LLM output schema drift.
 - **`/api/health` blocked by auth middleware** (`sds_converter_server`): The `require_auth` middleware was applied via `.layer()` to the entire router, causing `GET /api/health` to return 401 for unauthenticated callers (e.g. AWS LWA / load-balancer health checks). Fixed by splitting into a protected router (`.route_layer(require_auth)`) merged with a public router containing only the health route.
 - **Japanese CID font PDF panic** (`extractor.rs`): `pdf-extract` panics with `FromUtf8Error` when processing PDFs that use CID fonts (e.g. Shift-JIS encoded Japanese text). The panic was caught by `spawn_blocking` and silently converted to an empty string, causing unnecessary OCR fallback. Added `pdftotext -utf8` (poppler) as a middle tier between `pdf-extract` and OCR: full 3-tier fallback chain is now `pdf-extract` -> `pdftotext` -> tesseract/Vision. `pdftotext` is silently skipped if poppler is not installed.
 - URL response body now capped at 50 MB (Content-Length pre-check + streaming byte cap) to prevent OOM on large responses

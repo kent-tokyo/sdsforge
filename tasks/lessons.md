@@ -195,6 +195,44 @@ codebaseでは他のブロッキングI/O（DOCX/XLSX抽出等）も既にspawn_
 各段は「200文字未満」を閾値として次段へフォールバック。
 `pdftotext` は `poppler-utils` パッケージに含まれ、`pdftoppm`（OCR用ラスタライザ）と同じパッケージ。
 
+## セキュリティ設計（追加）
+
+### タイミング攻撃対策: Bearer token比較は `constant_time_eq` を使うこと
+`t == token.as_str()` のような通常の文字列比較は、最初の不一致バイトで早期終了するため
+タイミング攻撃（timing side-channel）の脆弱性がある。短いトークンほど高速に拒否され、
+攻撃者が差分を計測できる。
+→ `constant_time_eq::constant_time_eq(t.as_bytes(), token.as_bytes())` を使用すること。
+`constant_time_eq = "0.3"` を `Cargo.toml` に追加する。
+
+### HTTPリダイレクトはSSRFの迂回路になる
+`reqwest` のデフォルト設定はリダイレクトを自動追跡する（最大10回）。
+SSRF対策のホストチェックはリクエスト前に行うが、最初のURLが公開ホストであっても
+レスポンスが `Location: http://169.254.169.254/...` にリダイレクトすれば対策を回避できる。
+→ URL取得用クライアントには `.redirect(reqwest::redirect::Policy::none())` を設定すること。
+
+### IPv6プライベートアドレスはループバックだけではない
+`v6.is_loopback() || v6.is_unspecified()` だけでは不十分。以下も拒否すること:
+- `fc00::/7` — ULAユニークローカル（RFC 4193）
+- `fe80::/10` — リンクローカル（RFC 4291）
+- `::ffff:x.x.x.x` — IPv4マップアドレス（RFC 4291 §2.5.5.2）: 埋め込みIPv4を抽出して `is_private()` / `is_loopback()` / `is_link_local()` を検査
+
+### アップロードサイズ上限は実際のユースケースに合わせて設定すること
+Axum の `DefaultBodyLimit::max(512 * 1024 * 1024)` (512MB) は現実的なSDS文書には過大。
+実際のSDS文書は数MB以下なので50MBが適切。過大な上限はメモリ枯渇DoSのリスクになる。
+→ `DefaultBodyLimit::max(50 * 1024 * 1024)` を使用すること。
+
+### `repair_json` の盲目的 `str::replace` は文字列内容を破壊する
+`s.replace(",}", "}")` のような全域置換は、JSON文字列値内に `,}` というパターンが
+含まれる場合（例: `"note": "ends here,}"`）にその値を破壊してしまう。
+→ バイト列ステートマシンで `in_string` 状態を追跡し、文字列外のみ置換すること。
+エスケープシーケンス（`\"`）の処理も忘れずに。不動点ループで多重トレーリングカンマも解消。
+
+### 化学物質名の類似判定に部分文字列包含を使わない
+`a.contains(&b) || b.contains(&a)` は「acid」が「acetic acid」に含まれるような
+短い汎用語で誤検知を起こす。また非常に長い名前に対してO(n²)の計算量になる。
+→ Jaccardワード重複係数（交叉数/和集合数 ≥ 0.5）を使用すること。
+O(n)で動作し、単語レベルの類似度をより正確に捉える。
+
 ## テキスト処理
 
 ### Rustの `String::len()` はバイト数を返す（文字数ではない）

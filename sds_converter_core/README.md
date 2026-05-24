@@ -16,9 +16,10 @@ Supports documents in **Japanese**, **English**, **Simplified Chinese**, and **T
 - **JSON → DOCX**: Generates a JIS Z 7253-compliant 16-section Word document from the standard JSON, with localized section headings.
 - **Multilingual**: Handles source documents in `ja` / `en` / `zh-CN` / `zh-TW`.
 - **Extensible LLM backend**: Ships with Anthropic Claude, OpenAI GPT, and Google Gemini backends. Bring your own by implementing `LlmBackend`.
-- **SSRF protection**: URL fetches reject private/loopback/link-local and metadata endpoints
+- **SSRF protection**: URL fetches reject private/loopback/link-local and metadata endpoints; redirect following disabled; full IPv6 coverage (`fc00::/7` ULA, `fe80::/10` link-local, `::ffff:` IPv4-mapped)
 - **HTML/URL input**: Accepts `.html`/`.htm` files and `http(s)://` URLs as input
 - **GHS/CAS validation**: H-codes (H200–H420) and P-codes (P101–P503) against GHS Rev.10; CAS number format and check-digit validation; optional PubChem enrichment
+- **Robust JSON repair**: String-context-aware trailing-comma removal — preserves values like `"ends here,}"` while fixing genuine LLM formatting artefacts
 
 ---
 
