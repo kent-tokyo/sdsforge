@@ -154,6 +154,25 @@ codebaseでは他のブロッキングI/O（DOCX/XLSX抽出等）も既にspawn_
 → `OpenOptions::new().write(true).create_new(true).open(path)` を使って
 ファイル名を原子的に確保すること。
 
+## PDF抽出
+
+### pdf-extract は CIDフォント（Shift-JIS等）でパニックする
+`pdf-extract` クレートは、Shift-JIS エンコーディングを持つ日本語CIDフォントPDFを処理すると
+`src/lib.rs` 内の `Result::unwrap()` でパニックする（`FromUtf8Error`）。
+`spawn_blocking` がパニックを `JoinError` として捕捉するため実行は継続するが、
+戻り値は空文字列になりOCRフォールバックが起動する。PDFにはテキストがあるのでOCRは不要・高コスト。
+→ `pdftotext -utf8`（poppler）をpdf-extractとOCRの間に中間フォールバックとして挿入する。
+  poppler未インストール環境では `Command::new("pdftotext")` が `Err` になり `None` を返すため、
+  既存のOCRフォールバックへ自然に fallthrough する。
+
+### 3段階PDFテキスト抽出フォールバック
+1. **pdf-extract**（Rustクレート）— 標準的なテキストPDF（Latin/UTF-8フォント）
+2. **pdftotext -utf8**（poppler CLI）— CIDフォント/Shift-JIS日本語PDF
+3. **tesseract OCR / Claude Vision** — 画像PDF・スキャンPDF
+
+各段は「200文字未満」を閾値として次段へフォールバック。
+`pdftotext` は `poppler-utils` パッケージに含まれ、`pdftoppm`（OCR用ラスタライザ）と同じパッケージ。
+
 ## テキスト処理
 
 ### Rustの `String::len()` はバイト数を返す（文字数ではない）

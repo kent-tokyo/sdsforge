@@ -204,7 +204,9 @@ The schema covers all 16 sections of JIS Z 7253 with ~200 structured fields.
   - Google Gemini: [Get API key](https://aistudio.google.com/)
 - Input files must be **text-based** PDF or DOCX
   - Encrypted PDFs are not supported (text extraction will fail)
+  - CID font / Shift-JIS encoded PDFs (common in Japanese documents): handled by `pdftotext -utf8` (poppler) fallback
   - Scanned/image-only PDFs: automatically retried via `pdftoppm` + `tesseract` OCR (if installed), or via Claude Vision API (when using Anthropic provider)
+  - Full 3-tier PDF fallback: `pdf-extract` -> `pdftotext` -> OCR/Vision
 
 ---
 

@@ -204,7 +204,9 @@ sds-converter validate --input output.json --json
   - ローカルLLM（Ollama等）: `--provider local --base-url <url>`（APIキー不要）
 - 入力ファイルは**テキストベース**のPDFまたはDOCXであること
   - 暗号化PDFは非対応
+  - CIDフォント/Shift-JISエンコードPDF（日本語文書に多い）：`pdftotext -utf8`（poppler）フォールバックで処理
   - スキャン画像PDF：`pdftoppm` + `tesseract`（インストール済みの場合）またはClaude Vision API（`--provider anthropic` 使用時）で自動リトライ
+  - PDF抽出3段階フォールバック：`pdf-extract` -> `pdftotext` -> OCR/Vision
 
 ---
 

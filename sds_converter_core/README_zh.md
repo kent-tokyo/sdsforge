@@ -202,7 +202,9 @@ impl LlmBackend for MyLlmBackend {
   - Google Gemini: [获取API密钥](https://aistudio.google.com/)
 - 输入文件须为基于文本的PDF/DOCX/XLSX/TXT
   - 不支持加密PDF（文本提取将失败）
+  - CID字体/Shift-JIS编码PDF（日语文档常见）：通过 `pdftotext -utf8`（poppler）回退处理
   - 扫描图像PDF：若已安装 `pdftoppm` + `tesseract` 则自动OCR重试，或使用Claude Vision API（使用Anthropic提供商时）
+  - PDF三级回退：`pdf-extract` -> `pdftotext` -> OCR/Vision
 
 ---
 

@@ -204,7 +204,9 @@ sds-converter validate --input output.json --json
   - 本地LLM（Ollama等）: 使用 `--provider local --base-url <url>`（无需API密钥）
 - 输入文件必须是**基于文本**的PDF或DOCX
   - 不支持加密PDF
+  - CID字体/Shift-JIS编码PDF（日语文档常见）：通过 `pdftotext -utf8`（poppler）回退处理
   - 扫描图像PDF：若已安装 `pdftoppm` + `tesseract` 则自动OCR重试，或使用Claude Vision API（`--provider anthropic` 时）
+  - PDF三级回退：`pdf-extract` -> `pdftotext` -> OCR/Vision
 
 ---
 

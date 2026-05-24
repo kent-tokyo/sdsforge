@@ -208,7 +208,9 @@ Checks that key sections (Identification, HazardIdentification, ToxicologicalInf
   - Local LLM (Ollama etc.): use `--provider local --base-url <url>` (no API key required)
 - Input files must be **text-based** PDF or DOCX
   - Encrypted PDFs are not supported
+  - CID font / Shift-JIS encoded PDFs (common in Japanese documents): handled by `pdftotext -utf8` (poppler) fallback
   - Scanned/image-only PDFs: automatically retried via `pdftoppm` + `tesseract` OCR (if installed), or via Claude Vision API (when using `--provider anthropic`)
+  - Full 3-tier PDF fallback: `pdf-extract` -> `pdftotext` -> OCR/Vision
 
 ---
 
