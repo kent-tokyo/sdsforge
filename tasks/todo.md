@@ -125,7 +125,13 @@
   - フォールバック階層: ① pdf-extract → ② pdftotext -utf8 → ③ tesseract OCR / Claude Vision
   - poppler未インストール環境では既存③OCRへ自然にフォールバック
 
+## Phase 11: サーバー修正 ✅
+- [x] server: `/api/health` を認証ミドルウェアの外に移動
+  - `.layer(require_auth)` はルーター全体に掛かるため health も 401 になっていた
+  - `route_layer()` + `merge()` で protected/public を分離し、health は認証不要に
+  - AWS LWA（Lambda Web Adapter）/ ロードバランサのヘルスチェックが通るようになった
+
 ## 残タスク
-- [ ] `cargo publish` で実際に公開（core → CLI の順）— crates.io 登録済み後に実施
+- [x] `cargo publish` — sds-converter-core 0.3.1 / sds-converter 0.2.1 公開済み
 - [ ] generator.rs: 表レイアウトDOCX（Section 3 Composition 4列表、Section 2 H/P 2列表、Section 9 物性 2列表）
 - [x] harumi 対応: HTML→PDF 純Rust生成 — harumi v0.4.0 の `html` feature で `render_html_to_pdf` を使用（`converter/pdf.rs` 実装済み）

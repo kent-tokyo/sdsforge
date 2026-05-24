@@ -66,6 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`/api/health` blocked by auth middleware** (`sds_converter_server`): The `require_auth` middleware was applied via `.layer()` to the entire router, causing `GET /api/health` to return 401 for unauthenticated callers (e.g. AWS LWA / load-balancer health checks). Fixed by splitting into a protected router (`.route_layer(require_auth)`) merged with a public router containing only the health route.
 - **Japanese CID font PDF panic** (`extractor.rs`): `pdf-extract` panics with `FromUtf8Error` when processing PDFs that use CID fonts (e.g. Shift-JIS encoded Japanese text). The panic was caught by `spawn_blocking` and silently converted to an empty string, causing unnecessary OCR fallback. Added `pdftotext -utf8` (poppler) as a middle tier between `pdf-extract` and OCR: full 3-tier fallback chain is now `pdf-extract` -> `pdftotext` -> tesseract/Vision. `pdftotext` is silently skipped if poppler is not installed.
 - URL response body now capped at 50 MB (Content-Length pre-check + streaming byte cap) to prevent OOM on large responses
 - CJK text truncation: `out.len()` (byte count) was compared against `max_chars` (character count), causing Japanese text to be cut at 1/3 the intended length. Fixed to use `chars().count()`

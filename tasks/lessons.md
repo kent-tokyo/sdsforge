@@ -138,6 +138,28 @@ sds-converter の `to-pdf` に組み込むには `render_html_to_pdf(html, optio
 開発用サーバーは `0.0.0.0` にバインドするとLAN全体に公開される。
 デフォルトを `127.0.0.1` にし、`SDS_SERVER_BIND` 環境変数で上書きできるようにする。
 
+### Axum の `.layer()` はルーター全体に掛かる — ヘルスチェックに注意
+`Router::new().route(...).route(...).layer(auth_middleware)` と書くと、
+auth ミドルウェアが追加されたすべてのルート（ヘルスチェックを含む）に適用される。
+AWS LWA / ロードバランサのヘルスチェックは Bearer token を送らないため、
+health エンドポイントも 401 になりデプロイが失敗する。
+
+解決策: `route_layer()` + `merge()` で public / protected を分離する。
+```rust
+// 認証必須ルートにのみ route_layer() を適用
+let protected = Router::new()
+    .route("/api/to-json", post(to_json))
+    .route_layer(middleware::from_fn_with_state(token.clone(), require_auth));
+
+// 認証不要ルートは別の Router に定義
+let public = Router::new()
+    .route("/api/health", get(health));
+
+// merge 後に共通レイヤー（CORS 等）を適用
+let app = public.merge(protected).layer(cors).layer(body_limit);
+```
+`.nest("/api", ...)` を入れ子にすると URL が `/api/api/...` になるため使わないこと。
+
 ## 非同期設計
 
 ### async fn内でのブロッキングI/Oは禁止
