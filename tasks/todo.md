@@ -148,7 +148,17 @@
 - [x] `server/Cargo.toml`: `constant_time_eq = "0.3"` 追加
 - [x] 新規ユニットテスト8件追加（`repair_json` 3件、`names_similar` 5件）— 全44テストPASS
 
+## Phase 13: CI/CD リリース自動化 ✅
+- [x] `.github/workflows/release.yml` 作成 — `v*.*.*` タグ push でトリガー
+- [x] **Windows ジョブ** (`windows-latest`): `cargo build --release` → `sds-converter.exe` → `sds-converter-windows-portable.zip` → GitHub Release アップロード
+- [x] **macOS ジョブ** (`macos-latest`): arm64 + x86_64 をビルド → `lipo` でユニバーサルバイナリ → `.app` バンドル → `sds-converter-macos.zip` → GitHub Release アップロード
+- [x] Homebrew Cask 自動更新ステップ追加（`HOMEBREW_TAP_TOKEN` シークレット設定時のみ動作）
+- [x] **バグ修正**: `HOMEBREW_TAP_TOKEN` 未設定時のジョブ失敗を修正
+  - `continue-on-error: true` 追加
+  - スクリプト内でトークン空チェック → `exit 0`（スキップ）
+- [x] v0.2.2 で初回動作確認 — Windows・macOS 両ファイルとも Release に添付済み
+- [x] `cargo publish` — sds-converter-core 0.3.2 / sds-converter 0.2.2 公開済み
+
 ## 残タスク
-- [x] `cargo publish` — sds-converter-core 0.3.1 / sds-converter 0.2.1 公開済み
 - [ ] generator.rs: 表レイアウトDOCX（Section 3 Composition 4列表、Section 2 H/P 2列表、Section 9 物性 2列表）
 - [x] harumi 対応: HTML→PDF 純Rust生成 — harumi v0.4.0 の `html` feature で `render_html_to_pdf` を使用（`converter/pdf.rs` 実装済み）

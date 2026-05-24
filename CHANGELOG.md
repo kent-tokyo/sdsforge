@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Automated Windows & macOS release builds** (`.github/workflows/release.yml`): pushing a `v*.*.*` tag now automatically builds `sds-converter-windows-portable.zip` (Windows x86_64) and `sds-converter-macos.zip` (macOS Universal — Apple Silicon + Intel) and attaches them to the GitHub Release. Homebrew Cask auto-update is skipped gracefully when `HOMEBREW_TAP_TOKEN` is not configured.
+
 ### Security
 
 - **Timing-safe Bearer token comparison** (`sds_converter_server`): replaced `t == token.as_str()` with `constant_time_eq(t.as_bytes(), token.as_bytes())` to eliminate timing side-channel attacks on the authentication check. New dependency: `constant_time_eq = "0.3"`.

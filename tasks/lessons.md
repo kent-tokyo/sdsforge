@@ -195,6 +195,51 @@ codebaseでは他のブロッキングI/O（DOCX/XLSX抽出等）も既にspawn_
 各段は「200文字未満」を閾値として次段へフォールバック。
 `pdftotext` は `poppler-utils` パッケージに含まれ、`pdftoppm`（OCR用ラスタライザ）と同じパッケージ。
 
+## GitHub Actions / CI
+
+### `secrets.XXX` 未設定時のステップ失敗はジョブ全体を落とす
+オプションのシークレット（Homebrew tap トークンなど）を参照するステップは、
+シークレット未設定時に `Authentication failed` 等でエラー終了し、ジョブ全体が Failure になる。
+→ `continue-on-error: true` を追加し、スクリプト先頭でトークン空チェック + `exit 0` を入れること。
+
+```yaml
+- name: Update Homebrew Cask
+  continue-on-error: true
+  env:
+    HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+  run: |
+    if [ -z "${HOMEBREW_TAP_TOKEN}" ]; then
+      echo "HOMEBREW_TAP_TOKEN not set — skipping"
+      exit 0
+    fi
+    # ... actual work
+```
+
+### GitHub Actions の `if:` 条件で secrets を直接参照できない
+`if: secrets.FOO != ''` は構文として成立しないことがある（式コンテキスト依存）。
+確実に動作するのは上記のようにステップ内スクリプトでチェックする方法。
+
+### eframe (egui) は Windows / macOS でランタイム DLL 不要
+`cargo build --release` でビルドした `.exe` は Windows ランナーで単体動作する。
+追加の VC++ ランタイムや DLL 配布は不要（Rust の静的リンクにより自己完結）。
+macOS も同様 — ユニバーサルバイナリ (lipo) を `.app` バンドルに入れるだけで動作する。
+
+### macOS Universal Binary の作り方（GitHub Actions）
+```yaml
+- run: cargo build --release --target aarch64-apple-darwin -p <crate>
+- run: cargo build --release --target x86_64-apple-darwin -p <crate>
+- run: |
+    lipo -create \
+      target/aarch64-apple-darwin/release/<bin> \
+      target/x86_64-apple-darwin/release/<bin> \
+      -output target/<bin>-universal
+```
+`dtolnay/rust-toolchain@stable` に `targets: aarch64-apple-darwin,x86_64-apple-darwin` を指定する。
+
+### リリース資産のファイル名は README のリンクと完全一致させること
+`/releases/latest/download/<filename>` のURLは資産名に完全一致が必要。
+ワークフローのzipファイル名と README のダウンロードリンク名が1文字でも違うと 404 になる。
+
 ## セキュリティ設計（追加）
 
 ### タイミング攻撃対策: Bearer token比較は `constant_time_eq` を使うこと
