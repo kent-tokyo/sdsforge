@@ -120,6 +120,11 @@
 - [x] server: LLMエラーボディをクライアントに返さないよう修正
 - [x] generator.rs + html.rs: lang_index/section_nameをpub(crate)化し重複削除
 
+## Phase 10: PDF抽出堅牢化 ✅
+- [x] extractor.rs: pdftotext（poppler）フォールバック追加 — 日本語CIDフォント（Shift-JIS）PDFでpdf-extractがパニックする問題を修正
+  - フォールバック階層: ① pdf-extract → ② pdftotext -utf8 → ③ tesseract OCR / Claude Vision
+  - poppler未インストール環境では既存③OCRへ自然にフォールバック
+
 ## 残タスク
 - [ ] `cargo publish` で実際に公開（core → CLI の順）— crates.io 登録済み後に実施
 - [ ] generator.rs: 表レイアウトDOCX（Section 3 Composition 4列表、Section 2 H/P 2列表、Section 9 物性 2列表）
