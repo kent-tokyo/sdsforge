@@ -281,8 +281,11 @@ pub async fn extract_text_limited(path: &Path, max_chars: usize) -> Result<Strin
 /// - the output is empty or whitespace-only
 fn pdftotext_fallback(path: &Path) -> Option<String> {
     let path_str = path.to_str()?;
+    // Note: `-utf8` was removed because poppler ≥ 24 no longer recognises it
+    // and exits with code 99 (unknown option), causing silent fallback failure.
+    // Modern pdftotext writes UTF-8 by default.
     let out = std::process::Command::new("pdftotext")
-        .args(["-utf8", path_str, "-"]) // "-" writes to stdout
+        .args([path_str, "-"]) // "-" writes to stdout
         .output()
         .ok()?;
     if !out.status.success() {
