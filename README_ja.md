@@ -52,7 +52,7 @@ sds-converter
 
 ## 特徴
 
-- **SDS文書 → JSON**: PDF/DOCX/XLSX/TXT/**HTML・URL** からテキストを抽出し、厚生労働省のSDS情報交換標準フォーマット v1.0（JSON）に変換します。並列抽出・自動リトライ対応。PDFは3段階フォールバックで処理: `pdf-extract` → `pdftotext -utf8`（CIDフォント/Shift-JIS日本語PDF）→ `pdftoppm`+`tesseract` OCRまたはClaude Vision API（スキャンPDF）。
+- **SDS文書 → JSON**: PDF/DOCX/XLSX/TXT/**HTML・URL** からテキストを抽出し、厚生労働省のSDS情報交換標準フォーマット v1.0（JSON）に変換します。並列抽出・自動リトライ対応。PDFは3段階フォールバックで処理: `pdf-extract` → `pdftotext`（CIDフォント/Shift-JIS日本語PDF）→ `pdftoppm`+`tesseract` OCRまたはClaude Vision API（スキャンPDF）。
 - **JSON → DOCX**: 標準JSONからJIS Z 7253準拠の16項目Word文書を生成します。言語別の項目見出しに対応。
 - **JSON → HTML**: inline CSS と `@media print` 対応の自己完結型HTML5文書を生成します（`to-html`）。
 - **JSON → PDF**: LibreOffice CLI経由でPDFに変換します（`to-pdf`、要 `soffice`）。
@@ -188,6 +188,7 @@ sds-converter-core = "0.3"
 - [x] 純Rust PDF生成 — [`harumi`](https://crates.io/crates/harumi) v0.4.0 の `html` feature で `render_html_to_pdf` が利用可能になりました
 - [x] スキャンPDFのOCR対応 — `pdftoppm` + `tesseract` CLI でフォールバック（テキスト抽出が200文字未満のとき自動起動）
 - [x] 日本語CIDフォントPDFの `pdftotext` フォールバック — Shift-JISエンコードPDFで `pdf-extract` がパニックする問題を修正
+- [x] スキーマ互換性強化（v0.3.3）— `CASno.FullText` への `flex_vec_string_opt` 追加、`Colour`/`Odour`/`PhysicalState` の JSON オブジェクト→文字列変換、`pdftotext` フォールバックの `-utf8` 廃止オプション削除
 
 ---
 

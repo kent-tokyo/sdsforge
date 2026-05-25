@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] / [0.3.3] — 2026-05-25
+
+### Fixed
+
+- **`CASno.FullText` flex deserialization** (`schema/generated.rs`): `SubstanceIdentifiersSubstanceIdentityCASno.full_text` was typed as `Option<Vec<String>>` but lacked the `flex_vec_string_opt` deserializer. When an LLM returned the CAS number as a bare string (e.g. `"1317-61-9"`) instead of an array, serde rejected it with "expected a sequence", causing the entire `Composition` section to be skipped. Now accepts both bare strings and arrays.
+
+- **`Colour`/`Odour` object→string coercion** (`llm.rs`): For `BasePhysicalChemicalProperties`, the LLM sometimes wraps `Colour` and `Odour` (typed `Option<String>`) in an `{"AdditionalInfo":{"FullText":["..."]}}` object. Added `coerce_obj_to_string` normalization in `normalize_string_fields` (targeting `Colour`, `Odour`, `PhysicalState`) so these are flattened to a plain string before serde deserialization. Fixes `invalid type: map, expected a string` mismatch that caused `PhysicalChemicalProperties` to be skipped.
+
+- **`pdftotext -utf8` flag removed** (`extractor.rs`): poppler ≥ 24 no longer recognises the `-utf8` option and exits with code 99, silently bypassing the pdftotext fallback for CID/Shift-JIS font PDFs. Modern `pdftotext` outputs UTF-8 by default; the flag was redundant. Removing it restores Shift-JIS font PDF support on systems where `poppler-utils` is installed.
+
 ### Changed
 
 - **GUI minimum window size** (`app.rs`): Added `with_min_inner_size([640.0, 480.0])` to `ViewportBuilder` so the window cannot be resized below a usable minimum (H1).

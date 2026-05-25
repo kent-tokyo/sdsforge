@@ -52,7 +52,7 @@ sds-converter
 
 ## 功能特点
 
-- **SDS文档 → JSON**: 从PDF/DOCX/XLSX/TXT/**HTML/URL**中提取文本，并转换为符合MHLW SDS数据交换标准格式v1.0的JSON。支持并行提取与自动重试。PDF提取采用三级回退：`pdf-extract` → `pdftotext -utf8`（CID/Shift-JIS日语字体）→ `pdftoppm`+`tesseract` OCR或Claude Vision API（扫描PDF）。
+- **SDS文档 → JSON**: 从PDF/DOCX/XLSX/TXT/**HTML/URL**中提取文本，并转换为符合MHLW SDS数据交换标准格式v1.0的JSON。支持并行提取与自动重试。PDF提取采用三级回退：`pdf-extract` → `pdftotext`（CID/Shift-JIS日语字体）→ `pdftoppm`+`tesseract` OCR或Claude Vision API（扫描PDF）。
 - **JSON → DOCX**: 从标准JSON生成符合JIS Z 7253规范的16节Word文档，支持多语言节标题。
 - **JSON → HTML**: 生成包含内联CSS和`@media print`支持的自包含UTF-8 HTML5文档（`to-html`）。
 - **JSON → PDF**: 通过LibreOffice CLI转换为PDF（`to-pdf`，需要`soffice`）。
@@ -190,6 +190,7 @@ sds-converter-core = "0.3"
 - [x] 纯Rust PDF生成 — [`harumi`](https://crates.io/crates/harumi) v0.4.0 的 `html` feature 中 `render_html_to_pdf` 现已可用
 - [x] 扫描PDF的OCR支持 — `pdftoppm` + `tesseract` CLI自动回退（文本提取少于200字时自动触发）
 - [x] 日语CID字体PDF的 `pdftotext` 回退 — 修复 `pdf-extract` 在Shift-JIS编码PDF上崩溃的问题
+- [x] Schema兼容性增强（v0.3.3）— 为 `CASno.FullText` 添加 `flex_vec_string_opt`，将 `Colour`/`Odour`/`PhysicalState` JSON对象强制转换为字符串，移除 `pdftotext` 回退中已弃用的 `-utf8` 选项
 
 ---
 

@@ -122,8 +122,9 @@
 
 ## Phase 10: PDF抽出堅牢化 ✅
 - [x] extractor.rs: pdftotext（poppler）フォールバック追加 — 日本語CIDフォント（Shift-JIS）PDFでpdf-extractがパニックする問題を修正
-  - フォールバック階層: ① pdf-extract → ② pdftotext -utf8 → ③ tesseract OCR / Claude Vision
+  - フォールバック階層: ① pdf-extract → ② pdftotext → ③ tesseract OCR / Claude Vision
   - poppler未インストール環境では既存③OCRへ自然にフォールバック
+- [x] extractor.rs: pdftotext の `-utf8` フラグ削除 — poppler v24以降でフラグ廃止（exit 99）→ Shift-JIS PDFが無音でスキップされていたバグ修正
 
 ## Phase 11: サーバー修正 ✅
 - [x] server: `/api/health` を認証ミドルウェアの外に移動
@@ -181,6 +182,12 @@
 - [x] **L7** 変換・検証タブのバッチモードから冗長な「ファイルクリア」ボタンを削除
 - [x] `Strings` 構造体に10フィールド追加（`btn_ok`、`btn_skip`、`btn_show_key`、`btn_hide_key`、`msg_drop_rejected`、`lbl_filter_{sds,json,doc,word,txt}`）、死んだ `btn_clear_files` フィールドを削除。3言語すべて（en/ja/zh-cn）更新
 - [x] `SdsApp` 構造体に `settings_saved_at`、`show_api_key`、`open_file_dialog_requested` フィールド追加
+
+## Phase 15: スキーマ互換性強化 ✅
+- [x] schema/generated.rs: `SubstanceIdentifiersSubstanceIdentityCASno.full_text` に `flex_vec_string_opt` デシリアライザ追加 — LLMが裸の文字列でCAS番号を返す場合の `invalid type: string, expected a sequence` エラーを修正
+- [x] llm.rs: `coerce_obj_to_string` ヘルパー追加 — `Colour`/`Odour`/`PhysicalState` が `{"AdditionalInfo":{"FullText":[...]}}` オブジェクトで返された場合に文字列へ正規化
+- [x] llm.rs: `extract_text_from_value` ヘルパー追加 — String・Array・AdditionalInfoオブジェクトから統一的にテキスト抽出
+- [x] llm.rs ユニットテスト2件追加: `normalize_colour_odour_from_additional_info_object`、`casno_full_text_flex_deserialization`
 
 ## 残タスク
 - [ ] generator.rs: 表レイアウトDOCX（Section 3 Composition 4列表、Section 2 H/P 2列表、Section 9 物性 2列表）

@@ -52,7 +52,7 @@ Settings are saved to `~/.config/sds-converter/config.toml` and restored on next
 
 ## Features
 
-- **SDS document → JSON**: Extracts text from PDF/DOCX/XLSX/TXT/**HTML/URL** and converts it to the MHLW SDS data exchange format v1.0 via LLM API. Parallel extraction with automatic retry. PDF extraction uses a 3-tier fallback: `pdf-extract` → `pdftotext -utf8` (CID/Shift-JIS fonts) → `pdftoppm`+`tesseract` OCR or Claude Vision API (scanned PDFs).
+- **SDS document → JSON**: Extracts text from PDF/DOCX/XLSX/TXT/**HTML/URL** and converts it to the MHLW SDS data exchange format v1.0 via LLM API. Parallel extraction with automatic retry. PDF extraction uses a 3-tier fallback: `pdf-extract` → `pdftotext` (CID/Shift-JIS fonts) → `pdftoppm`+`tesseract` OCR or Claude Vision API (scanned PDFs).
 - **JSON → DOCX**: Generates a JIS Z 7253-compliant 16-section Word document from the standard JSON, with localized section headings.
 - **JSON → HTML**: Generates a self-contained UTF-8 HTML5 document with inline CSS and `@media print` support (`to-html`).
 - **JSON → PDF**: Converts to PDF via LibreOffice CLI (`to-pdf`). Requires `soffice` in PATH.
@@ -189,6 +189,7 @@ sds-converter-core = "0.3"
 - [x] Pure-Rust PDF generation — `harumi::render_html_to_pdf` now available in [`harumi`](https://crates.io/crates/harumi) v0.4.0 (`html` feature)
 - [x] OCR support for scanned PDFs — `pdftoppm` + `tesseract` CLI fallback (auto-detected when text extraction yields < 200 chars)
 - [x] `pdftotext` fallback for Japanese CID font PDFs — handles Shift-JIS encoded PDFs that cause `pdf-extract` to panic
+- [x] Schema compatibility hardening (v0.3.3) — `flex_vec_string_opt` for `CASno.FullText`, coerce `Colour`/`Odour`/`PhysicalState` objects to strings, remove deprecated `-utf8` flag from `pdftotext` fallback
 
 ---
 
