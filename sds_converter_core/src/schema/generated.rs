@@ -9,7 +9,9 @@ use serde::{Deserialize, Serialize};
 pub struct AdditionalInfo {
     #[serde(rename = "ItemName", skip_serializing_if = "Option::is_none")]
     pub item_name: Option<String>,
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    /// Accepts both a bare string and an array of strings from LLM output.
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_vec_string_opt")]
     pub full_text: Option<Vec<String>>,
 }
 
@@ -81,7 +83,9 @@ pub struct SubstanceIdentifiersSubstanceIdentity {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SubstanceIdentifiersSubstanceIdentityCASno {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    /// Accepts both a bare string and an array of strings from LLM output.
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_vec_string_opt")]
     pub full_text: Option<Vec<String>>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,

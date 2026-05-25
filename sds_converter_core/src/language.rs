@@ -37,6 +37,7 @@ impl Language {
 /// Heuristically detect the language of an SDS document from its extracted text.
 ///
 /// Detection order:
+/// 0. Fewer than 30 non-whitespace characters → [`Language::Japanese`] (default, not enough text)
 /// 1. Hiragana or katakana present → [`Language::Japanese`]
 /// 2. Fewer than 20 CJK characters → [`Language::English`]
 /// 3. Traditional-Chinese-only characters outnumber simplified-only → [`Language::ChineseTraditional`]
@@ -44,6 +45,13 @@ impl Language {
 ///
 /// Works on as little as ~200 characters of text. No LLM or network call required.
 pub fn detect_language(text: &str) -> Language {
+    // Not enough text to analyse reliably (e.g. image-only or encrypted PDF returned empty).
+    // Fall back to the default language (Japanese) rather than incorrectly guessing English.
+    let meaningful_chars = text.chars().filter(|c| !c.is_whitespace()).count();
+    if meaningful_chars < 30 {
+        return Language::default();
+    }
+
     // Hiragana (あ…ん) and katakana (ア…ン) are unique to Japanese.
     let japanese_kana = text
         .chars()

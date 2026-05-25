@@ -111,7 +111,11 @@ impl Quality {
     }
 
     pub fn max_tokens(self) -> u32 {
-        16_384
+        match self {
+            Quality::Low    =>  8_192,
+            Quality::Medium => 16_384,
+            Quality::High   => 32_768,
+        }
     }
 
     pub fn anthropic_model(self) -> &'static str {
@@ -275,11 +279,19 @@ pub async fn run_to_json(params: ToJsonParams, log: LogFn) -> anyhow::Result<()>
                 model: params.model.clone(),
                 max_tokens: params.quality.max_tokens(),
             };
+            // For image-only PDFs the text-based language detection ran on sparse/empty
+            // text and may be wrong.  Use only the user-specified language (params.lang),
+            // falling back to None so the vision model can auto-detect from the image.
+            let vision_convert_config = ConvertConfig {
+                source_language: params.lang,
+                output_language: Language::default(),
+                max_chars: params.quality.max_chars(),
+            };
             convert_pdf_to_json_vision(
                 Path::new(&params.input),
                 &params.api_key,
                 &vision_config,
-                &convert_config,
+                &vision_convert_config,
             )
             .await
             .context("vision OCR failed")?

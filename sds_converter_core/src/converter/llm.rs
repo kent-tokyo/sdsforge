@@ -329,6 +329,7 @@ fn remove_trailing_commas(s: &str) -> String {
 ///
 /// Handles:
 /// - Trailing commas before `}` or `]` (common in LLM output)
+/// - Unclosed strings due to mid-value truncation
 /// - Unclosed braces/brackets due to context-limit truncation
 fn repair_json(s: &str) -> String {
     // Run the string-aware trailing-comma remover to a fixpoint (handles
@@ -340,7 +341,7 @@ fn repair_json(s: &str) -> String {
         s = next;
     }
 
-    // Close unclosed braces/brackets using a stack
+    // Close unclosed braces/brackets using a stack; also detect truncated strings.
     let mut stack: Vec<char> = Vec::new();
     let mut in_string = false;
     let mut prev_backslash = false;
@@ -369,10 +370,126 @@ fn repair_json(s: &str) -> String {
             _ => {}
         }
     }
+    // If output was truncated mid-string, close the string first.
+    if in_string {
+        s.push('"');
+    }
     for closer in stack.iter().rev() {
         s.push(*closer);
     }
     s
+}
+
+// ---------------------------------------------------------------------------
+// JSON field normalisation
+// ---------------------------------------------------------------------------
+
+/// Normalise JSON values that the LLM occasionally returns as arrays instead of strings.
+///
+/// The MHLW schema defines many fields (e.g. `FullText` inside section objects,
+/// `Substance`, `ReactivityDescription`) as `String`, but LLMs sometimes emit them
+/// as `["str1", "str2"]`.  This function converts such arrays to `"str1\nstr2"`,
+/// *except* when the enclosing key is `AdditionalInfo` — where `FullText` is
+/// intentionally `Vec<String>` per the schema.
+fn normalize_string_fields(val: &mut Value, inside_additional_info: bool) {
+    match val {
+        Value::Object(map) => {
+            // These keys are `String` in the schema but LLMs sometimes emit arrays.
+            if !inside_additional_info {
+                for key in &[
+                    "FullText",
+                    "Substance",
+                    "ReactivityDescription",
+                    "StabilityDescription",
+                    "ConditionsToAvoid",
+                    "MaterialsToAvoid",
+                ] {
+                    if let Some(v) = map.get_mut(*key) {
+                        coerce_array_of_strings_to_string(v);
+                    }
+                }
+                // These keys are plain `String` in the schema but LLMs sometimes return
+                // them as AdditionalInfo objects, e.g. {"AdditionalInfo":{"FullText":["text"]}}.
+                for key in &["Colour", "Odour", "PhysicalState"] {
+                    if let Some(v) = map.get_mut(*key) {
+                        coerce_obj_to_string(v);
+                    }
+                }
+            }
+            // Recurse; mark the subtree when entering an AdditionalInfo object.
+            for (k, child) in map.iter_mut() {
+                normalize_string_fields(child, k == "AdditionalInfo");
+            }
+        }
+        Value::Array(items) => {
+            for item in items.iter_mut() {
+                normalize_string_fields(item, inside_additional_info);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Extract a plain text string from a JSON value that may be a bare string,
+/// a string array, or an object wrapping either of those under "FullText" or
+/// "AdditionalInfo.FullText".  Returns `None` if no text can be extracted.
+fn extract_text_from_value(val: &Value) -> Option<String> {
+    match val {
+        Value::String(s) if !s.trim().is_empty() => Some(s.clone()),
+        Value::Array(items) => {
+            let joined: String = items
+                .iter()
+                .filter_map(|v| v.as_str())
+                .filter(|s| !s.trim().is_empty())
+                .collect::<Vec<_>>()
+                .join("\n");
+            if joined.is_empty() { None } else { Some(joined) }
+        }
+        Value::Object(map) => {
+            // Try FullText directly in this object.
+            if let Some(ft) = map.get("FullText") {
+                if let Some(s) = extract_text_from_value(ft) {
+                    return Some(s);
+                }
+            }
+            // Try AdditionalInfo.FullText.
+            if let Some(ai) = map.get("AdditionalInfo").and_then(|v| v.as_object()) {
+                if let Some(ft) = ai.get("FullText") {
+                    if let Some(s) = extract_text_from_value(ft) {
+                        return Some(s);
+                    }
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// If `val` is a JSON object that wraps text (via FullText / AdditionalInfo),
+/// replace it with a plain JSON string.  Leaves non-object values unchanged.
+fn coerce_obj_to_string(val: &mut Value) {
+    if val.is_object() {
+        if let Some(text) = extract_text_from_value(val) {
+            *val = Value::String(text);
+        }
+    }
+}
+
+/// If `val` is a non-empty array of JSON strings, replace it with the items
+/// joined by `"\n"`.  Leaves other value types unchanged.
+fn coerce_array_of_strings_to_string(val: &mut Value) {
+    if let Value::Array(items) = val {
+        if !items.is_empty() && items.iter().all(|v| v.is_string()) {
+            let joined = items
+                .iter()
+                .filter_map(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n");
+            *val = Value::String(joined);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -748,12 +865,15 @@ fn lenient_deserialize(json_str: &str) -> Result<(SdsRoot, Vec<String>), SdsErro
     let json_str = &strip_code_fences(json_str);
 
     // Try parsing as-is first; only run repair if needed (avoids unnecessary allocations).
-    let val: Value = serde_json::from_str(json_str)
+    let mut val: Value = serde_json::from_str(json_str)
         .or_else(|_| serde_json::from_str(&repair_json(json_str)))
         .map_err(|e| {
             let preview: String = json_str.chars().take(500).collect();
             SdsError::LlmParse(format!("Invalid JSON: {e}\nRaw (first 500 chars): {preview}"))
         })?;
+
+    // Normalise fields the LLM sometimes returns as arrays instead of strings.
+    normalize_string_fields(&mut val, false);
 
     let mut obj = match val {
         Value::Object(map) => map,
@@ -1108,5 +1228,40 @@ mod tests {
         assert!(openai_compat_url("cohere").is_some());
         assert!(openai_compat_url("local").is_some());
         assert!(openai_compat_url("unknown").is_none());
+    }
+
+    /// LLM sometimes returns Colour/Odour as AdditionalInfo objects; normalise to string.
+    #[test]
+    fn normalize_colour_odour_from_additional_info_object() {
+        let json = r#"{
+            "PhysicalChemicalProperties": {
+                "BasePhysicalChemicalProperties": {
+                    "Colour": {"AdditionalInfo": {"FullText": ["データなし"]}},
+                    "Odour": {"AdditionalInfo": {"FullText": ["無臭"]}},
+                    "PhysicalState": "液体"
+                }
+            }
+        }"#;
+        let mut val: serde_json::Value = serde_json::from_str(json).unwrap();
+        normalize_string_fields(&mut val, false);
+        let base = &val["PhysicalChemicalProperties"]["BasePhysicalChemicalProperties"];
+        assert_eq!(base["Colour"], "データなし", "Colour should be coerced to string");
+        assert_eq!(base["Odour"], "無臭", "Odour should be coerced to string");
+        assert_eq!(base["PhysicalState"], "液体", "PhysicalState plain string is unchanged");
+    }
+
+    /// CASno.FullText as bare string deserialises into Vec<String> via flex_vec_string_opt.
+    #[test]
+    fn casno_full_text_flex_deserialization() {
+        use crate::schema::SubstanceIdentifiersSubstanceIdentityCASno;
+        let json_str = r#"{"FullText": "1317-61-9"}"#;
+        let cas: SubstanceIdentifiersSubstanceIdentityCASno =
+            serde_json::from_str(json_str).expect("should deserialise bare string");
+        assert_eq!(cas.full_text, Some(vec!["1317-61-9".to_string()]));
+
+        let json_arr = r#"{"FullText": ["1317-61-9"]}"#;
+        let cas2: SubstanceIdentifiersSubstanceIdentityCASno =
+            serde_json::from_str(json_arr).expect("should deserialise array");
+        assert_eq!(cas2.full_text, Some(vec!["1317-61-9".to_string()]));
     }
 }

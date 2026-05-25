@@ -1823,8 +1823,6 @@ impl eframe::App for SdsApp {
                     ui.label(concat!("sds-converter v", env!("CARGO_PKG_VERSION")));
                     ui.add_space(4.0);
                     ui.label(s.about_desc);
-                    ui.add_space(4.0);
-                    ui.hyperlink_to("GitHub", "https://github.com/kent-tokyo/sds-converter");
                     ui.add_space(8.0);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.button(s.btn_ok)
