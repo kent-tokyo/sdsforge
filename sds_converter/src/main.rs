@@ -8,7 +8,7 @@ use std::sync::Arc;
 use clap::{Parser, Subcommand, ValueEnum};
 use futures::stream::{self, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
-use sds_converter_core::{detect_language, Language, SdsRoot};
+use sds_converter_core::{Language, SdsRoot};
 
 use tasks::{
     LogFn, Provider, Quality, ToDocxParams, ToHtmlParams, ToJsonParams, ToPdfParams,

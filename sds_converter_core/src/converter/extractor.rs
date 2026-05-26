@@ -12,6 +12,15 @@ const MAX_TEXT_INPUT_BYTES: u64 = 100 * 1024 * 1024; // 100 MB for text formats
 /// Character count below which we assume a PDF is image-only and attempt OCR.
 const OCR_FALLBACK_THRESHOLD: usize = 200;
 
+/// Prefer pdftotext (Poppler) over pdf-extract when pdftotext gives at least
+/// this fraction of pdf-extract's character count.  pdftotext is a more mature
+/// extractor that preserves label-value adjacency in table-layout PDFs (e.g.
+/// it emits "推奨用途及び使用上の制限 シランカップリング剤" on one line, whereas
+/// pdf-extract lists column headers as a block and values separately later).
+/// Only fall back to pdf-extract when pdftotext gives substantially less text
+/// (likely because it failed or the PDF uses non-standard encoding).
+const PDFTOTEXT_MIN_FRACTION: usize = 75; // prefer pdftotext when pt ≥ 75 % of pdf-extract
+
 pub enum InputFormat {
     Pdf,
     Docx,
@@ -180,8 +189,9 @@ pub async fn extract_text_limited(path: &Path, max_chars: usize) -> Result<Strin
         InputFormat::Pdf => {
             let path_a = path.to_path_buf();
             let path_b = path.to_path_buf();
+            let path_c = path.to_path_buf();
 
-            // Try text-based extraction first.
+            // ① Try text-based extraction with pdf-extract.
             let raw = tokio::task::spawn_blocking(move || {
                 pdf_extract::extract_text(&path_a).map_err(|e| SdsError::Extract(e.to_string()))
             })
@@ -189,29 +199,52 @@ pub async fn extract_text_limited(path: &Path, max_chars: usize) -> Result<Strin
             .unwrap_or_else(|e| Err(SdsError::Extract(e.to_string())))
             .unwrap_or_default(); // treat extraction failure as empty → triggers OCR
 
-            if raw.trim().chars().count() >= OCR_FALLBACK_THRESHOLD {
-                raw
-            } else {
-                // ② pdftotext fallback — handles CID/Shift-JIS fonts that pdf-extract
-                //   cannot decode (it panics or returns garbled bytes).
-                //   pdftotext is part of poppler-utils; silently skipped if not installed.
-                let path_pt = path_b.clone();
-                let pt_text = tokio::task::spawn_blocking(move || pdftotext_fallback(&path_pt))
-                    .await
-                    .unwrap_or(None);
+            let pdf_extract_chars = raw.trim().chars().count();
 
-                if let Some(pt) = pt_text {
-                    if pt.trim().chars().count() >= OCR_FALLBACK_THRESHOLD {
-                        tracing::debug!(
-                            chars = pt.trim().chars().count(),
-                            "pdftotext fallback succeeded"
-                        );
-                        return Ok(clean_extracted_text(&pt, max_chars));
-                    }
+            // ② Always try pdftotext (poppler) regardless of pdf-extract result.
+            //   pdftotext handles CID/Shift-JIS fonts and preserves table cell values
+            //   that pdf-extract sometimes drops (returning only column headers).
+            //   If pdftotext returns substantially more text (≥ PDFTOTEXT_PREFER_RATIO ×),
+            //   we prefer it — this catches table-layout PDFs where pdf-extract is garbled.
+            //   pdftotext is silently skipped if not installed.
+            let pt_text = tokio::task::spawn_blocking(move || pdftotext_fallback(&path_b))
+                .await
+                .unwrap_or(None);
+
+            let raw = if let Some(pt) = pt_text {
+                let pt_chars = pt.trim().chars().count();
+                // Prefer pdftotext when:
+                //   a) pdf-extract returned sparse/empty text (< OCR_FALLBACK_THRESHOLD), OR
+                //   b) pdftotext gives at least PDFTOTEXT_MIN_FRACTION % as many chars.
+                // Rationale: pdftotext (Poppler) preserves label-value adjacency in table-layout
+                // PDFs, making it easier for the LLM to pair fields with their values.
+                // Only keep pdf-extract when pdftotext gives substantially less text (likely failed).
+                let prefer_pt = pdf_extract_chars < OCR_FALLBACK_THRESHOLD
+                    || (pt_chars >= OCR_FALLBACK_THRESHOLD
+                        && pt_chars.saturating_mul(100)
+                            >= pdf_extract_chars.saturating_mul(PDFTOTEXT_MIN_FRACTION));
+                if prefer_pt {
+                    tracing::debug!(
+                        pdf_extract_chars,
+                        pt_chars,
+                        "pdftotext preferred over pdf-extract"
+                    );
+                    pt
+                } else {
+                    tracing::debug!(
+                        pdf_extract_chars,
+                        pt_chars,
+                        "pdf-extract preferred over pdftotext (insufficient pdftotext output)"
+                    );
+                    raw
                 }
+            } else {
+                raw
+            };
 
-                // ③ Sparse text: likely a scanned PDF — attempt OCR fallback.
-                let ocr = tokio::task::spawn_blocking(move || ocr_pdf_with_tesseract(&path_b))
+            // ③ Sparse text: likely a scanned PDF — attempt OCR fallback.
+            if raw.trim().chars().count() < OCR_FALLBACK_THRESHOLD {
+                let ocr = tokio::task::spawn_blocking(move || ocr_pdf_with_tesseract(&path_c))
                     .await
                     .unwrap_or_else(|e| Err(SdsError::Extract(e.to_string())));
 
@@ -223,6 +256,8 @@ pub async fn extract_text_limited(path: &Path, max_chars: usize) -> Result<Strin
                     }
                     Ok(_) => raw, // tesseract ran but produced nothing; keep sparse text
                 }
+            } else {
+                raw
             }
         }
         InputFormat::Docx => {
@@ -441,7 +476,9 @@ pub fn clean_extracted_text(text: &str, max_chars: usize) -> String {
     }
 
     // Pass 2 — deduplicate repeated short lines (page headers / footers)
-    // Any line ≤ 80 chars appearing 3+ times is treated as a repeated header/footer.
+    // Any line ≤ 80 chars appearing 4+ times is treated as a repeated header/footer.
+    // Threshold is 4 (not 3) because a value can legitimately appear 3 times in an SDS:
+    // e.g. the same phone number may be listed for 電話番号, 緊急時の電話番号, and FAX番号.
     {
         let mut freq: HashMap<String, usize> = HashMap::new();
         for line in out.lines() {
@@ -453,7 +490,7 @@ pub fn clean_extracted_text(text: &str, max_chars: usize) -> String {
         let mut deduped = String::with_capacity(out.len());
         for line in out.lines() {
             let count = freq.get(line).copied().unwrap_or(1);
-            if line.len() <= 80 && count >= 3 {
+            if line.len() <= 80 && count >= 4 {
                 if first_seen.insert(line.to_string()) {
                     deduped.push_str(line);
                     deduped.push('\n');

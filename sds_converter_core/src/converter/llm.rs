@@ -599,11 +599,35 @@ const MHLW_SCHEMA_HINT: &str = r#"Output a JSON object. CRITICAL: Use EXACTLY th
   "Datasheet": { "IssueDate": "YYYY-MM-DD", "SDS-SchemaVersionNo": "1.0" },
   "Identification": {
     "TradeProductIdentity": { "TradeNameJP": "...", "TradeNameEN": "...", "ProductNoUser": ["ABC-123"] },
-    "SupplierInformation": { "CompanyName": "...", "Phone": "...", "Address": "..." },
-    "RecommendedUseAndRestrictions": "..."
+    "SupplierInformation": {
+      "CompanyName": "...", "Department": "...", "PostCode": "...", "Address": "...",
+      "Phone": "...", "Fax": "...", "Email": "...", "WorkingHours": "...",
+      "EmergencyContact": [{ "Phone": "緊急連絡先番号", "WorkingHours": "24時間対応" }]
+    },
+    "UseAndUseAdvisedAgainst": {
+      "Use": ["シランカップリング剤"],
+      "UseAdvisedAgainst": ["特になし"]
+    }
   },
   "HazardIdentification": {
-    "Classification": { "FlammableLiquids": "区分2" },
+    "Classification": {
+      "PhysicochemicalEffect": { "FlammableLiquids": "区分2", "Explosives": "該当区分なし" },
+      "HealthEffect": {
+        "AcuteToxicityOral": "区分5",
+        "AcuteToxicityDermal": "区分外",
+        "SkinCorrosionIrritation": "区分2",
+        "EyeDamageOrIrritation": "区分1",
+        "RespiratorySensitisation": "該当区分なし",
+        "SkinSensitisation": "該当区分なし",
+        "GermCellMutagenicity": "分類対象外",
+        "Carcinogenicity": "分類できない",
+        "ReproductiveToxicity": { "Category": "区分2", "Lactation": "分類対象外" },
+        "SpecificTargetOrganSE": [{ "Category": "区分3", "TargetOrgan": ["眼", "皮膚", "気道"], "AdditionalInfo": { "FullText": ["分類根拠の詳細テキスト"] } }],
+        "SpecificTargetOrganRE": [{ "Category": "区分2", "TargetOrgan": ["腎臓"], "AdditionalInfo": { "FullText": ["分類根拠の詳細テキスト"] } }],
+        "AspirationHazard": "該当区分なし"
+      },
+      "EnvironmentalEffect": { "AquaticToxicityAcute": "該当区分なし" }
+    },
     "HazardLabelling": {
       "SignalWord": "危険",
       "HazardStatement": [{ "HazardStatementCode": "H225", "FullText": "引火性の高い液体および蒸気" }],
@@ -622,6 +646,8 @@ const MHLW_SCHEMA_HINT: &str = r#"Output a JSON object. CRITICAL: Use EXACTLY th
         "SubstanceNames": { "IupacName": "エタノール", "GenericName": "エチルアルコール" },
         "SubstanceIdentity": { "CASno": { "FullText": ["64-17-5"] } }
       },
+      "MolecularFormula": "C2H5OH",
+      "MolecularWeight": 46.07,
       "Concentration": { "NumericRangeWithUnitAndQualifier": { "ExactValue": { "Value": 99.5 }, "Unit": "%" } }
     }]
   },
@@ -684,15 +710,23 @@ const MHLW_SCHEMA_HINT: &str = r#"Output a JSON object. CRITICAL: Use EXACTLY th
     "HazardousDecompositionProducts": { "Substance": "炭素酸化物" }
   },
   "ToxicologicalInformation": [{
-    "AcuteToxicity": { "ExposureRoute": [{ "RouteOfExposure": "経口", "FullText": "LD50 ラット 経口 7060 mg/kg" }] },
-    "SkinCorrosionIrritation": { "TestResult": [{ "FullText": "軽度の皮膚刺激性" }] },
-    "EyeDamageOrIrritation": { "TestResult": [{ "FullText": "軽度の眼刺激性" }] },
+    "AcuteToxicity": { "ExposureRoute": [{ "ExposureRouteName": "経口", "Category": "区分4", "AdditionalInfo": { "FullText": ["LD50 ラット 経口 7060 mg/kg"] } }] },
+    "SkinCorrosionIrritation": { "Category": "区分2", "Result": [{ "AdditionalInfo": { "FullText": ["軽度の皮膚刺激性"] } }] },
+    "EyeDamageOrIrritation": { "Category": "区分1", "Result": [{ "AdditionalInfo": { "FullText": ["軽度の眼刺激性"] } }] },
+    "RespiratorySensitisation": { "Category": "区分1", "Result": [{ "AdditionalInfo": { "FullText": ["呼吸器感作性データ"] } }] },
+    "SkinSensitisation": { "Category": "区分1", "Result": [{ "AdditionalInfo": { "FullText": ["皮膚感作性データ"] } }] },
+    "GermCellMutagenicity": { "Category": "区分外", "Result": [{ "AdditionalInfo": { "FullText": ["陰性結果"] } }] },
+    "Carcinogenicity": { "Category": "分類できない", "Result": [{ "AdditionalInfo": { "FullText": ["データなし"] } }] },
+    "ReproductiveToxicity": { "Category": "分類できない", "Result": [{ "AdditionalInfo": { "FullText": ["発生毒性データ"] } }] },
+    "SpecificTargetOrganSE": { "Category": "区分3", "TargetOrgan": ["気道"], "AdditionalInfo": { "FullText": ["分類根拠"] } },
+    "SpecificTargetOrganRE": { "Category": "区分2", "TargetOrgan": ["腎臓"], "AdditionalInfo": { "FullText": ["分類根拠"] } },
+    "AspirationHazard": { "Category": "区分1", "Result": [{ "AdditionalInfo": { "FullText": ["吸引性データ"] } }] },
     "AdditionalToxicologicalInformation": "その他の毒性情報"
   }],
   "EcologicalInformation": [{
     "EcotoxicologicalInformation": {
-      "AquaticAcuteToxicity": { "Result": [{ "FullText": "LC50 ラット 96h 10000 mg/L" }] },
-      "AquaticChronicToxicity": { "Result": [{ "FullText": "NOEC 21d 1000 mg/L" }] }
+      "AquaticAcuteToxicity": { "Result": [{ "AdditionalInfo": { "FullText": ["LC50 ラット 96h 10000 mg/L"] } }] },
+      "AquaticChronicToxicity": { "Result": [{ "AdditionalInfo": { "FullText": ["NOEC 21d 1000 mg/L"] } }] }
     },
     "PersistenceDegradability": {
       "BiologicalDegradability": "生分解性あり",
@@ -714,7 +748,7 @@ const MHLW_SCHEMA_HINT: &str = r#"Output a JSON object. CRITICAL: Use EXACTLY th
   },
   "RegulatoryInformation": {
     "OtherLegislation": {
-      "Legislation": [{ "LegislationName": "労働安全衛生法", "Regulations": [{ "FullText": "..." }] }]
+      "Legislation": [{ "LegislationName": "労働安全衛生法", "Regulations": [{ "RegulationName": "名称等の表示", "AdditionalInfo": { "FullText": ["..."] } }] }]
     }
   },
   "OtherInformation": {
@@ -782,6 +816,9 @@ fn build_system_prompt(lang: Option<Language>) -> String {
          - Reproduce text exactly as written in the source document; do not infer or fill in missing data\n\
          - Confidential/undisclosed values (e.g. '非公開', '秘密', 'confidential', '不公开') must be recorded as-is in AdditionalInfo.FullText — never omit them\n\
          - ItemName values must be copied verbatim from the source document; never translate or standardize them (e.g. '目に入った場合' must NOT become '眼への接触')\n\
+         - For Section 1 (Identification): extract ALL contact fields present — Phone, Fax, Email, WorkingHours, and EmergencyContact as an array (use EmergencyContact key inside SupplierInformation). Always extract UseAndUseAdvisedAgainst with Use (array of recommended uses) and UseAdvisedAgainst (array of restrictions).\n\
+         - CRITICAL: ReproductiveToxicity MUST be an OBJECT {{\"Category\": \"...\", \"Lactation\": \"...\"}} — NEVER a plain string. In ToxicologicalInformation, SpecificTargetOrganSE and SpecificTargetOrganRE MUST be SINGLE OBJECTS {{\"Category\": \"...\", \"TargetOrgan\": [...], \"AdditionalInfo\": {{\"FullText\": [...]}}}} — NOT wrapped in an array. In HazardIdentification.Classification, they ARE arrays.\n\
+         - CRITICAL: MolecularWeight in Composition is a plain NUMBER (e.g. 46.07) — NOT a NumericRangeWithUnitAndQualifier object.\n\
          - JSON keys must match EXACTLY the key names shown in the schema example below\n\
          {TYPO_WARNINGS}\n\
          \nSchema example (use these EXACT key names):\n{MHLW_SCHEMA_HINT}"
@@ -1092,6 +1129,9 @@ fn build_vision_system_prompt(lang: Option<Language>) -> String {
          - Reproduce text exactly as written in the source document; do not infer or fill in missing data\n\
          - Confidential/undisclosed values (e.g. '非公開', '秘密', 'confidential', '不公开') must be recorded as-is in AdditionalInfo.FullText — never omit them\n\
          - ItemName values must be copied verbatim from the source document; never translate or standardize them (e.g. '目に入った場合' must NOT become '眼への接触')\n\
+         - For Section 1 (Identification): extract ALL contact fields present — Phone, Fax, Email, WorkingHours, and EmergencyContact as an array (use EmergencyContact key inside SupplierInformation). Always extract UseAndUseAdvisedAgainst with Use (array of recommended uses) and UseAdvisedAgainst (array of restrictions).\n\
+         - CRITICAL: ReproductiveToxicity MUST be an OBJECT {{\"Category\": \"...\", \"Lactation\": \"...\"}} — NEVER a plain string. In ToxicologicalInformation, SpecificTargetOrganSE and SpecificTargetOrganRE MUST be SINGLE OBJECTS {{\"Category\": \"...\", \"TargetOrgan\": [...], \"AdditionalInfo\": {{\"FullText\": [...]}}}} — NOT wrapped in an array. In HazardIdentification.Classification, they ARE arrays.\n\
+         - CRITICAL: MolecularWeight in Composition is a plain NUMBER (e.g. 46.07) — NOT a NumericRangeWithUnitAndQualifier object.\n\
          - JSON keys must match EXACTLY the key names shown in the schema example below\n\
          {TYPO_WARNINGS}\n\
          \nSchema example (use these EXACT key names):\n{MHLW_SCHEMA_HINT}"
@@ -1379,5 +1419,82 @@ mod tests {
         let cas2: SubstanceIdentifiersSubstanceIdentityCASno =
             serde_json::from_str(json_arr).expect("should deserialise array");
         assert_eq!(cas2.full_text, Some(vec!["1317-61-9".to_string()]));
+    }
+
+    /// MHLW_SCHEMA_HINT must contain valid JSON that deserialises into SdsRoot
+    /// with the key sections populated.  This test catches structural mismatches
+    /// between the prompt example and the generated.rs Rust struct definitions.
+    #[test]
+    fn mhlw_schema_hint_json_is_structurally_correct() {
+        // Strip the prose preamble — JSON starts at the first '{'.
+        let json_start = MHLW_SCHEMA_HINT
+            .find('{')
+            .expect("MHLW_SCHEMA_HINT must contain a JSON object");
+        let json_str = &MHLW_SCHEMA_HINT[json_start..];
+
+        let val: serde_json::Value =
+            serde_json::from_str(json_str).expect("MHLW_SCHEMA_HINT JSON must be valid");
+
+        let root: SdsRoot =
+            serde_json::from_value(val).expect("MHLW_SCHEMA_HINT must deserialise into SdsRoot");
+
+        // --- Identification --------------------------------------------------
+        let id = root.identification.as_ref().expect("Identification must be Some");
+        let sup = id.supplier_information.as_ref().expect("SupplierInformation must be Some");
+        assert!(sup.fax.is_some(), "SupplierInformation.Fax must be present in schema hint");
+        assert!(
+            id.use_and_use_advised_against.is_some(),
+            "Identification.UseAndUseAdvisedAgainst must be present (not RecommendedUseAndRestrictions)"
+        );
+
+        // --- HazardIdentification.Classification ----------------------------
+        let hi = root
+            .hazard_identification
+            .as_ref()
+            .expect("HazardIdentification must be Some");
+        let cls = hi
+            .classification
+            .as_ref()
+            .expect("Classification must be Some");
+        let phys = cls
+            .physicochemical_effect
+            .as_ref()
+            .expect("Classification.PhysicochemicalEffect must be Some");
+        assert!(
+            phys.flammable_liquids.is_some(),
+            "PhysicochemicalEffect.FlammableLiquids must be present"
+        );
+        let health = cls
+            .health_effect
+            .as_ref()
+            .expect("Classification.HealthEffect must be Some");
+        assert!(
+            health.skin_corrosion_irritation.is_some(),
+            "HealthEffect.SkinCorrosionIrritation must be present"
+        );
+        assert!(
+            health.eye_damage_or_irritation.is_some(),
+            "HealthEffect.EyeDamageOrIrritation must be present"
+        );
+        assert!(
+            health.respiratory_sensitisation.is_some() || health.skin_sensitisation.is_some(),
+            "HealthEffect must include RespiratorySensitisation or SkinSensitisation"
+        );
+
+        // --- ToxicologicalInformation ----------------------------------------
+        let tox_list = root
+            .toxicological_information
+            .as_ref()
+            .expect("ToxicologicalInformation must be Some");
+        let tox = tox_list.first().expect("ToxicologicalInformation must have at least one entry");
+        // SpecificTargetOrganSE/RE must be SINGLE STRUCTS (not arrays) in ToxicologicalInformation
+        assert!(
+            tox.specific_target_organ_se.is_some(),
+            "ToxicologicalInformation.SpecificTargetOrganSE must be present (as single struct)"
+        );
+        assert!(
+            tox.specific_target_organ_re.is_some(),
+            "ToxicologicalInformation.SpecificTargetOrganRE must be present (as single struct)"
+        );
     }
 }

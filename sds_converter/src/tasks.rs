@@ -8,11 +8,11 @@ use walkdir::WalkDir;
 use sds_converter_core::{
     converter::{AnthropicBackend, LlmBackend, LlmConfig, OpenAiCompatBackend, openai_compat_url},
     convert_from_json, convert_from_template, convert_pdf_to_json_vision,
-    convert_to_json, convert_url_to_json,
+    convert_to_json_with_report, convert_url_to_json,
     detect_language, detect_language_from_file, detect_language_from_url,
     enrich_composition, validate,
     extract_text, extract_text_from_url,
-    ConvertConfig, Language, SdsError, SdsRoot,
+    ConversionReport, ConvertConfig, Language, SdsError, SdsRoot,
 };
 
 // ---------------------------------------------------------------------------
@@ -273,39 +273,50 @@ pub async fn run_to_json(params: ToJsonParams, log: LogFn) -> anyhow::Result<()>
     ));
 
     log(format!("Extracting text from {} ...", params.input));
-    let result = if is_url {
-        convert_url_to_json(&params.input, &*backend, &convert_config).await
-    } else {
-        convert_to_json(Path::new(&params.input), &*backend, &convert_config).await
-    };
-    let (sds, warnings) = match result {
-        Ok(pair) => pair,
-        Err(SdsError::ImageOnlyPdf(_)) if !is_url && params.provider == Provider::Anthropic => {
-            log("PDF appears image-only — retrying with Claude vision OCR...".to_string());
-            let vision_config = LlmConfig {
-                model: params.model.clone(),
-                max_tokens: params.quality.max_tokens(),
-            };
-            // For image-only PDFs the text-based language detection ran on sparse/empty
-            // text and may be wrong.  Use only the user-specified language (params.lang),
-            // falling back to None so the vision model can auto-detect from the image.
-            let vision_convert_config = ConvertConfig {
-                source_language: params.lang,
-                output_language: Language::default(),
-                max_chars: params.quality.max_chars(),
-            };
-            convert_pdf_to_json_vision(
-                Path::new(&params.input),
-                &params.api_key,
-                &vision_config,
-                &vision_convert_config,
-            )
+
+    // language_auto_detected: track whether the user specified --lang or we inferred it.
+    let user_specified_lang = params.lang.is_some();
+
+    let (sds, report) = if is_url {
+        // URL: no structured report yet — build one from warnings.
+        let (sds, warnings) = convert_url_to_json(&params.input, &*backend, &convert_config)
             .await
-            .context("vision OCR failed")?
+            .map_err(anyhow::Error::from)?;
+        let eff_lang = source_language.unwrap_or_default();
+        let report = ConversionReport::from_sds(&sds, eff_lang, !user_specified_lang, warnings);
+        (sds, report)
+    } else {
+        match convert_to_json_with_report(Path::new(&params.input), &*backend, &convert_config).await {
+            Ok(pair) => pair,
+            Err(SdsError::ImageOnlyPdf(_)) if params.provider == Provider::Anthropic => {
+                log("PDF appears image-only — retrying with Claude vision OCR...".to_string());
+                let vision_config = LlmConfig {
+                    model: params.model.clone(),
+                    max_tokens: params.quality.max_tokens(),
+                };
+                // For image-only PDFs the text-based language detection may be wrong.
+                // Use only the user-specified language, or None for auto-detect from image.
+                let vision_convert_config = ConvertConfig {
+                    source_language: params.lang,
+                    output_language: Language::default(),
+                    max_chars: params.quality.max_chars(),
+                };
+                let (sds, warnings) = convert_pdf_to_json_vision(
+                    Path::new(&params.input),
+                    &params.api_key,
+                    &vision_config,
+                    &vision_convert_config,
+                )
+                .await
+                .context("vision OCR failed")?;
+                let eff_lang = params.lang.unwrap_or_default();
+                let report = ConversionReport::from_sds(&sds, eff_lang, !user_specified_lang, warnings);
+                (sds, report)
+            }
+            Err(e) => return Err(e.into()),
         }
-        Err(e) => return Err(e.into()),
     };
-    for w in &warnings {
+    for w in &report.warnings {
         log(format!("WARN: {w}"));
     }
     if params.enrich {
@@ -340,6 +351,28 @@ pub async fn run_to_json(params: ToJsonParams, log: LogFn) -> anyhow::Result<()>
         params.output.clone()
     };
     log(format!("Saved JSON to {}", final_output.display()));
+
+    // Write <stem>_report.json alongside the output JSON.
+    let report_path = report_path_for(&final_output);
+    match serde_json::to_string_pretty(&report) {
+        Ok(report_json) => {
+            if let Err(e) = std::fs::write(&report_path, report_json) {
+                log(format!("WARN: could not write report: {e}"));
+            } else {
+                // Summarise key report fields for the operator.
+                log(format!(
+                    "Report: {} populated, {} empty section(s) — see {}",
+                    report.populated_sections.len(),
+                    report.empty_sections.len(),
+                    report_path.display()
+                ));
+                if !report.empty_sections.is_empty() {
+                    log(format!("Empty sections: {}", report.empty_sections.join(", ")));
+                }
+            }
+        }
+        Err(e) => log(format!("WARN: could not serialise report: {e}")),
+    }
     Ok(())
 }
 
@@ -499,6 +532,20 @@ pub fn check_json_file_size(path: &Path) -> anyhow::Result<()> {
 // ---------------------------------------------------------------------------
 
 /// Recursively remove empty strings, empty arrays, and empty objects from a
+/// Returns the path for the conversion report file: `<stem>_report.json`.
+///
+/// Examples:
+///   `output.json`          → `output_report.json`
+///   `SDS_2024-01-01_X.json`→ `SDS_2024-01-01_X_report.json`
+fn report_path_for(json_output: &Path) -> PathBuf {
+    let stem = json_output
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("output");
+    let dir = json_output.parent().unwrap_or(Path::new("."));
+    dir.join(format!("{stem}_report.json"))
+}
+
 /// JSON value, per MHLW §3.3: fields with no valid value should be omitted
 /// entirely rather than set to `""`.
 fn prune_empty_strings(v: serde_json::Value) -> serde_json::Value {

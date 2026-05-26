@@ -6,7 +6,7 @@
 //! ```no_run
 //! use sds_converter_core::{
 //!     AnthropicBackend, LlmConfig,
-//!     convert_to_json, ConvertConfig, Language,
+//!     convert_to_json, convert_to_json_with_report, ConvertConfig, Language,
 //! };
 //!
 //! #[tokio::main]
@@ -20,10 +20,14 @@
 //!         output_language: Language::Japanese,
 //!         ..Default::default()
 //!     };
-//!     let (sds, warnings) =
-//!         convert_to_json(std::path::Path::new("input.pdf"), &backend, &config).await?;
-//!     for w in &warnings { eprintln!("WARN: {w}"); }
+//!     // `convert_to_json_with_report` returns structured metadata (language, sections, notes).
+//!     let (sds, report) =
+//!         convert_to_json_with_report(std::path::Path::new("input.pdf"), &backend, &config).await?;
+//!     for w in &report.warnings { eprintln!("WARN: {w}"); }
+//!     eprintln!("Populated sections: {:?}", report.populated_sections);
+//!     eprintln!("Standardization notes: {:?}", report.standardization_notes);
 //!     std::fs::write("output.json", serde_json::to_string_pretty(&sds)?)?;
+//!     std::fs::write("output_report.json", serde_json::to_string_pretty(&report)?)?;
 //!     Ok(())
 //! }
 //! ```
@@ -45,9 +49,12 @@ pub mod language;
 pub mod schema;
 
 pub use converter::{
-    AnthropicBackend, AnyBackend, ConvertConfig, LlmBackend, LlmConfig, OpenAiCompatBackend,
-    build_any_backend, convert_bytes_to_json, convert_from_json, convert_from_template,
-    convert_pdf_to_json_vision, convert_to_json, convert_url_to_json,
+    AnthropicBackend, AnyBackend, ConvertConfig, ConversionReport, LlmBackend, LlmConfig,
+    OpenAiCompatBackend, build_any_backend,
+    convert_bytes_to_json, convert_bytes_to_json_with_report,
+    convert_from_json, convert_from_template,
+    convert_pdf_to_json_vision, convert_to_json, convert_to_json_with_report,
+    convert_url_to_json,
     extract_sds_from_pdf_vision, fill_template, openai_compat_url,
 };
 pub use converter::extractor::{
