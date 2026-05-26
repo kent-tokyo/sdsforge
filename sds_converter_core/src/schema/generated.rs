@@ -95,7 +95,8 @@ pub struct SubstanceIdentifiersSubstanceIdentityCASno {
 pub struct SubstanceIdentifiersSubstanceIdentityOtherNo {
     #[serde(rename = "IdentityName", skip_serializing_if = "Option::is_none")]
     pub identity_name: Option<String>,
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -231,7 +232,8 @@ pub struct AccidentalReleaseMeasures {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AccidentalReleaseMeasuresContainmentAndCleaningUp {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "Containment", skip_serializing_if = "Option::is_none")]
     pub containment: Option<String>,
@@ -247,7 +249,8 @@ pub struct AccidentalReleaseMeasuresContainmentAndCleaningUp {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AccidentalReleaseMeasuresEnvironmentalPrecautions {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -255,7 +258,8 @@ pub struct AccidentalReleaseMeasuresEnvironmentalPrecautions {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AccidentalReleaseMeasuresHumanExposureAndEmergencyMeasuress {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "GeneralMeasures", skip_serializing_if = "Option::is_none")]
     pub general_measures: Option<String>,
@@ -285,7 +289,8 @@ pub struct AccidentalReleaseMeasuresHumanExposureAndEmergencyMeasuressForNonEmer
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AccidentalReleaseMeasuresSecondaryDisasterPreventionMeasures {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -405,7 +410,8 @@ pub struct Datasheet {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DisposalConsiderations {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "ProductWaste", skip_serializing_if = "Option::is_none")]
     pub product_waste: Option<Vec<String>>,
@@ -713,7 +719,8 @@ pub struct ExposureControlPersonalProtectionPersonalProtectionEquipment {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ExposureControlPersonalProtectionPersonalProtectionEquipmentEyeProtection {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "SuitableEyeProtection", skip_serializing_if = "Option::is_none")]
     pub suitable_eye_protection: Option<ExposureControlPersonalProtectionPersonalProtectionEquipmentEyeProtectionSuitableEyeProtection>,
@@ -739,7 +746,8 @@ pub struct ExposureControlPersonalProtectionPersonalProtectionEquipmentEyeProtec
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ExposureControlPersonalProtectionPersonalProtectionEquipmentHandProtection {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "Type", skip_serializing_if = "Option::is_none")]
     pub r#type: Option<String>,
@@ -779,7 +787,8 @@ pub struct ExposureControlPersonalProtectionPersonalProtectionEquipmentHandProte
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ExposureControlPersonalProtectionPersonalProtectionEquipmentRespiratoryProtection {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "TasksNeedingRespiratoryProtection", skip_serializing_if = "Option::is_none")]
     pub tasks_needing_respiratory_protection: Option<String>,
@@ -809,7 +818,8 @@ pub struct ExposureControlPersonalProtectionPersonalProtectionEquipmentRespirato
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ExposureControlPersonalProtectionPersonalProtectionEquipmentSkinProtection {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "SuitableProtectiveClothing", skip_serializing_if = "Option::is_none")]
     pub suitable_protective_clothing: Option<ExposureControlPersonalProtectionPersonalProtectionEquipmentSkinProtectionSuitableProtectiveClothing>,
@@ -879,7 +889,8 @@ pub struct FireFightingMeasures {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FireFightingMeasuresFireAndExplosionHazards {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "HazardCombustionProd", skip_serializing_if = "Option::is_none")]
     pub hazard_combustion_prod: Option<String>,
@@ -889,7 +900,8 @@ pub struct FireFightingMeasuresFireAndExplosionHazards {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FireFightingMeasuresFireFightingProcedures {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "InitialFireFightingMethod", skip_serializing_if = "Option::is_none")]
     pub initial_fire_fighting_method: Option<String>,
@@ -903,7 +915,8 @@ pub struct FireFightingMeasuresFireFightingProcedures {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FireFightingMeasuresMediaNotBeUsed {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -911,7 +924,8 @@ pub struct FireFightingMeasuresMediaNotBeUsed {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FireFightingMeasuresMediaToBeUsed {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -919,7 +933,8 @@ pub struct FireFightingMeasuresMediaToBeUsed {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FireFightingMeasuresSpecialProtectiveEquipmentForFirefighters {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "SpecialProtectiveEquipmentAndPreventiveMeasuresForFirefighters", skip_serializing_if = "Option::is_none")]
     pub special_protective_equipment_and_preventive_measures_for_firefighters: Option<String>,
@@ -943,7 +958,8 @@ pub struct FirstAidMeasures {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FirstAidMeasuresDescriptionOfFirstAidMeasures {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -965,7 +981,8 @@ pub struct FirstAidMeasuresExposureRoute {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FirstAidMeasuresExposureRouteFirstAidEye {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -973,7 +990,8 @@ pub struct FirstAidMeasuresExposureRouteFirstAidEye {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FirstAidMeasuresExposureRouteFirstAidIngestion {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -981,7 +999,8 @@ pub struct FirstAidMeasuresExposureRouteFirstAidIngestion {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FirstAidMeasuresExposureRouteFirstAidInhalation {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -989,7 +1008,8 @@ pub struct FirstAidMeasuresExposureRouteFirstAidInhalation {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FirstAidMeasuresExposureRouteFirstAidSkin {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -997,7 +1017,8 @@ pub struct FirstAidMeasuresExposureRouteFirstAidSkin {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FirstAidMeasuresInformationToHealthProfessionals {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "AcuteSymptomsAndEffects", skip_serializing_if = "Option::is_none")]
     pub acute_symptoms_and_effects: Option<FirstAidMeasuresInformationToHealthProfessionalsAcuteSymptomsAndEffects>,
@@ -1037,7 +1058,8 @@ pub struct FirstAidMeasuresInformationToHealthProfessionalsDelayedSymptomsAndEff
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FirstAidMeasuresMedicalAttentionAndSpecialTreatmentNeeded {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -1277,13 +1299,15 @@ pub struct HazardIdentificationHazardLabelling {
 pub struct HazardIdentificationHazardLabellingHazardStatement {
     #[serde(rename = "HazardStatementCode", skip_serializing_if = "Option::is_none")]
     pub hazard_statement_code: Option<String>,
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct HazardIdentificationHazardLabellingOtherHazardsInfo {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "PhysicochemicalEffect", skip_serializing_if = "Option::is_none")]
     pub physicochemical_effect: Option<String>,
@@ -1313,7 +1337,8 @@ pub struct HazardIdentificationHazardLabellingPrecautionaryStatements {
 pub struct HazardIdentificationHazardLabellingPrecautionaryStatementsDisposal {
     #[serde(rename = "PrecautionaryStatementCode", skip_serializing_if = "Option::is_none")]
     pub precautionary_statement_code: Option<String>,
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
 }
 
@@ -1321,7 +1346,8 @@ pub struct HazardIdentificationHazardLabellingPrecautionaryStatementsDisposal {
 pub struct HazardIdentificationHazardLabellingPrecautionaryStatementsPrevention {
     #[serde(rename = "PrecautionaryStatementCode", skip_serializing_if = "Option::is_none")]
     pub precautionary_statement_code: Option<String>,
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
 }
 
@@ -1329,7 +1355,8 @@ pub struct HazardIdentificationHazardLabellingPrecautionaryStatementsPrevention 
 pub struct HazardIdentificationHazardLabellingPrecautionaryStatementsResponse {
     #[serde(rename = "PrecautionaryStatementCode", skip_serializing_if = "Option::is_none")]
     pub precautionary_statement_code: Option<String>,
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
 }
 
@@ -1337,7 +1364,8 @@ pub struct HazardIdentificationHazardLabellingPrecautionaryStatementsResponse {
 pub struct HazardIdentificationHazardLabellingPrecautionaryStatementsStorage {
     #[serde(rename = "PrecautionaryStatementCode", skip_serializing_if = "Option::is_none")]
     pub precautionary_statement_code: Option<String>,
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
 }
 
@@ -1515,7 +1543,8 @@ pub struct OtherInformation {
 pub struct OtherInformationRevisionInformation {
     #[serde(rename = "LastUpdateDate", skip_serializing_if = "Option::is_none")]
     pub last_update_date: Option<String>,
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
 }
 
@@ -1571,7 +1600,8 @@ pub struct PhysicalChemicalPropertiesAutoignitionTemperature {
     pub numeric_range_with_unit_and_qualifier: Option<NumericRangeWithUnitAndQualifier>,
     #[serde(rename = "Method", skip_serializing_if = "Option::is_none")]
     pub method: Option<String>,
-    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub condition: Option<String>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -1629,7 +1659,8 @@ pub struct PhysicalChemicalPropertiesBulkDensity {
     pub numeric_range_with_unit_and_qualifier: Option<NumericRangeWithUnitAndQualifier>,
     #[serde(rename = "Method", skip_serializing_if = "Option::is_none")]
     pub method: Option<String>,
-    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub condition: Option<String>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -1641,7 +1672,8 @@ pub struct PhysicalChemicalPropertiesBurningPersistence {
     pub numeric_range_with_unit_and_qualifier: Option<NumericRangeWithUnitAndQualifier>,
     #[serde(rename = "Method", skip_serializing_if = "Option::is_none")]
     pub method: Option<String>,
-    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub condition: Option<String>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -1653,7 +1685,8 @@ pub struct PhysicalChemicalPropertiesDecompositionTemperature {
     pub numeric_range_with_unit_and_qualifier: Option<NumericRangeWithUnitAndQualifier>,
     #[serde(rename = "Method", skip_serializing_if = "Option::is_none")]
     pub method: Option<String>,
-    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub condition: Option<String>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -1667,7 +1700,8 @@ pub struct PhysicalChemicalPropertiesDensities {
     pub numeric_range_with_unit_and_qualifier: Option<NumericRangeWithUnitAndQualifier>,
     #[serde(rename = "Method", skip_serializing_if = "Option::is_none")]
     pub method: Option<String>,
-    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub condition: Option<String>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -1705,7 +1739,8 @@ pub struct PhysicalChemicalPropertiesExplosionLimit {
     pub numeric_range_with_unit_and_qualifier: Option<NumericRangeWithUnitAndQualifier>,
     #[serde(rename = "Method", skip_serializing_if = "Option::is_none")]
     pub method: Option<String>,
-    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub condition: Option<String>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -1717,7 +1752,8 @@ pub struct PhysicalChemicalPropertiesFlashPoint {
     pub numeric_range_with_unit_and_qualifier: Option<NumericRangeWithUnitAndQualifier>,
     #[serde(rename = "Method", skip_serializing_if = "Option::is_none")]
     pub method: Option<String>,
-    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub condition: Option<String>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -1755,7 +1791,8 @@ pub struct PhysicalChemicalPropertiesOtherPhysicalChemicalProperty {
     pub numeric_range_with_unit_and_qualifier: Option<NumericRangeWithUnitAndQualifier>,
     #[serde(rename = "Method", skip_serializing_if = "Option::is_none")]
     pub method: Option<String>,
-    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub condition: Option<String>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -1777,7 +1814,8 @@ pub struct PhysicalChemicalPropertiesParticleSizeItemName {
     pub numeric_range_with_unit_and_qualifier: Option<NumericRangeWithUnitAndQualifier>,
     #[serde(rename = "Method", skip_serializing_if = "Option::is_none")]
     pub method: Option<String>,
-    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub condition: Option<String>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -1833,7 +1871,8 @@ pub struct PhysicalChemicalPropertiesRadioactivity {
     pub numeric_range_with_unit_and_qualifier: Option<NumericRangeWithUnitAndQualifier>,
     #[serde(rename = "Method", skip_serializing_if = "Option::is_none")]
     pub method: Option<String>,
-    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub condition: Option<String>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -1845,7 +1884,8 @@ pub struct PhysicalChemicalPropertiesRelativeVapourDensity {
     pub numeric_range_with_unit_and_qualifier: Option<NumericRangeWithUnitAndQualifier>,
     #[serde(rename = "Method", skip_serializing_if = "Option::is_none")]
     pub method: Option<String>,
-    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub condition: Option<String>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -2115,9 +2155,11 @@ pub struct StabilityReactivity {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct StabilityReactivityHazardousDecompositionProducts {
-    #[serde(rename = "Substance", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "Substance", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub substance: Option<String>,
-    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "Condition", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub condition: Option<String>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -2125,7 +2167,8 @@ pub struct StabilityReactivityHazardousDecompositionProducts {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct StabilityReactivityHazardousReactions {
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "Flammability", skip_serializing_if = "Option::is_none")]
     pub flammability: Option<String>,
@@ -2443,7 +2486,8 @@ pub struct ToxicologicalInformationSpecificTargetOrganREResultSTOTData {
     pub unit: Option<String>,
     #[serde(rename = "OrganAffected", skip_serializing_if = "Option::is_none")]
     pub organ_affected: Option<String>,
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "ResultEvaluation", skip_serializing_if = "Option::is_none")]
     pub result_evaluation: Option<String>,
@@ -2481,7 +2525,8 @@ pub struct ToxicologicalInformationSpecificTargetOrganSEResultSTOTData {
     pub unit: Option<String>,
     #[serde(rename = "OrganAffected", skip_serializing_if = "Option::is_none")]
     pub organ_affected: Option<String>,
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "ResultEvaluation", skip_serializing_if = "Option::is_none")]
     pub result_evaluation: Option<String>,
@@ -2509,7 +2554,8 @@ pub struct TransportInformationDomesticRegulations {
     pub transportation_type: Option<String>,
     #[serde(rename = "LegislationName", skip_serializing_if = "Option::is_none")]
     pub legislation_name: Option<String>,
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "Erg", skip_serializing_if = "Option::is_none")]
     pub erg: Option<String>,
@@ -2533,7 +2579,8 @@ pub struct TransportInformationInternationalRegulations {
 pub struct TransportInformationInternationalRegulationsRegulationName {
     #[serde(rename = "TransportationType", skip_serializing_if = "Option::is_none")]
     pub transportation_type: Option<String>,
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]
     pub full_text: Option<String>,
     #[serde(rename = "UnNo", skip_serializing_if = "Option::is_none")]
     pub un_no: Option<String>,
@@ -2553,7 +2600,8 @@ pub struct TransportInformationInternationalRegulationsRegulationName {
 pub struct TransportInformationSpecialPrecautionUser {
     #[serde(rename = "TransportationType", skip_serializing_if = "Option::is_none")]
     pub transportation_type: Option<String>,
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_vec_string_opt")]
     pub full_text: Option<Vec<String>>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,
@@ -2563,7 +2611,8 @@ pub struct TransportInformationSpecialPrecautionUser {
 pub struct TransportInformationSpecialProvisions {
     #[serde(rename = "TransportationType", skip_serializing_if = "Option::is_none")]
     pub transportation_type: Option<String>,
-    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "FullText", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_vec_string_opt")]
     pub full_text: Option<Vec<String>>,
     #[serde(rename = "AdditionalInfo", skip_serializing_if = "Option::is_none")]
     pub additional_info: Option<AdditionalInfo>,

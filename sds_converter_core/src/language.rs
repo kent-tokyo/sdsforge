@@ -39,9 +39,13 @@ impl Language {
 /// Detection order:
 /// 0. Fewer than 30 non-whitespace characters → [`Language::Japanese`] (default, not enough text)
 /// 1. Hiragana or katakana present → [`Language::Japanese`]
-/// 2. Fewer than 20 CJK characters → [`Language::English`]
-/// 3. Traditional-Chinese-only characters outnumber simplified-only → [`Language::ChineseTraditional`]
-/// 4. Otherwise → [`Language::ChineseSimplified`]
+/// 2. No CJK ideographs AND text is substantially Latin (≥ 30 % of meaningful chars are
+///    ASCII printable a-z/A-Z/0-9) → [`Language::English`]
+///    This avoids misclassifying Japanese PDFs whose pdftotext output contains only garbage
+///    ASCII (e.g. garbled CID/Shift-JIS font metrics) as English.
+/// 3. Fewer than 20 CJK characters → [`Language::Japanese`] (not enough CJK to distinguish)
+/// 4. Traditional-Chinese-only characters outnumber simplified-only → [`Language::ChineseTraditional`]
+/// 5. Otherwise → [`Language::ChineseSimplified`]
 ///
 /// Works on as little as ~200 characters of text. No LLM or network call required.
 pub fn detect_language(text: &str) -> Language {
@@ -66,8 +70,29 @@ pub fn detect_language(text: &str) -> Language {
         .chars()
         .filter(|&c| matches!(c, '\u{4E00}'..='\u{9FFF}' | '\u{F900}'..='\u{FAFF}'))
         .count();
+
+    // If there are no CJK ideographs, check whether the text is substantially Latin
+    // before concluding it is English.
+    //
+    // Rationale: pdftotext applied to CID/Shift-JIS Japanese PDFs can produce garbled ASCII
+    // (font metric codes, fallback glyphs, etc.) that contains no kana and no CJK characters.
+    // Without this guard, `detect_language` would incorrectly return English for those PDFs.
+    //
+    // We require ≥ 30 % of meaningful chars to be basic Latin letters/digits to call English.
+    // For real English SDS documents this threshold is easily exceeded (typically > 80 %).
+    // For garbled CID font output the "text" is mostly punctuation/specials, not letters/digits.
     if cjk_total < 20 {
-        return Language::English;
+        let latin_alphanum = text
+            .chars()
+            .filter(|c| c.is_ascii_alphabetic() || c.is_ascii_digit())
+            .count();
+        // Need ≥ 30 % of meaningful chars to be ASCII alphanumeric to call English.
+        if latin_alphanum * 100 >= meaningful_chars * 30 {
+            return Language::English;
+        } else {
+            // Not enough Latin signal — garbled CID font output or near-empty text.
+            return Language::default(); // Japanese
+        }
     }
 
     // Distinguish Simplified vs Traditional Chinese by counting characters that diverge
@@ -93,5 +118,59 @@ pub fn detect_language(text: &str) -> Language {
         Language::ChineseTraditional
     } else {
         Language::ChineseSimplified
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn japanese_kana_detected() {
+        let text = "安全データシート\n製品名：テストシリカ\nSection 1 化学品及び会社情報";
+        assert_eq!(detect_language(text), Language::Japanese);
+    }
+
+    #[test]
+    fn english_sds_detected() {
+        let text = "Safety Data Sheet\nSection 1: Identification\nProduct name: Test Chemical\n\
+                    Supplier: ABC Corp, 123 Industrial Blvd, City, Country\n\
+                    Emergency telephone: +1-800-555-1234";
+        assert_eq!(detect_language(text), Language::English);
+    }
+
+    #[test]
+    fn simplified_chinese_detected() {
+        let text = "安全技术说明书\n产品名称：测试化学品\n公司名称：某某化工有限公司\n\
+                    危险性概述：本产品为易燃液体，可能导致皮肤刺激。";
+        assert_eq!(detect_language(text), Language::ChineseSimplified);
+    }
+
+    #[test]
+    fn traditional_chinese_detected() {
+        let text = "安全資料表\n產品名稱：測試化學品\n公司名稱：某某化工有限公司\n\
+                    危害辨識資料：本產品為易燃液體，可能導致皮膚刺激。";
+        assert_eq!(detect_language(text), Language::ChineseTraditional);
+    }
+
+    /// Garbled CID/Shift-JIS font output from pdftotext should NOT be classified as English.
+    /// Such output typically contains lots of punctuation / special chars but few a-z letters.
+    #[test]
+    fn garbled_cid_font_output_defaults_to_japanese() {
+        // Simulate pdftotext output for a Shift-JIS PDF where only font metrics survive:
+        // lots of punctuation/brackets but no meaningful Latin words or CJK characters.
+        let garbled = "(.)(.)(.)(.)(.)(.)(.)[][][][][]{}{}{}^^^***///\\\\\\###@@@";
+        // 30+ non-whitespace chars, no kana, no CJK, but also < 30% alphabetic
+        assert_eq!(
+            detect_language(garbled),
+            Language::Japanese,
+            "garbled CID font output should default to Japanese"
+        );
+    }
+
+    #[test]
+    fn empty_text_defaults_to_japanese() {
+        assert_eq!(detect_language(""), Language::Japanese);
+        assert_eq!(detect_language("   "), Language::Japanese);
     }
 }

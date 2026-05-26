@@ -192,12 +192,32 @@ pub async fn extract_text_limited(path: &Path, max_chars: usize) -> Result<Strin
             let path_c = path.to_path_buf();
 
             // ① Try text-based extraction with pdf-extract.
+            //   pdf-extract can panic on unsupported font encodings (e.g. 90ms-RKSJ-H,
+            //   FromUtf8Error for Shift-JIS PDFs).  We use catch_unwind so that:
+            //   a) the panic does not propagate as a tokio task failure, and
+            //   b) a debug log message is emitted instead of a noisy panic backtrace.
+            //   (Rust's default panic hook still prints to stderr before catch_unwind runs;
+            //   this is a known limitation — the fallback logic is correct regardless.)
             let raw = tokio::task::spawn_blocking(move || {
-                pdf_extract::extract_text(&path_a).map_err(|e| SdsError::Extract(e.to_string()))
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    pdf_extract::extract_text(&path_a)
+                })) {
+                    Ok(Ok(text)) => text,
+                    Ok(Err(e)) => {
+                        tracing::debug!("pdf-extract error: {e}; will try pdftotext/OCR");
+                        String::new()
+                    }
+                    Err(_) => {
+                        tracing::debug!(
+                            "pdf-extract panicked (unsupported font encoding?); \
+                             will try pdftotext/OCR"
+                        );
+                        String::new()
+                    }
+                }
             })
             .await
-            .unwrap_or_else(|e| Err(SdsError::Extract(e.to_string())))
-            .unwrap_or_default(); // treat extraction failure as empty → triggers OCR
+            .unwrap_or_default(); // JoinError on task cancellation → empty string
 
             let pdf_extract_chars = raw.trim().chars().count();
 
@@ -476,13 +496,15 @@ pub fn clean_extracted_text(text: &str, max_chars: usize) -> String {
     }
 
     // Pass 2 — deduplicate repeated short lines (page headers / footers)
-    // Any line ≤ 80 chars appearing 4+ times is treated as a repeated header/footer.
+    // Any non-empty line ≤ 80 chars appearing 4+ times is treated as a repeated header/footer.
     // Threshold is 4 (not 3) because a value can legitimately appear 3 times in an SDS:
     // e.g. the same phone number may be listed for 電話番号, 緊急時の電話番号, and FAX番号.
+    // Empty lines (paragraph separators) are never deduplicated.
     {
         let mut freq: HashMap<String, usize> = HashMap::new();
         for line in out.lines() {
-            if line.len() <= 80 {
+            // Blank lines are structural separators — always pass them through.
+            if !line.is_empty() && line.len() <= 80 {
                 *freq.entry(line.to_string()).or_default() += 1;
             }
         }
@@ -490,7 +512,7 @@ pub fn clean_extracted_text(text: &str, max_chars: usize) -> String {
         let mut deduped = String::with_capacity(out.len());
         for line in out.lines() {
             let count = freq.get(line).copied().unwrap_or(1);
-            if line.len() <= 80 && count >= 4 {
+            if !line.is_empty() && line.len() <= 80 && count >= 4 {
                 if first_seen.insert(line.to_string()) {
                     deduped.push_str(line);
                     deduped.push('\n');
@@ -724,5 +746,40 @@ mod tests {
         assert!(result.contains("Line A"));
         assert!(result.contains("Line B"));
         assert!(result.contains("Line C"));
+    }
+
+    /// Bug 1: blank-line paragraph separators must survive Pass 2 deduplication.
+    /// With the unfixed code, `""` is counted in freq and hits threshold ≥ 4 when
+    /// there are 5+ sections, causing all but the first blank line to be silently dropped.
+    #[test]
+    fn blank_lines_not_removed_by_dedup() {
+        // 5 sections separated by blank lines → 4 blank lines total in freq
+        let input = "Section A content\n\nSection B content\n\nSection C content\n\nSection D content\n\nSection E content\n";
+        let result = clean_extracted_text(input, 10_000);
+        assert!(
+            result.contains("Section A content\n\nSection B content"),
+            "blank line separator between A and B was removed; result: {result:?}"
+        );
+        assert!(
+            result.contains("Section B content\n\nSection C content"),
+            "blank line separator between B and C was removed; result: {result:?}"
+        );
+    }
+
+    /// Bug 2: short values that legitimately repeat (e.g. Japanese hazard classifications)
+    /// must NOT be deduplicated.  "該当区分なし" appears once per hazard class in a real
+    /// SDS — deduping to 1 occurrence destroys hazard classification data.
+    /// Also exercises Bug 3 (byte-length vs char-count): "該当区分なし" is 6 CJK chars
+    /// = 18 UTF-8 bytes, well within 80 chars but would only be caught if char count is used.
+    #[test]
+    fn short_repeated_values_preserved() {
+        let repeated = "該当区分なし";
+        let mut input = String::new();
+        for i in 0..8 {
+            input.push_str(&format!("危険有害性クラス{i}: {repeated}\n"));
+        }
+        let result = clean_extracted_text(&input, 10_000);
+        let count = result.matches(repeated).count();
+        assert_eq!(count, 8, "short repeated value appeared {count} times, expected 8");
     }
 }

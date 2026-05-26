@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] / [0.3.4] — 2026-05-26
+
+### Fixed
+
+- **Blank lines lost in extracted text** (`extractor.rs`): Pass 2 deduplication in
+  `clean_extracted_text` was counting empty strings (`""`) in the frequency map. When a document
+  had 4+ sections (i.e. 4+ blank-line separators), all blank lines after the first were silently
+  dropped. Fixed by excluding empty lines from both the frequency count and the deduplication
+  check. Added regression test `blank_lines_not_removed_by_dedup`.
+
+- **`FireFightingMeasures` section skipped** (`schema/generated.rs`, `schema/mod.rs`): The LLM
+  sometimes returns `FullText` (typed `Option<String>`) as a JSON array (e.g.
+  `["有害燃焼副産物：ケイ素酸化物", "炭素酸化物"]`). Serde rejected this with
+  "invalid type: sequence, expected a string", causing the entire `FireFightingMeasures` section
+  to be skipped. Added `flex_string_opt` custom deserializer (accepts string *or* array-of-strings,
+  joining with `\n`) and applied it to **all** `FullText: Option<String>` fields in the schema.
+  Added regression test `fire_fighting_full_text_accepts_array`.
+
+- **`StabilityReactivity` section skipped** (`schema/generated.rs`): Same array-vs-string
+  mismatch for `HazardousDecompositionProducts.Substance` and `.Condition`. Fixed by applying
+  `flex_string_opt` to all `Substance` and `Condition: Option<String>` fields. Added regression
+  test `stability_reactivity_substance_accepts_array`.
+
+- **Language misdetection for CID/Shift-JIS PDFs** (`language.rs`): `pdftotext` applied to
+  CID/Shift-JIS font PDFs can produce garbled ASCII output (punctuation, special chars, no
+  real letters). The previous `detect_language` logic classified this as English because it
+  found no CJK or kana characters. Fixed: when no CJK is present, the function now requires
+  ≥ 30 % of meaningful chars to be ASCII alphanumeric (a–z, A–Z, 0–9) before returning
+  `Language::English`; otherwise it falls back to `Language::Japanese`. Added regression test
+  `garbled_cid_font_output_defaults_to_japanese`.
+
+- **pdf-extract panics on unsupported encodings** (`extractor.rs`): `pdf_extract::extract_text`
+  panics on PDFs using `90ms-RKSJ-H` or other unsupported font encodings. Wrapped the
+  `spawn_blocking` call in `std::panic::catch_unwind(AssertUnwindSafe(...))` so panics are
+  caught gracefully, a `tracing::debug!` message is emitted, and extraction continues with the
+  `pdftotext`/OCR fallback instead of propagating as a task failure.
+
+- **`TransportInformation` and `Condition` fields lacked flex deserializers** (`schema/generated.rs`):
+  `TransportInformationSpecialPrecautionUser.full_text` and
+  `TransportInformationSpecialProvisions.full_text` (`Option<Vec<String>>`) were missing the
+  `flex_vec_string_opt` deserializer. All `Condition: Option<String>` fields across the schema
+  were also missing `flex_string_opt`. Fixed; `tools/generate_schema.py` updated to generate
+  these annotations automatically.
+
+### Changed
+
+- **LLM prompt: Section 11 toxicology guidance** (`llm.rs`): Added explicit instructions to
+  always extract LD50/LC50/other toxicity values into `ToxicologicalInformation.AcuteToxicity`
+  and to never emit empty `Result` arrays (`[{}]`).
+
+- **LLM prompt: Section 12 ecology guidance** (`llm.rs`): Added explicit instructions to
+  always extract EC50/LC50/NOEC values into `EcologicalInformation.AquaticAcuteToxicity` /
+  `AquaticChronicToxicity` and to never emit empty `Result` arrays.
+
 ## [0.2.3] / [0.3.3] — 2026-05-25
 
 ### Fixed

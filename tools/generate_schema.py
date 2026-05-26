@@ -199,8 +199,31 @@ def emit_struct(path: tuple, children: list[dict]) -> list[str]:
         inner_type = rust_field_type(child)
         full_type = wrap_type(inner_type, child["repeat"])
 
-        # Serde rename: always emit to preserve exact JSON key
-        lines.append(f'    #[serde(rename = "{key}", skip_serializing_if = "Option::is_none")]')
+        # Serde annotations — always include rename + skip_serializing_if.
+        # For Option<String> fields that LLMs sometimes return as arrays, add
+        # flex_string_opt so a JSON array is joined into a single string rather
+        # than causing a deserialization error that skips the whole section.
+        #
+        # Fields that get flex_string_opt:
+        #   - FullText (non-array variant) — LLMs sometimes wrap single-section text in []
+        #   - Substance / Condition in HazardousDecompositionProducts — LLMs list
+        #     decomposition products as arrays (e.g. ["CO2", "NH3", ...])
+        is_plain_string = (inner_type == "String" and not child["repeat"])
+        is_vec_string  = (inner_type == "String" and child["repeat"])
+        flex_string_keys = {"FullText", "Substance", "Condition"}
+        if is_vec_string and key == "FullText":
+            # AdditionalInfo.FullText is Vec<String>; accept bare strings too
+            lines.append(
+                f'    #[serde(rename = "{key}", skip_serializing_if = "Option::is_none",\n'
+                f'            default, deserialize_with = "crate::schema::serde_flex::flex_vec_string_opt")]'
+            )
+        elif is_plain_string and key in flex_string_keys:
+            lines.append(
+                f'    #[serde(rename = "{key}", skip_serializing_if = "Option::is_none",\n'
+                f'            default, deserialize_with = "crate::schema::serde_flex::flex_string_opt")]'
+            )
+        else:
+            lines.append(f'    #[serde(rename = "{key}", skip_serializing_if = "Option::is_none")]')
         lines.append(f"    pub {field_name}: {full_type},")
 
     lines.append("}")
