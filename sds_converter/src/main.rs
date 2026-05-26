@@ -8,7 +8,7 @@ use std::sync::Arc;
 use clap::{Parser, Subcommand, ValueEnum};
 use futures::stream::{self, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
-use sds_converter_core::{Language, SdsRoot};
+use sds_converter_core::{detect_language, Language, SdsRoot};
 
 use tasks::{
     LogFn, Provider, Quality, ToDocxParams, ToHtmlParams, ToJsonParams, ToPdfParams,
@@ -493,7 +493,6 @@ fn batch_to_docx(
     let total = files.len();
     if total == 0 { eprintln!("No .json files found"); return Ok(()); }
     let pb = make_pb(total as u64);
-    let config = ConvertConfig { source_language: None, output_language: lang, ..Default::default() };
     let (mut ok, mut failed) = (0usize, 0usize);
     for path in &files {
         let stem = match path.file_stem().and_then(|s| s.to_str()).filter(|s| !s.is_empty()) {
@@ -504,13 +503,27 @@ fn batch_to_docx(
         let out_path = output_dir.join(format!("{stem}.docx"));
         let result = check_json_file_size(path)
             .and_then(|_| std::fs::read_to_string(path).map_err(anyhow::Error::from))
-            .and_then(|raw| serde_json::from_str::<SdsRoot>(&raw).map_err(anyhow::Error::from))
-            .and_then(|sds| {
-                if let Some(tmpl) = template {
-                    convert_from_template(&sds, tmpl, &out_path).map_err(anyhow::Error::from)
+            .and_then(|raw| {
+                // Auto-detect lang per file when the default (Japanese) was not explicitly set.
+                let effective_lang = if lang == Language::default() {
+                    sds_converter_core::detect_language(&raw)
                 } else {
-                    convert_from_json(&sds, &out_path, &config).map_err(anyhow::Error::from)
-                }
+                    lang
+                };
+                let file_config = ConvertConfig {
+                    source_language: None,
+                    output_language: effective_lang,
+                    ..Default::default()
+                };
+                serde_json::from_str::<SdsRoot>(&raw)
+                    .map_err(anyhow::Error::from)
+                    .and_then(|sds| {
+                        if let Some(tmpl) = template {
+                            convert_from_template(&sds, tmpl, &out_path).map_err(anyhow::Error::from)
+                        } else {
+                            convert_from_json(&sds, &out_path, &file_config).map_err(anyhow::Error::from)
+                        }
+                    })
             });
         match result {
             Ok(_)  => ok += 1,

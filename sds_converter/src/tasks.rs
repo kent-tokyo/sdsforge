@@ -9,7 +9,7 @@ use sds_converter_core::{
     converter::{AnthropicBackend, LlmBackend, LlmConfig, OpenAiCompatBackend, openai_compat_url},
     convert_from_json, convert_from_template, convert_pdf_to_json_vision,
     convert_to_json, convert_url_to_json,
-    detect_language_from_file, detect_language_from_url,
+    detect_language, detect_language_from_file, detect_language_from_url,
     enrich_composition, validate,
     extract_text, extract_text_from_url,
     ConvertConfig, Language, SdsError, SdsRoot,
@@ -344,20 +344,34 @@ pub async fn run_to_json(params: ToJsonParams, log: LogFn) -> anyhow::Result<()>
 }
 
 pub async fn run_to_docx(params: ToDocxParams, log: LogFn) -> anyhow::Result<()> {
-    let config = ConvertConfig {
-        source_language: None,
-        output_language: params.lang,
-        ..Default::default()
-    };
     let input = params.input.clone();
     let output = params.output.clone();
     let template = params.template.clone();
+    let explicit_lang = params.lang;
 
     tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
         check_json_file_size(&input)?;
         let json = std::fs::read_to_string(&input)
             .with_context(|| format!("reading {}", input.display()))?;
         let sds: SdsRoot = serde_json::from_str(&json)?;
+
+        // If the caller left the language at the default (Japanese), auto-detect
+        // from the JSON content so that Chinese/English SDS get correct headings.
+        let lang = if explicit_lang == Language::default() {
+            let detected = detect_language(&json);
+            if detected != Language::default() {
+                tracing::info!("to-docx: auto-detected language {:?} from JSON content", detected);
+            }
+            detected
+        } else {
+            explicit_lang
+        };
+
+        let config = ConvertConfig {
+            source_language: None,
+            output_language: lang,
+            ..Default::default()
+        };
         if let Some(tmpl) = template {
             convert_from_template(&sds, &tmpl, &output)?;
         } else {
