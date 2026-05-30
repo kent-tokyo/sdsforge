@@ -388,11 +388,9 @@ pub async fn run_to_json(params: ToJsonParams, log: LogFn) -> anyhow::Result<()>
         Err(e) => log(format!("WARN: could not serialise report: {e}")),
     }
 
-    // Write <stem>_compliance_<country>.json when country is known.
-    if let Some(diff) = &report.compliance_diff {
-        let slug = params.country
-            .map(|c| c.slug())
-            .unwrap_or("unknown");
+    // Write <stem>_compliance_<country>.json only when --country was explicitly set.
+    if let (Some(diff), Some(country)) = (&report.compliance_diff, params.country) {
+        let slug = country.slug();
         let stem = final_output
             .file_stem()
             .and_then(|s| s.to_str())
