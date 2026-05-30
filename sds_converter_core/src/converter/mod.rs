@@ -1,3 +1,5 @@
+pub mod compliance;
+pub mod corrector;
 pub mod extractor;
 pub mod generator;
 pub mod html;
@@ -10,6 +12,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::country::SourceCountry;
 use crate::error::SdsError;
 use crate::language::Language;
 use crate::schema::SdsRoot;
@@ -44,6 +47,9 @@ pub struct ConversionReport {
     pub standardization_notes: Vec<String>,
     /// Validation warnings emitted by the MHLW schema validator.
     pub warnings: Vec<String>,
+    /// Country-specific compliance gap report, present when a source country is known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compliance_diff: Option<compliance::ComplianceDiffReport>,
 }
 
 impl ConversionReport {
@@ -118,10 +124,13 @@ impl ConversionReport {
             empty_sections: empty,
             standardization_notes,
             warnings,
+            compliance_diff: None, // filled by convert_to_json_with_report if country is known
         }
     }
 }
 
+pub use compliance::{ComplianceDiffReport, ComplianceGap, generate_compliance_diff};
+pub use corrector::{CorrectionConfig, CorrectionResult};
 pub use extractor::InputFormat;
 pub use generator::generate_docx;
 pub use pdf::generate_pdf;
@@ -136,20 +145,36 @@ pub use template::fill_template;
 pub struct ConvertConfig {
     /// Language hint for the source document. `None` = auto-detect.
     pub source_language: Option<Language>,
+    /// Country/regulatory-region of the source SDS. `None` = inferred from language.
+    ///
+    /// When set, country-specific extraction rules are injected into the LLM prompt
+    /// (e.g. China requires 24-hour emergency contact), country-specific validation
+    /// checks are applied, and a compliance-gap report is generated alongside the JSON.
+    pub source_country: Option<SourceCountry>,
     /// Language used for section headings in the generated document.
     pub output_language: Language,
     /// Maximum characters of extracted text sent to the LLM (quality control).
     /// Defaults to 80,000 to capture all 16 SDS sections including transport/regulatory.
     /// CLI overrides this via `--quality` (low=15k, medium=30k, high=60k).
     pub max_chars: usize,
+    /// Opt-in validation-driven correction pass.
+    ///
+    /// When `Some`, a second targeted LLM call is made after the primary
+    /// extraction to fix any invalid GHS H/P-codes found by the validator.
+    /// CAS check-digit errors are corrected deterministically (no LLM call).
+    ///
+    /// `None` (the default) leaves the existing behavior completely unchanged.
+    pub correction: Option<CorrectionConfig>,
 }
 
 impl Default for ConvertConfig {
     fn default() -> Self {
         Self {
             source_language: None,
+            source_country: None,
             output_language: Language::default(),
             max_chars: 80_000,
+            correction: None,
         }
     }
 }
@@ -170,16 +195,65 @@ pub async fn convert_to_json_with_report<B: LlmBackend + Sync>(
         ));
     }
     let language_auto_detected = config.source_language.is_none();
-    let (sds, mut warnings) =
-        llm::extract_sds_from_text(backend, &text, config.source_language).await?;
+
+    // Resolve the effective source country: explicit override → inferred from language → None.
+    let effective_lang_for_country = config.source_language
+        .unwrap_or_else(|| crate::language::detect_language(&text));
+    let country = config.source_country
+        .or_else(|| SourceCountry::infer_from_language(effective_lang_for_country));
+
+    let (mut sds, mut warnings) =
+        llm::extract_sds_from_text(backend, &text, config.source_language, country).await?;
+
+    // ── Structural normalization ──────────────────────────────────────────────
+    // CAS numbers: split entries that contain embedded newlines (LLM sometimes
+    // concatenates multiple CAS numbers into one string with newlines instead
+    // of using separate list entries).
+    normalize_cas_full_text(&mut sds);
+
+    // HazardIdentification: always present, even for non-hazardous products.
+    // The LLM sometimes omits it entirely for HDPE/inert gas/food-grade substances;
+    // insert a minimal stub so downstream tools and the QC checker see a valid section.
+    ensure_hazard_identification(&mut sds);
+
+    // ── Optional correction pass (opt-in via ConvertConfig::correction) ───────
+    let mut corrected_cas_values: Vec<String> = Vec::new();
+    if let Some(correction_cfg) = &config.correction {
+        let findings = validator::collect_findings(&sds);
+        if !findings.is_empty() {
+            let result = corrector::apply_correction_pass(
+                sds, &text, &findings, backend, correction_cfg,
+            )
+            .await;
+            sds = result.sds;
+            warnings.extend(result.notes);
+            corrected_cas_values = result.corrected_cas_values;
+        }
+    }
+
     let validation_warnings = validator::validate(&sds);
     warnings.extend(validation_warnings);
+
+    // Country-specific validation (always-on when country is known).
+    if let Some(c) = country {
+        warnings.extend(validator::validate_country(&sds, c));
+    }
+
+    // Phase 2: deterministic source-text verification (zero extra API calls).
+    let source_warnings = validator::verify_against_source(&sds, &text, &corrected_cas_values);
+    warnings.extend(source_warnings);
 
     // Determine effective source language for the report.
     let effective_lang = config.source_language.unwrap_or_else(|| {
         crate::language::detect_language(&text)
     });
-    let report = ConversionReport::from_sds(&sds, effective_lang, language_auto_detected, warnings);
+    let mut report = ConversionReport::from_sds(&sds, effective_lang, language_auto_detected, warnings);
+
+    // Attach compliance diff to report when a country is known.
+    if let Some(c) = country {
+        report.compliance_diff = Some(compliance::generate_compliance_diff(&sds, c));
+    }
+
     Ok((sds, report))
 }
 
@@ -251,6 +325,65 @@ pub async fn convert_bytes_to_json<B: LlmBackend + Sync>(
     Ok((sds, report.warnings))
 }
 
+/// Split any CAS `full_text` list entries that contain embedded newlines or
+/// commas into separate entries.  The LLM occasionally concatenates multiple
+/// CAS numbers into one string (e.g. `"590-00-1\n24634-61-5"` or
+/// `"64742-54-7, 64742-55-8, 64742-65-0"`) instead of using a list.
+fn normalize_cas_full_text(sds: &mut SdsRoot) {
+    let Some(comp) = &mut sds.composition else { return };
+    let Some(items) = &mut comp.composition_and_concentration else { return };
+    for item in items.iter_mut() {
+        let Some(ids) = &mut item.substance_identifiers else { continue };
+        let Some(identity) = &mut ids.substance_identity else { continue };
+        let Some(cas_node) = &mut identity.ca_sno else { continue };
+        let Some(texts) = &mut cas_node.full_text else { continue };
+
+        // A single valid CAS number never contains newlines, carriage returns,
+        // or commas.  Any such character signals a concatenated multi-CAS string.
+        let needs_split = texts.iter().any(|s| {
+            s.contains('\n') || s.contains('\r') || s.contains(',') || s.contains(';')
+        });
+        if !needs_split {
+            continue;
+        }
+
+        let expanded: Vec<String> = texts
+            .drain(..)
+            .flat_map(|s| {
+                s.split(|c: char| c == '\n' || c == '\r' || c == ',' || c == ';')
+                    .map(str::trim)
+                    .filter(|t| !t.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        *texts = expanded;
+    }
+}
+
+/// Ensure `HazardIdentification` is always present in the SDS.
+///
+/// The LLM sometimes omits the section entirely for products with no GHS
+/// hazard classification (non-hazardous polymers, inert gases, food-grade
+/// substances).  Insert a minimal stub so the section is structurally valid:
+/// `HazardLabelling.SignalWord = "N/A"` and an empty `HazardStatement` list.
+fn ensure_hazard_identification(sds: &mut SdsRoot) {
+    if sds.hazard_identification.is_some() {
+        return;
+    }
+    use crate::schema::{
+        HazardIdentification, HazardIdentificationHazardLabelling,
+    };
+    sds.hazard_identification = Some(HazardIdentification {
+        hazard_labelling: Some(HazardIdentificationHazardLabelling {
+            signal_word: Some("N/A".to_string()),
+            hazard_statement: Some(vec![]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+}
+
 /// Convert an [`SdsRoot`] to a `.docx` file using the built-in layout.
 pub fn convert_from_json(
     sds: &SdsRoot,
@@ -272,10 +405,17 @@ pub async fn convert_url_to_json<B: LlmBackend + Sync>(
             "No text extracted from URL — page may be empty or JavaScript-rendered".into(),
         ));
     }
+    let effective_lang_for_country = config.source_language
+        .unwrap_or_else(|| crate::language::detect_language(&text));
+    let country = config.source_country
+        .or_else(|| SourceCountry::infer_from_language(effective_lang_for_country));
     let (sds, mut warnings) =
-        llm::extract_sds_from_text(backend, &text, config.source_language).await?;
+        llm::extract_sds_from_text(backend, &text, config.source_language, country).await?;
     let validation_warnings = validator::validate(&sds);
     warnings.extend(validation_warnings);
+    if let Some(c) = country {
+        warnings.extend(validator::validate_country(&sds, c));
+    }
     Ok((sds, warnings))
 }
 
@@ -298,11 +438,20 @@ pub async fn convert_pdf_to_json_vision(
         .await
         .map_err(|e| SdsError::Extract(format!("spawn_blocking panicked: {e}")))?
         .map_err(|e| SdsError::Extract(format!("reading PDF: {e}")))?;
+    let effective_lang_for_country = config.source_language
+        .unwrap_or_else(|| crate::language::detect_language(
+            &String::from_utf8_lossy(&bytes)
+        ));
+    let country = config.source_country
+        .or_else(|| SourceCountry::infer_from_language(effective_lang_for_country));
     let (sds, mut warnings) =
-        llm::extract_sds_from_pdf_vision(api_key, llm_config, &bytes, config.source_language)
+        llm::extract_sds_from_pdf_vision(api_key, llm_config, &bytes, config.source_language, country)
             .await?;
     let validation_warnings = validator::validate(&sds);
     warnings.extend(validation_warnings);
+    if let Some(c) = country {
+        warnings.extend(validator::validate_country(&sds, c));
+    }
     Ok((sds, warnings))
 }
 

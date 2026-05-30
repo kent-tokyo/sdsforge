@@ -110,6 +110,153 @@ pub mod serde_flex {
 
         d.deserialize_any(FlexVecVisitor)
     }
+
+    /// Deserialise `Option<Vec<String>>` where elements may be JSON objects.
+    ///
+    /// Extends [`flex_vec_string_opt`] to also handle arrays of objects — e.g.
+    /// `[{"ItemName": "引火性", "AdditionalInfo": {"FullText": ["引火性液体"]}}]`.
+    /// Objects are converted to strings by trying (in order):
+    /// 1. `AdditionalInfo.FullText` joined with " / "
+    /// 2. `ItemName`
+    /// 3. JSON serialisation of the whole object as a fallback.
+    pub fn flex_vec_string_or_obj_opt<'de, D>(d: D) -> Result<Option<Vec<String>>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::Deserialize;
+
+        let v = Option::<serde_json::Value>::deserialize(d)
+            .map_err(de::Error::custom)?;
+
+        fn obj_to_string(obj: serde_json::Value) -> String {
+            if let serde_json::Value::Object(ref map) = obj {
+                // Try AdditionalInfo.FullText
+                if let Some(ai) = map.get("AdditionalInfo") {
+                    if let Some(ft) = ai.get("FullText") {
+                        let parts: Vec<String> = match ft {
+                            serde_json::Value::Array(arr) => arr
+                                .iter()
+                                .filter_map(|v| v.as_str().map(str::to_string))
+                                .collect(),
+                            serde_json::Value::String(s) => vec![s.clone()],
+                            _ => vec![],
+                        };
+                        if !parts.is_empty() {
+                            return parts.join(" / ");
+                        }
+                    }
+                }
+                // Try ItemName
+                if let Some(serde_json::Value::String(name)) = map.get("ItemName") {
+                    if !name.is_empty() {
+                        return name.clone();
+                    }
+                }
+            }
+            // Fallback: compact JSON
+            serde_json::to_string(&obj).unwrap_or_default()
+        }
+
+        match v {
+            None => Ok(None),
+            Some(serde_json::Value::String(s)) => {
+                if s.is_empty() { Ok(None) } else { Ok(Some(vec![s])) }
+            }
+            Some(serde_json::Value::Array(arr)) => {
+                let items: Vec<String> = arr
+                    .into_iter()
+                    .filter_map(|elem| match elem {
+                        serde_json::Value::String(s) if !s.is_empty() => Some(s),
+                        serde_json::Value::Object(_) => {
+                            let s = obj_to_string(elem);
+                            if s.is_empty() { None } else { Some(s) }
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                if items.is_empty() { Ok(None) } else { Ok(Some(items)) }
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// Generate a `flex_single_or_vec_opt` deserialiser for a concrete type `$T`.
+    ///
+    /// LLMs sometimes emit a single JSON object where the schema expects an array.
+    /// The generated function accepts either form and always returns `Option<Vec<$T>>`.
+    macro_rules! flex_single_or_vec_opt {
+        ($fn_name:ident, $T:ty) => {
+            pub fn $fn_name<'de, D>(d: D) -> Result<Option<Vec<$T>>, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                use serde::Deserialize;
+                let v = Option::<serde_json::Value>::deserialize(d)
+                    .map_err(serde::de::Error::custom)?;
+                match v {
+                    None => Ok(None),
+                    Some(serde_json::Value::Array(arr)) => {
+                        let items: Result<Vec<$T>, _> = arr
+                            .into_iter()
+                            .map(|val| {
+                                serde_json::from_value(val).map_err(serde::de::Error::custom)
+                            })
+                            .collect();
+                        Ok(Some(items?))
+                    }
+                    Some(obj) => {
+                        let item = serde_json::from_value::<$T>(obj)
+                            .map_err(serde::de::Error::custom)?;
+                        Ok(Some(vec![item]))
+                    }
+                }
+            }
+        };
+    }
+
+    use crate::schema::{
+        HandlingAndStorageStorageConditionsForSafeStorage,
+        HazardIdentificationClassificationHealthEffectSpecificTargetOrganRE,
+        HazardIdentificationClassificationHealthEffectSpecificTargetOrganSE,
+    };
+
+    flex_single_or_vec_opt!(
+        flex_stoase_opt,
+        HazardIdentificationClassificationHealthEffectSpecificTargetOrganSE
+    );
+    flex_single_or_vec_opt!(
+        flex_stoare_opt,
+        HazardIdentificationClassificationHealthEffectSpecificTargetOrganRE
+    );
+
+    /// Deserialise `Option<HandlingAndStorageStorageConditionsForSafeStorage>` from
+    /// either a struct or a plain string.
+    ///
+    /// LLMs sometimes emit the storage precautions text as a bare string instead of
+    /// nesting it in the struct.  When a string is received it is placed in
+    /// `TechnicalMeasuresAndStorageConditions`.
+    pub fn flex_storage_conditions_opt<'de, D>(
+        d: D,
+    ) -> Result<Option<HandlingAndStorageStorageConditionsForSafeStorage>, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::Deserialize;
+        let v = Option::<serde_json::Value>::deserialize(d)
+            .map_err(serde::de::Error::custom)?;
+        match v {
+            None => Ok(None),
+            Some(serde_json::Value::String(s)) if s.is_empty() => Ok(None),
+            Some(serde_json::Value::String(s)) => {
+                Ok(Some(HandlingAndStorageStorageConditionsForSafeStorage {
+                    technical_measures_and_storage_conditions: Some(s),
+                    ..Default::default()
+                }))
+            }
+            Some(obj) => serde_json::from_value(obj)
+                .map_err(serde::de::Error::custom),
+        }
+    }
 }
 
 #[cfg(test)]

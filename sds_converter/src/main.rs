@@ -8,7 +8,7 @@ use std::sync::Arc;
 use clap::{Parser, Subcommand, ValueEnum};
 use futures::stream::{self, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
-use sds_converter_core::{Language, SdsRoot};
+use sds_converter_core::{Language, SourceCountry, SdsRoot};
 
 use tasks::{
     LogFn, Provider, Quality, ToDocxParams, ToHtmlParams, ToJsonParams, ToPdfParams,
@@ -55,6 +55,29 @@ impl From<CliLanguage> for Language {
             CliLanguage::En   => Language::English,
             CliLanguage::ZhCn => Language::ChineseSimplified,
             CliLanguage::ZhTw => Language::ChineseTraditional,
+        }
+    }
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum CliCountry {
+    /// Japan (JIS Z 7253 / MHLW)
+    Jp,
+    /// China (GB/T 16483)
+    Cn,
+    /// Taiwan (CNS 15030)
+    Tw,
+    /// Korea (K-GHS Rev.6)
+    Kr,
+}
+
+impl From<CliCountry> for SourceCountry {
+    fn from(c: CliCountry) -> Self {
+        match c {
+            CliCountry::Jp => SourceCountry::Japan,
+            CliCountry::Cn => SourceCountry::China,
+            CliCountry::Tw => SourceCountry::Taiwan,
+            CliCountry::Kr => SourceCountry::Korea,
         }
     }
 }
@@ -113,6 +136,10 @@ enum Commands {
         api_key: Option<String>,
         #[arg(long, value_enum)]
         lang: Option<CliLanguage>,
+        /// Target country for country-specific extraction rules, validation, and compliance report.
+        /// Inferred from --lang when omitted (zh-cn → cn, zh-tw → tw, ja → jp).
+        #[arg(long, value_enum)]
+        country: Option<CliCountry>,
         #[arg(long)]
         model: Option<String>,
         #[arg(long, value_enum, default_value = "anthropic")]
@@ -125,6 +152,12 @@ enum Commands {
         concurrency: usize,
         #[arg(long)]
         enrich: bool,
+        /// Run the validation-driven correction pass after primary extraction.
+        ///
+        /// Fixes invalid GHS H/P-codes via a targeted second LLM call and
+        /// corrects CAS check-digit errors deterministically.
+        #[arg(long)]
+        correct: bool,
         /// Use the MHLW-recommended filename: SDS_<date>_<product_code>.json
         #[arg(long)]
         suggested_name: bool,
@@ -203,6 +236,26 @@ enum Commands {
 // ---------------------------------------------------------------------------
 
 fn main() -> anyhow::Result<()> {
+    // Suppress the noisy panic backtrace that Rust's default panic hook emits for
+    // pdf-extract crate panics.  Those panics are always caught by std::panic::catch_unwind
+    // in sds_converter_core::converter::extractor and do not represent real failures —
+    // they happen when pdf-extract encounters Shift-JIS / CID-font encoded PDFs, after
+    // which the code falls back to pdftotext / OCR automatically.
+    //
+    // We install a custom hook that forwards everything to the original hook *except*
+    // panics originating from files inside the pdf-extract crate.
+    {
+        let default_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let file = info.location().map(|l| l.file()).unwrap_or("");
+            if file.contains("pdf-extract") || file.contains("pdf_extract") {
+                // Panic is caught upstream by catch_unwind — silently discard.
+                return;
+            }
+            default_hook(info);
+        }));
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -233,12 +286,14 @@ async fn run_cli() -> anyhow::Result<()> {
     match cli.command {
         Commands::ToJson {
             input, input_dir, output, output_dir,
-            api_key, lang, model, provider, base_url, quality, concurrency, enrich, suggested_name,
+            api_key, lang, country, model, provider, base_url, quality, concurrency,
+            enrich, correct, suggested_name,
         } => {
             let provider = Provider::from(provider);
             let quality  = Quality::from(quality);
             let api_key  = resolve_api_key(api_key, provider, &cfg)?;
             let model    = model.unwrap_or_else(|| provider.default_model(quality).to_string());
+            let country  = country.map(SourceCountry::from);
 
             eprintln!(
                 "Quality: {} (max_chars={}, max_tokens={}, model={})",
@@ -250,7 +305,7 @@ async fn run_cli() -> anyhow::Result<()> {
                     let output = output.ok_or_else(|| anyhow::anyhow!("--output required"))?;
                     tasks::run_to_json(ToJsonParams {
                         input, output, provider, api_key, model, quality,
-                        lang: lang.map(Language::from), base_url, enrich,
+                        lang: lang.map(Language::from), country, base_url, enrich, correct,
                         use_suggested_filename: suggested_name,
                     }, Arc::clone(&log)).await?;
                 }
@@ -259,7 +314,7 @@ async fn run_cli() -> anyhow::Result<()> {
                     std::fs::create_dir_all(&out_dir)?;
                     batch_to_json(
                         &dir, &out_dir, provider, api_key, model, quality,
-                        lang.map(Language::from), base_url, concurrency, enrich,
+                        lang.map(Language::from), country, base_url, concurrency, enrich, correct,
                         suggested_name,
                     ).await;
                 }
@@ -417,9 +472,11 @@ async fn batch_to_json(
     model: String,
     quality: Quality,
     lang: Option<Language>,
+    country: Option<SourceCountry>,
     base_url: Option<String>,
     concurrency: usize,
     enrich: bool,
+    correct: bool,
     use_suggested_filename: bool,
 ) {
     let files = collect_files(input_dir, &["pdf", "docx", "xlsx", "xls"]);
@@ -459,7 +516,7 @@ async fn batch_to_json(
                 let result = tasks::run_to_json(ToJsonParams {
                     input: path.to_string_lossy().into_owned(),
                     output: out_path,
-                    provider, api_key, model, quality, lang, base_url, enrich,
+                    provider, api_key, model, quality, lang, country, base_url, enrich, correct,
                     use_suggested_filename,
                 }, log).await;
                 match result {

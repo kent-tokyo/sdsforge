@@ -864,8 +864,8 @@ impl SdsApp {
                         input: path.to_string_lossy().into_owned(),
                         output,
                         provider, api_key: api_key.clone(), model: model.clone(),
-                        quality, lang, base_url: base_url.clone(), enrich,
-                        use_suggested_filename,
+                        quality, lang, base_url: base_url.clone(), enrich, correct: false,
+                        use_suggested_filename, country: None,
                     }, Arc::clone(&log_fn)).await;
                     match res {
                         Ok(_)  => ok += 1,
@@ -897,8 +897,8 @@ impl SdsApp {
 
             self.rt.spawn(async move {
                 if let Err(e) = crate::tasks::run_to_json(ToJsonParams {
-                    input, output, provider, api_key, model, quality, lang, base_url, enrich,
-                    use_suggested_filename,
+                    input, output, provider, api_key, model, quality, lang, base_url, enrich, correct: false,
+                    use_suggested_filename, country: None,
                 }, log_fn).await {
                     if let Ok(mut v) = log_err.lock() { v.push(format!("[ERROR] {e}")); }
                 }

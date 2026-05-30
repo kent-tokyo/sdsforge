@@ -6,13 +6,16 @@ use chrono::Local;
 use walkdir::WalkDir;
 
 use sds_converter_core::{
-    converter::{AnthropicBackend, LlmBackend, LlmConfig, OpenAiCompatBackend, openai_compat_url},
+    converter::{
+        AnthropicBackend, CorrectionConfig, LlmBackend, LlmConfig,
+        OpenAiCompatBackend, openai_compat_url,
+    },
     convert_from_json, convert_from_template, convert_pdf_to_json_vision,
     convert_to_json_with_report, convert_url_to_json,
     detect_language, detect_language_from_file, detect_language_from_url,
     enrich_composition, validate,
     extract_text, extract_text_from_url,
-    ConversionReport, ConvertConfig, Language, SdsError, SdsRoot,
+    ConversionReport, ConvertConfig, Language, SourceCountry, SdsError, SdsRoot,
 };
 
 // ---------------------------------------------------------------------------
@@ -203,8 +206,15 @@ pub struct ToJsonParams {
     pub model: String,
     pub quality: Quality,
     pub lang: Option<Language>,
+    /// Country/regulatory-region override. `None` = infer from detected language.
+    pub country: Option<SourceCountry>,
     pub base_url: Option<String>,
     pub enrich: bool,
+    /// If true, run the validation-driven correction pass after primary LLM extraction.
+    ///
+    /// Fixes invalid GHS H/P-codes via a targeted second LLM call and corrects
+    /// CAS check-digit errors deterministically (no extra API call).
+    pub correct: bool,
     /// If true, rename the output file to the MHLW-recommended convention:
     /// `SDS_<IssueDate>_<ProductCode>.json` (with `_NNN` suffix on collision).
     pub use_suggested_filename: bool,
@@ -262,8 +272,10 @@ pub async fn run_to_json(params: ToJsonParams, log: LogFn) -> anyhow::Result<()>
 
     let convert_config = ConvertConfig {
         source_language,
+        source_country: params.country,
         output_language: Language::default(),
         max_chars: params.quality.max_chars(),
+        correction: if params.correct { Some(CorrectionConfig::default()) } else { None },
     };
     let backend = Arc::new(build_backend(
         params.provider,
@@ -298,8 +310,10 @@ pub async fn run_to_json(params: ToJsonParams, log: LogFn) -> anyhow::Result<()>
                 // Use only the user-specified language, or None for auto-detect from image.
                 let vision_convert_config = ConvertConfig {
                     source_language: params.lang,
+                    source_country: params.country,
                     output_language: Language::default(),
                     max_chars: params.quality.max_chars(),
+                    correction: None,
                 };
                 let (sds, warnings) = convert_pdf_to_json_vision(
                     Path::new(&params.input),
@@ -373,6 +387,34 @@ pub async fn run_to_json(params: ToJsonParams, log: LogFn) -> anyhow::Result<()>
         }
         Err(e) => log(format!("WARN: could not serialise report: {e}")),
     }
+
+    // Write <stem>_compliance_<country>.json when country is known.
+    if let Some(diff) = &report.compliance_diff {
+        let slug = params.country
+            .map(|c| c.slug())
+            .unwrap_or("unknown");
+        let stem = final_output
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("output");
+        let dir = final_output.parent().unwrap_or(Path::new("."));
+        let compliance_path = dir.join(format!("{stem}_compliance_{slug}.json"));
+        match serde_json::to_string_pretty(diff) {
+            Ok(json) => {
+                if let Err(e) = std::fs::write(&compliance_path, json) {
+                    log(format!("WARN: could not write compliance report: {e}"));
+                } else {
+                    log(format!(
+                        "Compliance diff: {} gap(s) — see {}",
+                        diff.gap_count,
+                        compliance_path.display()
+                    ));
+                }
+            }
+            Err(e) => log(format!("WARN: could not serialise compliance report: {e}")),
+        }
+    }
+
     Ok(())
 }
 

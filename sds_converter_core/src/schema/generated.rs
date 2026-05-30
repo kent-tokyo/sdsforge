@@ -1107,7 +1107,8 @@ pub struct HandlingAndStorageSafeHandlingTechnicalMeasuresAndStorageConditions {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct HandlingAndStorageStorage {
-    #[serde(rename = "ConditionsForSafeStorage", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "ConditionsForSafeStorage", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_storage_conditions_opt")]
     pub conditions_for_safe_storage: Option<HandlingAndStorageStorageConditionsForSafeStorage>,
     #[serde(rename = "PackagingContainer", skip_serializing_if = "Option::is_none")]
     pub packaging_container: Option<String>,
@@ -1199,9 +1200,11 @@ pub struct HazardIdentificationClassificationHealthEffect {
     pub carcinogenicity: Option<String>,
     #[serde(rename = "ReproductiveToxicity", skip_serializing_if = "Option::is_none")]
     pub reproductive_toxicity: Option<HazardIdentificationClassificationHealthEffectReproductiveToxicity>,
-    #[serde(rename = "SpecificTargetOrganSE", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "SpecificTargetOrganSE", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_stoase_opt")]
     pub specific_target_organ_se: Option<Vec<HazardIdentificationClassificationHealthEffectSpecificTargetOrganSE>>,
-    #[serde(rename = "SpecificTargetOrganRE", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "SpecificTargetOrganRE", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_stoare_opt")]
     pub specific_target_organ_re: Option<Vec<HazardIdentificationClassificationHealthEffectSpecificTargetOrganRE>>,
     #[serde(rename = "AspirationHazard", skip_serializing_if = "Option::is_none")]
     pub aspiration_hazard: Option<String>,
@@ -1556,7 +1559,8 @@ pub struct PhysicalChemicalProperties {
     pub melting_point_related: Option<Vec<PhysicalChemicalPropertiesMeltingPointRelated>>,
     #[serde(rename = "BoilingPointRelated", skip_serializing_if = "Option::is_none")]
     pub boiling_point_related: Option<Vec<PhysicalChemicalPropertiesBoilingPointRelated>>,
-    #[serde(rename = "Flammability", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "Flammability", skip_serializing_if = "Option::is_none",
+            default, deserialize_with = "crate::schema::serde_flex::flex_vec_string_or_obj_opt")]
     pub flammability: Option<Vec<String>>,
     #[serde(rename = "ExplosionLimit", skip_serializing_if = "Option::is_none")]
     pub explosion_limit: Option<Vec<PhysicalChemicalPropertiesExplosionLimit>>,

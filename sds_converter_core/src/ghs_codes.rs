@@ -38,7 +38,13 @@ static P_CODES: &[&str] = &[
     "P270", "P271", "P272", "P273",
     "P280", "P281", "P282", "P283", "P284", "P285",
     "P301", "P302", "P303", "P304", "P305", "P306", "P307", "P308",
+    // P309 was part of GHS Rev.1-5 and is still referenced in JIS Z 7253 SDSs
+    // ("IF exposed or if you feel unwell: call a POISON CENTER or doctor").
+    // It was merged into P308+P311 in GHS Rev.6, but many real-world SDSs use it.
+    "P309",
     "P310", "P311", "P312", "P313", "P314", "P315",
+    // P316-P318 added in GHS Rev.10 (2023): emergency medical help / get medical advice
+    "P316", "P317", "P318",
     "P320", "P321", "P322",
     "P330", "P331", "P332", "P333", "P334", "P335", "P336", "P337", "P338",
     "P340", "P341", "P342",
@@ -200,6 +206,7 @@ pub fn p_code_description(code: &str) -> Option<&'static str> {
         "P306" => Some("IF ON CLOTHING"),
         "P307" => Some("IF exposed"),
         "P308" => Some("IF exposed or concerned"),
+        "P309" => Some("IF exposed or if you feel unwell"),
         "P310" => Some("Immediately call a POISON CENTER or doctor/physician"),
         "P311" => Some("Call a POISON CENTER or doctor/physician"),
         "P312" => Some("Call a POISON CENTER or doctor/physician if you feel unwell"),

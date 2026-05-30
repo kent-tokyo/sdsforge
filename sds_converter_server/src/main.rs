@@ -273,8 +273,10 @@ async fn to_json(
     };
     let config = ConvertConfig {
         source_language: parse_lang(q.lang.as_deref()),
+        source_country: None,
         output_language: Language::default(),
         max_chars:       quality_max_chars(quality),
+        correction: None,
     };
     let backend = build_backend(provider, api_key, llm_config);
 

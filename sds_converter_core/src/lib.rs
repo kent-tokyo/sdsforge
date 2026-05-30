@@ -42,6 +42,7 @@
 //!   Implement [`converter::LlmBackend`] to bring your own.
 
 pub mod converter;
+pub mod country;
 pub mod enrichment;
 pub mod error;
 pub mod ghs_codes;
@@ -65,5 +66,6 @@ pub use converter::validator::validate;
 pub use enrichment::{CasInfo, CasWarning, enrich_composition, lookup_cas};
 pub use error::SdsError;
 pub use ghs_codes::{h_code_description, is_valid_h_code, is_valid_p_code, p_code_description};
+pub use country::SourceCountry;
 pub use language::{detect_language, Language};
 pub use schema::SdsRoot;
