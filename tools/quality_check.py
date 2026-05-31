@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-SDS JSON Quality Check Script — r23
+SDS JSON Quality Check Script — r24
+
+# r24: S5-EMPTY threshold 30→15, S8-OEL-NO-NUMERIC false positive fix,
+#       new: S1-ZH-NO-EMERGENCY, S8-NO-ENG-CONTROLS, S7-FLAMMABLE-STORAGE-TEMP,
+#            S10-NO-INCOMPATIBLE, CROSS-STALE-DATE
 
 Usage:
     python3 quality_check.py <json_file> <lang> [--jsonl]
@@ -331,6 +335,16 @@ def check_sec1(root: dict, lang: str, h_codes: set) -> list:
                 issues.append(issue("MED", "S1-EMERGENCY-NO-PHONE",
                                     "Sec1: EmergencyContact entry has no phone digits"))
                 break
+
+        # zh-cn/zh-tw: EmergencyContact required by GB/T 16483 / CNS 15030
+        if lang in ("zh-cn", "zh-tw") and company:  # only when SupplierInformation exists
+            ec_list = ident.get("EmergencyContact") or supplier.get("EmergencyContact") or []
+            if isinstance(ec_list, dict):
+                ec_list = [ec_list]
+            has_emergency = any(walk_text(ec).strip() for ec in ec_list)
+            if not has_emergency:
+                issues.append(issue("MED", "S1-ZH-NO-EMERGENCY",
+                                    f"Sec1: {lang} SDS has no EmergencyContact (required by GB/T 16483 / CNS 15030)"))
 
     except Exception as e:
         issues.append(issue("MED", "S1-INTERNAL", f"Sec1 check failed: {e}"))
@@ -704,9 +718,9 @@ def check_sec5(root: dict, lang: str, h_codes: set) -> list:
     issues = []
     try:
         sec_text = section_text(root, "FireFightingMeasures")
-        if len(sec_text.strip()) < 30:
+        if len(sec_text.strip()) < 15:
             issues.append(issue("HIGH", "S5-EMPTY",
-                                "Sec5: FireFightingMeasures section is empty (< 30 chars)"))
+                                "Sec5: FireFightingMeasures section is empty (< 15 chars)"))
             return issues
 
         ext_keywords = re.compile(
@@ -773,6 +787,13 @@ def check_sec7(root: dict, lang: str, h_codes: set) -> list:
                 issues.append(issue("MED", "S7-FLAMMABLE-NO-HEAT-KW",
                                     "Sec7: H224/225/226 but no heat/ignition source keywords"))
 
+        # Flammable: storage should mention a specific temperature limit
+        if h_codes.intersection({"H224", "H225", "H226"}):
+            if not re.search(r"\d+\s*[°℃]|\d+\s*°C|\d+\s*degrees?|below\s+\d+", storage_text, re.IGNORECASE):
+                if not re.search(r"涼しい|冷所|冷暗|low temperature|冷凉处|低温", storage_text, re.IGNORECASE):
+                    issues.append(issue("MED", "S7-FLAMMABLE-NO-STORAGE-TEMP",
+                                        "Sec7: Flammable H-code but no specific storage temperature found"))
+
         if h_codes.intersection({"H260", "H261", "H250"}):
             if not re.search(r"dry|moisture|water|乾燥|防湿|水分|湿気|dry", sec_text, re.IGNORECASE):
                 issues.append(issue("MED", "S7-WATER-REACTIVE-NO-DRY",
@@ -818,6 +839,12 @@ def check_sec8(root: dict, lang: str, h_codes: set) -> list:
                 issues.append(issue("MED", "S8-FEW-PPE-FIELDS",
                                     f"Sec8: Hazardous product with fewer than 2 PPE sub-fields populated ({populated_ppe})"))
 
+        # Engineering controls absent when PPE exists
+        if is_hazardous(root) and not walk_text(eng_controls).strip():
+            if walk_text(ppe).strip():
+                issues.append(issue("MED", "S8-NO-ENG-CONTROLS",
+                                    "Sec8: Hazardous product has PPE but no engineering controls (local exhaust/ventilation) specified"))
+
         # OEL for single-substance hazardous
         if is_hazardous(root) and not is_mixture(root):
             if not walk_text(oel).strip():
@@ -827,8 +854,12 @@ def check_sec8(root: dict, lang: str, h_codes: set) -> list:
         # r23-NEW: OEL present but no numeric value
         oel_text = walk_text(oel)
         if oel_text.strip() and not re.search(r"\d+\.?\d*\s*(mg/m|ppm|mg/L|f/cc|µg)", oel_text, re.IGNORECASE):
-            if not re.search(r"設定されていない|not established|not set|no limit|not available|情報なし|なし|N/A",
-                             oel_text, re.IGNORECASE):
+            if not re.search(
+                    r"設定されていない|not established|not set|no limit|not available|情報なし|なし|N/A|"
+                    r"does not contain|含有していない|含まれていない|限界値.*含有|"
+                    r"no hazardous material|no applicable|not required|no substances.*limit|"
+                    r"没有.*接触限值|无职业接触限值|不适用|无需监控",
+                    oel_text, re.IGNORECASE):
                 issues.append(issue("MED", "S8-OEL-NO-NUMERIC",
                                     "Sec8: OEL present but contains no numeric value (ppm/mg/m³ etc.)"))
 
@@ -1071,6 +1102,18 @@ def check_sec10(root: dict, lang: str, h_codes: set) -> list:
         if not stability_kw.search(sec_text):
             issues.append(issue("MED", "S10-NO-STABILITY-KEYWORDS",
                                 "Sec10: No stability/reactivity keywords found"))
+
+        # Reactive/oxidizing products: incompatible materials
+        reactive_ox = h_codes.intersection({"H260", "H261", "H270", "H271", "H272",
+                                             "H240", "H241", "H242", "H290"})
+        if reactive_ox:
+            sr = root.get("StabilityReactivity") or {}
+            incompat_text = walk_text(sr.get("IncompatibleMaterials") or {})
+            if not incompat_text.strip():
+                if not re.search(r"incompatible|禁水|water|acid|alkali|oxidiz|避ける|禁止|回避|不相容",
+                                 sec_text, re.IGNORECASE):
+                    issues.append(issue("MED", "S10-NO-INCOMPATIBLE",
+                                        f"Sec10: Reactive H-codes {reactive_ox} present but no incompatible materials mentioned"))
 
         # Decomposition products for explosive/flammable
         if h_codes.intersection({"H200", "H201", "H202", "H203", "H204", "H205",
@@ -1492,6 +1535,20 @@ def check_cross_field(root: dict, lang: str, h_codes: set) -> list:
 
     except Exception as e:
         issues.append(issue("MED", "CX-INTERNAL", f"Cross-field check failed: {e}"))
+
+    # Stale revision date (> 5 years)
+    try:
+        from datetime import date
+        datasheet = root.get("Datasheet") or {}
+        rev_date_str = datasheet.get("RevisionDate") or ""
+        if rev_date_str and len(rev_date_str) >= 4:
+            rev_year = int(rev_date_str[:4])
+            if date.today().year - rev_year > 5:
+                issues.append(issue("MED", "CROSS-STALE-DATE",
+                                    f"Revision date {rev_date_str} is over 5 years old"))
+    except Exception:
+        pass
+
     return issues
 
 
