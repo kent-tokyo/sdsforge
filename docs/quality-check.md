@@ -54,9 +54,9 @@ The QC script automatically verifies whether an LLM-generated SDS JSON conforms 
 
 | Level | Symbol | Meaning | Example |
 |---|---|---|---|
-| **CRIT** | 🔴 Critical | JIS Z 7253 violation · confirmed hallucination · mandatory section missing | Section 3 (Composition) empty · katakana substance name in a non-Japanese SDS |
-| **HIGH** | 🟠 High | Significant extraction omission · format violation | Company name empty · no P-codes despite signal word · Toxicological Information section empty |
-| **MED** | 🟡 Medium | Extraction quality gap · recommended field missing | Density not extracted · flash point absent for flammable product · P-code count below threshold |
+| **CRIT** | Critical | JIS Z 7253 violation · confirmed hallucination · mandatory section missing | Section 3 (Composition) empty · katakana substance name in a non-Japanese SDS |
+| **HIGH** | High | Significant extraction omission · format violation | Company name empty · no P-codes despite signal word · Toxicological Information section empty |
+| **MED** | Medium | Extraction quality gap · recommended field missing | Density not extracted · flash point absent for flammable product · P-code count below threshold |
 
 ---
 

@@ -217,6 +217,8 @@ sds-converter validate --input output.json --json
 - [x] QC r24: S8-OEL-NO-NUMERIC 誤検知修正 — 中国語「単位→数値」形式・「OEL不要」表現の除外パターン追加
 - [x] QC r24: S5-EMPTY 閾値 30→15 文字（中国語の簡潔な消火情報の誤検知削減）
 - [x] ラウンドトリップテスト: JSONLパース修正・バリデータ文字列配列対応; r24ベースライン 30/30 成功、CRIT=0・HIGH=9・MED=176
+- [x] QC r25: S2-EXPLOSIVE-NO-GHS01 / S2-ENV-NO-GHS09 偽陰性バグ修正（日付・Hコード内 "01"/"09" による誤スキップ）；新ルール S3-NAME-IS-CAS（HIGH）・S16-REVISION-BEFORE-ISSUE（HIGH）
+- [x] ラウンドトリップテスト r25 ベースライン: 30/30 成功、CRIT=0・HIGH=13・MED=175
 - [x] LLMプロンプト: Section 1 Use フォールバック — セクション1.2が存在するが使用目的不明の場合、ソーステキストを Use 配列に格納（`'无相关详细资料'` 等）
 - [x] LLMプロンプト: Section 8 OEL「不要求」検出 — `不要求`/`无需监控`/`不适用` 等を `AdditionalInfo.FullText` に格納（省略しない）
 - [x] LLMプロンプト: Section 9 Densities 必須抽出、引火性製品（H224/H225/H226/H330–H332）の VapourPressure 抽出
