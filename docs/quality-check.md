@@ -156,6 +156,7 @@ This convention means `WARN` = "minor extraction gap, acceptable for most use ca
 | **r26** H224/H225/H226/H220–H223/H228/H242/H252 (flammable) present but GHS02 pictogram absent | MED | Flammable hazard always requires the flame pictogram |
 | **r26** H314 (skin corrosion) present but GHS05 pictogram absent | MED | Corrosive hazard requires the corrosion pictogram |
 | **r26** H300/H301/H310/H311/H330/H331 (acute tox Cat 1–3) present but GHS06 pictogram absent | MED | Fatal/highly-toxic acute hazard requires the skull-and-crossbones pictogram |
+| **r27** Active signal word + H-codes present but `Pictogram` list is completely empty | MED | Pictograms embedded as images in the source PDF cannot be extracted as GHS codes. Observed in ~60% of a 30-file test sample. Source-level limitation for pre-GHS MSDS files |
 | **r23** SignalWord present but HazardStatement completely absent | HIGH | Signal word without any hazard statements indicates incomplete labelling |
 
 ---
@@ -181,6 +182,7 @@ This convention means `WARN` = "minor extraction gap, acceptable for most use ca
 | **r23** Mixture with > 10 components | MED | Unusually high count — likely over-extraction or CompositionType mismatch |
 | **r23** Concentration field contains a year-like string | HIGH | e.g., `"2024"` or `"2024-01-01"` stored as concentration — extraction error |
 | **r25** Substance name field contains a bare CAS number | HIGH | `GenericName` or `IupacName` matches `\d{1,7}-\d{2}-\d` — CAS placed in wrong field by LLM |
+| **r27** Mixture component has concentration unit but no numeric value | MED | `NumericRangeWithUnitAndQualifier.Unit` is set (e.g. `"%"`) but `ExactValue`/`LowerValue`/`UpperValue` are all absent — LLM extracted the unit but missed the number |
 
 **CAS check-digit example**:
 ```
@@ -503,6 +505,7 @@ QC-SUMMARY: 0 CRIT + 2 HIGH + 3 MED = 5 total issues
 | **r24** | S1-ZH-NO-EMERGENCY for zh-cn/zh-tw, S7-FLAMMABLE-STORAGE-TEMP, S8-NO-ENG-CONTROLS, S10-NO-INCOMPATIBLE, CROSS-STALE-DATE; S5-EMPTY threshold 30→15; S8-OEL-NO-NUMERIC Chinese unit-before-value exemption and additional "no OEL" phrase patterns |
 | **r25** | S3-NAME-IS-CAS (HIGH): substance name field contains a bare CAS number; S16-REVISION-BEFORE-ISSUE (HIGH): RevisionDate precedes IssueDate; fix S2-EXPLOSIVE-NO-GHS01 and S2-ENV-NO-GHS09 spurious false-negative from substring "01"/"09" matching dates or H-codes |
 | **r26** | S2-FLAMMABLE-NO-GHS02 (MED): flammable H-codes without GHS02 flame pictogram; S2-CORROSIVE-NO-GHS05 (MED): H314 without GHS05 corrosion pictogram; S2-ACUTETOX-NO-GHS06 (MED): acute-tox Cat 1–3 H-codes without GHS06 skull pictogram; S4-H314-NO-REMOVE-CLOTHING (MED): H314 without P361 remove-clothing instruction |
+| **r27** | **New rules**: S2-HAZARD-NO-PICTOGRAM (MED): active signal word + H-codes but Pictogram list empty; S3-CONC-UNIT-NO-VALUE (MED): mixture component has concentration unit but no numeric value. **FP fixes**: `危險` (zh-tw) and `Not applicable` (en) added to valid signal words; S14 UN number/packing group/shipping name detection extended for Traditional and Simplified Chinese formats (`聯合國編號(UN No.)：XXXX`, `包裝類別`/`包裝等級`, `聯合國運輸名稱` etc.) |
 
 ---
 

@@ -186,7 +186,14 @@ sds-converter-core = "0.3"
 ### 下一版本（0.3.x）
 - [ ] DOCX表格布局 — 第3节成分信息（4列）、第2节H/P编码（2列）、第9节物化性质（2列）
 
-### 0.3.6 / 0.2.6 已完成
+### 0.3.8 / 0.2.8 已完成
+- [x] QC r27：S2-HAZARD-NO-PICTOGRAM（MED）— 活性信号词＋H码存在但Pictogram列表完全为空（检测PDF中仅有图像的象形图提取失败模式）
+- [x] QC r27：S3-CONC-UNIT-NO-VALUE（MED）— 混合物组分的浓度有单位（%）但无数值
+- [x] QC r27：误报修复 — 将`危險`（繁体中文"危险"，zh-tw）和`Not applicable`（英文非危险品）加入有效信号词；S14 UN编号、包装类别、正式品名的检测扩展支持繁体/简体中文格式
+- [x] 新工具 `tools/roundtrip_random30.py` — 可配置种子和数量的随机抽样轮转测试（含逐规则排名报告）
+- [x] 轮转测试 r27 基线（seed=42, n=30）：30/30 JSON ✓、30/30 DOCX ✓、CRIT=0、HIGH=14、MED=239
+
+### 0.3.6 / 0.2.6 〜 0.3.7 / 0.2.7 已完成
 - [x] QC r24：新增5条规则（S1-ZH-NO-EMERGENCY、S7-FLAMMABLE-STORAGE-TEMP、S8-NO-ENG-CONTROLS、S10-NO-INCOMPATIBLE、CROSS-STALE-DATE）
 - [x] QC r24：S8-OEL-NO-NUMERIC 误报修复 — 中文"单位→数值"格式识别、新增"无需OEL"豁免短语
 - [x] QC r24：S5-EMPTY 阈值 30→15 字符（减少中文简短灭火信息的误报）

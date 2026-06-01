@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.8] / [0.3.8] — 2026-06-01
+
+### Added
+
+- **QC r27: S2-HAZARD-NO-PICTOGRAM (MED)** (`tools/quality_check.py`): New rule fires when an
+  active signal word (Danger/Warning) and H-codes are present but the `Pictogram` list is
+  completely empty. Detects PDFs where pictograms are embedded as images and cannot be extracted
+  as GHS01–GHS09 text codes by the LLM. Observed in 60% of a 30-file random test sample across
+  all four languages.
+
+- **QC r27: S3-CONC-UNIT-NO-VALUE (MED)** (`tools/quality_check.py`): New rule fires for
+  mixture components whose `Concentration.NumericRangeWithUnitAndQualifier` contains a `Unit`
+  field (e.g. `"%"`) but no `ExactValue`, `LowerValue`, or `UpperValue`. Detects the common
+  LLM extraction gap where the unit is identified but the numeric range is missed.
+
+- **`tools/roundtrip_random30.py`**: New balanced random-sample roundtrip test script.
+  Selects `n` PDFs with configurable seed across all four language folders (`--seed`, `--n`),
+  runs the full PDF → JSON → DOCX → QC pipeline, and produces a per-rule ranking report and
+  JSON summary.
+
+### Fixed
+
+- **QC r27: S2-INVALID-SIGNAL-WORD false positives** (`tools/quality_check.py`): Added
+  `危險` (Traditional Chinese "Danger", zh-tw) and `Not applicable` (English non-hazardous
+  products) to `VALID_SIGNAL_WORDS`. These were incorrectly triggering `S2-INVALID-SIGNAL-WORD`
+  (5 false positives in the 30-file test → 0 after fix).
+
+- **QC r27: S14-DG-NO-UN false positives for zh-tw/zh-cn** (`tools/quality_check.py`):
+  Extended the UN number detection regex to match Traditional Chinese format
+  `聯合國編號(UN No.)：1990` and Simplified Chinese `联合国编号：1990`. Reduced
+  `S14-DG-NO-UN` false positives by 3 in the 30-file test.
+
+- **QC r27: S14-NO-PACKING-GROUP false positives for zh-tw** (`tools/quality_check.py`):
+  Added `包裝類別` and `包裝等級` (two Traditional Chinese variants for "packing group") and
+  Unicode Roman numerals `[ⅠⅡⅢⅣ]` to the packing group detection regex. No cascade false
+  positives were introduced.
+
+- **QC r27: S14-NO-SHIPPING-NAME false positives for zh-tw/zh-cn** (`tools/quality_check.py`):
+  Added `聯合國運輸名稱`, `运输名称`, and `運輸名稱` to the proper shipping name regex.
+
 ### Changed
 
 - **LLM prompt: Section 1 Use fallback** (`llm.rs`): When Section 1.2 exists in the source but no specific use is listed, the source phrase (e.g. `'無相関詳細情報'`, `'无相关详细资料'`, `'no specific use listed'`) is now captured as one entry in the Use array — the Use key is never omitted when Section 1.2 is present in the source.

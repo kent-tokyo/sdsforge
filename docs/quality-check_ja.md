@@ -154,6 +154,7 @@ exit code = 検出した問題の総数（CRIT + HIGH + MED の合計）
 | **r26** H224/H225/H226/H220–H223/H228/H242/H252（引火性）ありで GHS02 ピクトグラムなし | MED | 引火性危険物は炎ピクトグラム（GHS02）が必須 |
 | **r26** H314（皮膚腐食性）ありで GHS05 ピクトグラムなし | MED | 腐食性は腐食ピクトグラム（GHS05）が必須 |
 | **r26** H300/H301/H310/H311/H330/H331（急性毒性 Cat 1–3）ありで GHS06 ピクトグラムなし | MED | 高毒性急性毒性には髑髏ピクトグラム（GHS06）が必須 |
+| **r27** アクティブ信号語＋H-code ありで `Pictogram` リストが完全にゼロ | MED | PDF に画像でしか絵表示がない場合に GHS コードが抽出できないパターン。ランダム30件テストで約60%のファイルに発生。前 GHS MSDS ではソース側の制約 |
 | **r23** 信号語ありで HazardStatement が完全に空 | HIGH | 信号語だけで危険有害性情報がゼロはラベリング不備 |
 
 ---
@@ -179,6 +180,7 @@ exit code = 検出した問題の総数（CRIT + HIGH + MED の合計）
 | **r23** 混合物で成分 > 10 件 | MED | 過剰抽出または CompositionType 不一致の疑い |
 | **r23** 濃度フィールドに年号文字列 | HIGH | `"2024"` や `"2024-01-01"` が濃度として格納されている抽出エラー |
 | **r25** 物質名フィールドに CAS 番号がそのまま入力 | HIGH | `GenericName` や `IupacName` が `\d{1,7}-\d{2}-\d` 形式 — LLM が誤フィールドへ配置 |
+| **r27** 混合物成分の濃度に単位はあるが数値なし | MED | `NumericRangeWithUnitAndQualifier.Unit`（例: `"%"`）が設定されているが `ExactValue`/`LowerValue`/`UpperValue` がすべて欠落 — LLM が単位だけ抽出して数値を取りこぼしたパターン |
 
 **CAS チェックデジット計算例**:
 ```
@@ -500,6 +502,7 @@ QC-SUMMARY: 0 CRIT + 2 HIGH + 3 MED = 5 total issues
 | **r24** | S1-ZH-NO-EMERGENCY（zh-cn/zh-tw 緊急連絡先）、S7-FLAMMABLE-STORAGE-TEMP、S8-NO-ENG-CONTROLS、S10-NO-INCOMPATIBLE、CROSS-STALE-DATE；S5-EMPTY 閾値 30→15；S8-OEL-NO-NUMERIC 中国語「単位→数値」形式対応・「OEL不要」表現の除外パターン追加 |
 | **r25** | S3-NAME-IS-CAS（HIGH）：物質名フィールドに CAS 番号が入力されている；S16-REVISION-BEFORE-ISSUE（HIGH）：改訂日が発行日より前；S2-EXPLOSIVE-NO-GHS01 / S2-ENV-NO-GHS09 の日付・H コード内 "01"/"09" による偽陰性バグを修正 |
 | **r26** | S2-FLAMMABLE-NO-GHS02（MED）：引火性 H コードで GHS02 炎ピクトグラムなし；S2-CORROSIVE-NO-GHS05（MED）：H314 で GHS05 腐食ピクトグラムなし；S2-ACUTETOX-NO-GHS06（MED）：急性毒性 Cat 1–3 H コードで GHS06 髑髏ピクトグラムなし；S4-H314-NO-REMOVE-CLOTHING（MED）：H314 で P361 汚染衣類脱去指示なし |
+| **r27** | **新ルール**：S2-HAZARD-NO-PICTOGRAM（MED）アクティブ信号語＋H-code ありで Pictogram 完全ゼロ；S3-CONC-UNIT-NO-VALUE（MED）混合物成分の濃度に単位はあるが数値なし。**偽陽性修正**：`危險`（zh-tw）・`Not applicable`（en）を有効信号語に追加；S14 UN番号（`聯合國編號(UN No.)：XXXX` 等）・包裝類別/包裝等級・聯合國運輸名稱 の繁体字/簡体字形式を追加 |
 
 ---
 

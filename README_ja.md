@@ -184,7 +184,14 @@ sds-converter-core = "0.3"
 ### 次期リリース（0.3.x）
 - [ ] DOCXの表レイアウト — 第3項（成分情報・4列表）、第2項（H/Pコード・2列表）、第9項（物性・2列表）
 
-### 0.3.6 / 0.2.6 で完了
+### 0.3.8 / 0.2.8 で完了
+- [x] QC r27: S2-HAZARD-NO-PICTOGRAM（MED）— アクティブ信号語＋H-codeあり・Pictogram完全ゼロ（PDF画像専用絵表示の検出不能パターンを検出）
+- [x] QC r27: S3-CONC-UNIT-NO-VALUE（MED）— 混合物成分の濃度に単位（%）はあるが数値なし
+- [x] QC r27: 偽陽性修正 — `危險`（zh-tw 繁体字「危険」）と `Not applicable`（en）を有効信号語に追加；S14 UN番号・包装等級・正式品名の検出を繁体字・簡体字形式に拡張
+- [x] 新ツール `tools/roundtrip_random30.py` — シード固定・件数可変のランダムサンプリング変換テスト（ルール別ランキングレポート付き）
+- [x] ラウンドトリップテスト r27 ベースライン（seed=42, n=30）: 30/30 JSON ✓、30/30 DOCX ✓、CRIT=0・HIGH=14・MED=239
+
+### 0.3.6 / 0.2.6 〜 0.3.7 / 0.2.7 で完了
 - [x] QC r24: 新規5ルール（S1-ZH-NO-EMERGENCY・S7-FLAMMABLE-STORAGE-TEMP・S8-NO-ENG-CONTROLS・S10-NO-INCOMPATIBLE・CROSS-STALE-DATE）
 - [x] QC r24: S8-OEL-NO-NUMERIC 誤検知修正 — 中国語「単位→数値」形式・「OEL不要」表現の除外パターン追加
 - [x] QC r24: S5-EMPTY 閾値 30→15 文字（中国語の簡潔な消火情報の誤検知削減）

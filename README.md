@@ -185,7 +185,14 @@ sds-converter-core = "0.3"
 ### Next (0.3.x)
 - [ ] DOCX table layout — Section 3 Composition (4-column), Section 2 H/P codes (2-column), Section 9 physical properties (2-column)
 
-### Completed in 0.3.6 / 0.2.6
+### Completed in 0.3.8 / 0.2.8
+- [x] QC r27: S2-HAZARD-NO-PICTOGRAM (MED) — active signal word + H-codes but Pictogram list empty (detects image-only pictograms in PDFs)
+- [x] QC r27: S3-CONC-UNIT-NO-VALUE (MED) — mixture component has concentration unit (%) but no numeric value extracted
+- [x] QC r27: false-positive fixes — `危險` (zh-tw Danger) and `Not applicable` (en) added to valid signal words; S14 UN number, packing group, and shipping name detection extended for Traditional/Simplified Chinese formats
+- [x] New tool `tools/roundtrip_random30.py` — balanced random-sample roundtrip test (seed-controlled, any n, per-rule ranking report)
+- [x] Round-trip test r27 baseline (seed=42, n=30): 30/30 JSON ✓, 30/30 DOCX ✓, CRIT=0, HIGH=14, MED=239
+
+### Completed in 0.3.6 / 0.2.6 – 0.3.7 / 0.2.7
 - [x] QC r24: 5 new rule-based checks (S1-ZH-NO-EMERGENCY, S7-FLAMMABLE-STORAGE-TEMP, S8-NO-ENG-CONTROLS, S10-NO-INCOMPATIBLE, CROSS-STALE-DATE)
 - [x] QC r24: S8-OEL-NO-NUMERIC false-positive fixes — Chinese unit-before-value format, additional "no OEL" exemption phrases
 - [x] QC r24: S5-EMPTY threshold 30→15 chars (reduces false positives for brief Chinese firefighting sections)
