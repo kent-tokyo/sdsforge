@@ -228,6 +228,28 @@
   - Sec9: 腐食性 H-コード時に pH 明示抽出
   - Sec15 zh-cn: 危険化学品安全管理条例・GBZ 2 等 GB 規格参照強化
 - [x] ラウンドトリップ基準値 (r24): 30/30 to-json ✓、30/30 to-docx ✓、CRIT=0、HIGH=9、MED=176
+- [x] quality_check.py r25 改善
+  - S2-EXPLOSIVE-NO-GHS01 / S2-ENV-NO-GHS09 偽陰性バグ修正（日付・Hコード内 "01"/"09" サブ文字列による誤スキップ）
+  - 新ルール: S3-NAME-IS-CAS（HIGH）— 物質名フィールドに CAS 番号が入力されている
+  - 新ルール: S16-REVISION-BEFORE-ISSUE（HIGH）— 改訂日が発行日より前（日付フィールドの取り違え）
+- [x] ラウンドトリップ基準値 (r25): 30/30 to-json ✓、30/30 to-docx ✓、CRIT=0、HIGH=13、MED=175
+- [x] quality_check.py r26 改善
+  - 新ルール: S2-FLAMMABLE-NO-GHS02（MED）— 引火性 H コード（H224/H225等）で GHS02 炎ピクトグラムなし
+  - 新ルール: S2-CORROSIVE-NO-GHS05（MED）— H314 で GHS05 腐食ピクトグラムなし
+  - 新ルール: S2-ACUTETOX-NO-GHS06（MED）— 急性毒性 Cat 1–3 H コードで GHS06 髑髏ピクトグラムなし
+  - 新ルール: S4-H314-NO-REMOVE-CLOTHING（MED）— H314 で P361 汚染衣類脱去指示なし
+- [x] ラウンドトリップ基準値 (r26): 30/30 to-json ✓、30/30 to-docx ✓、CRIT=0、HIGH=14、MED=181
+- [x] quality_check.py r27 改善（ランダム30件テスト seed=42 による批判的分析）
+  - FP修正: VALID_SIGNAL_WORDS に `危險`（zh-tw 繁体字「危険」）と `Not applicable`（en 非危険）を追加
+  - FP修正: S14 UN番号検出 — zh-tw形式 `聯合國編號(UN No.)：1990` および zh-cn形式を正規表現に追加
+  - FP修正: S14-NO-PACKING-GROUP — `包裝類別`・`包裝等級`（zh-tw）と Unicode ローマ数字 [ⅠⅡⅢⅣ] を追加
+  - FP修正: S14-NO-SHIPPING-NAME — `聯合國運輸名稱`・`运输名称`・`運輸名稱` を追加
+  - 新ルール: S2-HAZARD-NO-PICTOGRAM（MED）— アクティブ信号語＋H-codeあり・Pictogram完全ゼロ（PDF画像絵表示検出不能パターン）
+  - 新ルール: S3-CONC-UNIT-NO-VALUE（MED）— 混合物成分の濃度フィールドに単位（%）はあるが数値なし
+- [x] ラウンドトリップ基準値 (r27): 30/30 to-json ✓、30/30 to-docx ✓、CRIT=0、HIGH=14、MED=239
+  - （seed=42 ランダム30件: ja×8、zh-cn×8、zh-tw×7、en×7）
+  - FP除去: S2-INVALID-SIGNAL-WORD -5件、S14-DG-NO-UN -3件、S14-NO-SHIPPING-NAME -1件
+  - 新検出: S2-HAZARD-NO-PICTOGRAM +18件（60%のファイルで画像専用絵表示）、S3-CONC-UNIT-NO-VALUE +10件
 
 ## 残タスク
 - [ ] generator.rs: 表レイアウトDOCX（Section 3 Composition 4列表、Section 2 H/P 2列表、Section 9 物性 2列表）

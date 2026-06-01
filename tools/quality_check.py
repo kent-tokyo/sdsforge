@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 """
-SDS JSON Quality Check Script — r26
+SDS JSON Quality Check Script — r27
 
+# r27: FP fixes + new rules from 30-file random roundtrip test
+#       FIX: VALID_SIGNAL_WORDS — add '危險' (zh-tw Danger) and 'Not applicable' (en)
+#       FIX: S14 UN detection — extend regex to match zh-tw format
+#            '聯合國編號(UN No.)：XXXX' and simplified '联合国编号.*XXXX'
+#       FIX: S14-NO-PACKING-GROUP — add '包裝類別' (zh-tw) + Unicode Roman numerals [ⅠⅡⅢⅣ]
+#       FIX: S14-NO-SHIPPING-NAME — add '聯合國運輸名稱' / '运输名称' (zh-tw/zh-cn)
+#       NEW: S2-HAZARD-NO-PICTOGRAM (MED) — active signal+H-codes but Pictogram field empty
 # r26: new pictogram rules S2-FLAMMABLE-NO-GHS02, S2-CORROSIVE-NO-GHS05,
 #       S2-ACUTETOX-NO-GHS06; new S4-H314-NO-REMOVE-CLOTHING
 # r25: fix S2-EXPLOSIVE-NO-GHS01/S2-ENV-NO-GHS09 spurious substring false negatives,
@@ -62,7 +69,9 @@ VALID_SIGNAL_WORDS = {
     "危険", "警告",          # ja active
     "Danger", "Warning",     # en active
     "N/A", "不適用",          # ja/en N/A
-    "不适用", "危险", "警告", "无资料",  # zh
+    "Not applicable",         # en non-hazardous (r27)
+    "不适用", "危险", "警告", "无资料",  # zh-cn
+    "危險",                   # zh-tw Danger (r27: Traditional Chinese)
     "なし", "該当区分なし", "該当しない", "なし（GHSの危険有害性なし）",  # ja "none" variants
     "危険性なし", "警告なし",
 }
@@ -540,6 +549,15 @@ def check_sec2(root: dict, lang: str, h_codes: set, p_codes: set) -> list:
                 issues.append(issue("MED", "S2-ACUTETOX-NO-GHS06",
                                     "Sec2: Acute-tox H300/H301/H310/H311/H330/H331 present but GHS06 (skull) pictogram not found"))
 
+        # r27-NEW: Active signal word + H-codes but Pictogram field is completely empty
+        # Gate on is_active_signal so non-hazardous products with signal=N/A don't trigger.
+        # This catches PDF-image-only pictograms (zh-tw pattern) and pre-GHS SDSs without
+        # GHS labelling. Fire as MED (not HIGH) to avoid double-counting with specific rules above.
+        if is_active_signal and h_codes and not pictograms:
+            issues.append(issue("MED", "S2-HAZARD-NO-PICTOGRAM",
+                                "Sec2: Active signal word + H-codes present but Pictogram list is completely empty — "
+                                "pictograms may be image-only in source PDF (not extractable as text)"))
+
     except Exception as e:
         issues.append(issue("MED", "S2-INTERNAL", f"Sec2 check failed: {e}"))
     return issues
@@ -663,6 +681,17 @@ def check_sec3(root: dict, lang: str, h_codes: set) -> list:
 
             conc_vals = extract_numeric_values(conc_node)
             numeric_concentrations.extend(conc_vals)
+
+            # r27-NEW: Concentration has a unit but no numeric value
+            # Pattern: {"NumericRangeWithUnitAndQualifier": {"Unit": "%"}} — unit extracted, value missed
+            # Gate on mixture to avoid noise from pure substance SDSs with ">99%" style text
+            if is_mix and isinstance(conc_node, dict):
+                nrwuq = conc_node.get("NumericRangeWithUnitAndQualifier") or {}
+                if isinstance(nrwuq, dict) and nrwuq.get("Unit") and not conc_vals:
+                    # Confirm no AdditionalInfo either (catch ">" / "<" qualifiers in text)
+                    if not walk_text(conc_node.get("AdditionalInfo") or {}).strip():
+                        issues.append(issue("MED", "S3-CONC-UNIT-NO-VALUE",
+                                            f"Sec3: Mixture component has concentration unit ('{nrwuq['Unit']}') but no numeric value extracted"))
 
         # Concentration sum > 102%
         if len(numeric_concentrations) > 1:
@@ -1371,8 +1400,19 @@ def check_sec14(root: dict, lang: str, h_codes: set) -> list:
 
         sec_text = section_text(root, "TransportInformation")
 
-        # UN number detection
-        un_match = re.search(r"\bUN\s?\d{4}\b", sec_text, re.IGNORECASE)
+        # UN number detection — r27: extended to catch zh-tw/zh-cn formats
+        # Standard: "UN 1234" or "UN1234"
+        # zh-tw: "聯合國編號(UN No.)：1990"  or "UN No.)：1990"
+        # zh-cn: "联合国编号：1990" or "联合国危险货物编号 1990"
+        UN_RE = re.compile(
+            r"\bUN\s?\d{4}\b"                          # standard: UN 1234
+            r"|UN\s*[Nn][Oo][\.\s]*[)）]?\s*[：:]\s*\d{4}"  # UN No.)：1990
+            r"|聯合國編號[^0-9]{0,10}\d{4}"             # 聯合國編號(UN No.)：1990
+            r"|联合国编号[^0-9]{0,10}\d{4}"             # 联合国编号：1990
+            r"|联合国危险货物编号[^0-9]{0,10}\d{4}",    # zh-cn extended
+            re.IGNORECASE,
+        )
+        un_match = UN_RE.search(sec_text)
         not_regulated = NOT_REGULATED_PATTERNS.search(sec_text)
 
         # Dangerous goods H-codes present but no UN number
@@ -1382,9 +1422,7 @@ def check_sec14(root: dict, lang: str, h_codes: set) -> list:
                                 f"Sec14: Dangerous goods H-codes {dg_h} present but no UN number found"))
 
         if un_match:
-            # UN format check (r23-NEW)
-            # Already matched with correct format, but check for malformed UN references
-            # e.g. "UN12345" or "UN-1234" — scan for any "UN" followed by digits
+            # UN format check — only apply to western-format tokens (avoid false hits on Chinese text)
             for bad_match in re.finditer(r"\bUN[-\s]?\d+\b", sec_text, re.IGNORECASE):
                 token = bad_match.group()
                 if not re.match(r"^UN\s?\d{4}$", token, re.IGNORECASE):
@@ -1392,15 +1430,21 @@ def check_sec14(root: dict, lang: str, h_codes: set) -> list:
                                         f"Sec14: UN number format not matching UN+4digits: '{token}'"))
                     break
 
-            # Packing group
-            if not re.search(r"packing group|PG\s?[IVX]+|危険物容器|I+|容器等級|容器包装等級",
-                              sec_text, re.IGNORECASE):
+            # Packing group — r27: added zh-tw '包裝類別'/'包裝等級' and Unicode Roman numerals Ⅰ-Ⅳ
+            if not re.search(
+                r"packing group|PG\s?[IVXivx]+|危険物容器|容器等級|容器包装等級|"
+                r"包裝類別|包裝等級|包装类别|[ⅠⅡⅢⅣⅤ]",
+                sec_text, re.IGNORECASE
+            ):
                 issues.append(issue("MED", "S14-NO-PACKING-GROUP",
                                     "Sec14: UN number found but Packing Group not extracted"))
 
-            # Proper shipping name
-            if not re.search(r"proper shipping|品名|品番|shipping name|品目名|正式品名",
-                              sec_text, re.IGNORECASE):
+            # Proper shipping name — r27: added zh-tw '聯合國運輸名稱' / zh-cn '运输名称'
+            if not re.search(
+                r"proper shipping|品名|品番|shipping name|品目名|正式品名|"
+                r"聯合國運輸名稱|运输名称|運輸名稱",
+                sec_text, re.IGNORECASE
+            ):
                 issues.append(issue("MED", "S14-NO-SHIPPING-NAME",
                                     "Sec14: UN number found but Proper Shipping Name not extracted"))
 
