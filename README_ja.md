@@ -19,7 +19,15 @@ cargo install sdsconv                 # CLI / GUI バイナリ
 ## クイックスタート — Python
 
 ```python
-import sdsconv, os
+import sdsconv
+
+# テキスト抽出のみ（LLM不使用）
+text = sdsconv.extract_text("sample.pdf")
+
+# URL から直接変換
+data, report = sdsconv.to_json_url_with_report(
+    "https://example.com/sds.pdf", lang="ja",
+)
 
 # SDS文書 → 厚労省標準JSON
 data, report = sdsconv.to_json_with_report(
@@ -50,6 +58,19 @@ df = eval_corpus(
 )
 print(df[["filename", "overall_score", "grade", "high_count"]].head(20))
 ```
+
+---
+
+## サンプル
+
+厚労省公式サンプル SDS（塩化アリル）:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+python examples/mhlw_allyl_chloride/convert.py
+```
+
+`expected.json`・`expected_report.json`・出典表記 → [`examples/mhlw_allyl_chloride/`](examples/mhlw_allyl_chloride/)
 
 ---
 

@@ -19,7 +19,15 @@ cargo install sdsconv                 # CLI / GUI binary
 ## Quick Start — Python
 
 ```python
-import sdsconv, os
+import sdsconv
+
+# Extract raw text (no LLM)
+text = sdsconv.extract_text("sample.pdf")
+
+# Convert from URL
+data, report = sdsconv.to_json_url_with_report(
+    "https://example.com/sds.pdf", lang="ja",
+)
 
 # Convert SDS document → MHLW standard JSON
 data, report = sdsconv.to_json_with_report(
@@ -50,6 +58,20 @@ df = eval_corpus(
 )
 print(df[["filename", "overall_score", "grade", "high_count"]].head(20))
 ```
+
+---
+
+## Examples
+
+MHLW official sample SDS — allyl chloride (塩化アリル):
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+python examples/mhlw_allyl_chloride/convert.py
+```
+
+See [`examples/mhlw_allyl_chloride/`](examples/mhlw_allyl_chloride/) for
+`expected.json`, `expected_report.json`, and source attribution.
 
 ---
 

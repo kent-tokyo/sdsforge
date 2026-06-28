@@ -21,7 +21,15 @@ cargo install sdsconv                 # CLI / GUI二进制
 ## 快速开始 — Python
 
 ```python
-import sdsconv, os
+import sdsconv
+
+# 仅提取文本（不使用LLM）
+text = sdsconv.extract_text("sample.pdf")
+
+# 从URL直接转换
+data, report = sdsconv.to_json_url_with_report(
+    "https://example.com/sds.pdf", lang="zh-cn",
+)
 
 # SDS文档 → MHLW标准JSON
 data, report = sdsconv.to_json_with_report(
@@ -52,6 +60,19 @@ df = eval_corpus(
 )
 print(df[["filename", "overall_score", "grade", "high_count"]].head(20))
 ```
+
+---
+
+## 示例
+
+厚生劳动省官方样本SDS（丙烯基氯 / 塩化アリル）:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+python examples/mhlw_allyl_chloride/convert.py
+```
+
+`expected.json`、`expected_report.json`及出处说明 → [`examples/mhlw_allyl_chloride/`](examples/mhlw_allyl_chloride/)
 
 ---
 
