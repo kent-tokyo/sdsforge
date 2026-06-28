@@ -5,7 +5,7 @@ use anyhow::Context as _;
 use chrono::Local;
 use walkdir::WalkDir;
 
-use sds_converter_core::{
+use sdsconv_core::{
     converter::{
         AnthropicBackend, CorrectionConfig, LlmBackend, LlmConfig,
         OpenAiCompatBackend, openai_compat_url,
@@ -122,7 +122,7 @@ impl Quality {
     pub fn max_tokens(self) -> u32 {
         match self {
             Quality::Low    =>  8_192,
-            Quality::Medium => 16_384,
+            Quality::Medium => 32_768, // raised from 16_384: complex zh-cn/zh-tw SDSs exceed 16k
             Quality::High   => 32_768,
             Quality::Max    => 65_536,
         }
@@ -460,7 +460,7 @@ pub async fn run_to_docx(params: ToDocxParams, log: LogFn) -> anyhow::Result<()>
 }
 
 pub async fn run_to_html(params: ToHtmlParams, log: LogFn) -> anyhow::Result<()> {
-    use sds_converter_core::converter::html::generate_html;
+    use sdsconv_core::converter::html::generate_html;
 
     let input = params.input.clone();
     let output = params.output.clone();
@@ -514,7 +514,7 @@ pub async fn run_to_pdf(params: ToPdfParams, log: LogFn) -> anyhow::Result<()> {
         let json = std::fs::read_to_string(&input)
             .with_context(|| format!("reading {}", input.display()))?;
         let sds: SdsRoot = serde_json::from_str(&json)?;
-        let bytes = sds_converter_core::converter::generate_pdf(&sds, lang)
+        let bytes = sdsconv_core::converter::generate_pdf(&sds, lang)
             .map_err(|e| anyhow::anyhow!("{e}"))?;
         std::fs::write(&output, bytes)
             .with_context(|| format!("writing {}", output.display()))

@@ -34,7 +34,7 @@ impl Default for AppConfig {
 
 impl AppConfig {
     fn config_path() -> Option<PathBuf> {
-        dirs::config_dir().map(|d| d.join("sds-converter").join("config.toml"))
+        dirs::config_dir().map(|d| d.join("sdsconv").join("config.toml"))
     }
 
     pub fn config_path_pub() -> Option<PathBuf> {

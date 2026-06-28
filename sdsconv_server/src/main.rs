@@ -1,4 +1,4 @@
-//! REST API server for sds-converter.
+//! REST API server for sdsconv.
 //!
 //! # Environment variables
 //! - `PORT`                — listen port (default 3000)
@@ -33,7 +33,7 @@ use tower::limit::ConcurrencyLimitLayer;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
-use sds_converter_core::{
+use sdsconv_core::{
     convert_bytes_to_json, convert_from_json, converter::html::generate_html,
     enrich_composition, openai_compat_url, validate, AnthropicBackend, ConvertConfig,
     Language, LlmBackend, LlmConfig, OpenAiCompatBackend, SdsError, SdsRoot,
@@ -455,7 +455,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(ConcurrencyLimitLayer::new(10))
         .with_state(token);
 
-    tracing::info!("sds-converter API server listening on http://{bind_addr}");
+    tracing::info!("sdsconv API server listening on http://{bind_addr}");
 
     // Fix 5: Use ? instead of panic! for error propagation.
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;

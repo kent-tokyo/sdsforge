@@ -1,6 +1,6 @@
 # SDS JSON Quality Check (QC) Script — Detailed Manual
 
-> This page describes the automated quality verification system for SDS JSON files produced by sds-converter, covering every check rule and its rationale.
+> This page describes the automated quality verification system for SDS JSON files produced by sdsconv, covering every check rule and its rationale.
 
 [日本語](quality-check_ja.md) | [中文](quality-check_zh.md)
 

@@ -4746,7 +4746,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sds-converter"
+name = "sdsconv"
 version = "0.2.8"
 dependencies = [
  "anyhow",
@@ -4758,7 +4758,7 @@ dependencies = [
  "indicatif",
  "reqwest",
  "rfd",
- "sds-converter-core",
+ "sdsconv-core",
  "serde",
  "serde_json",
  "tempfile",
@@ -4770,7 +4770,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sds-converter-core"
+name = "sdsconv-core"
 version = "0.3.8"
 dependencies = [
  "anyhow",
@@ -4792,7 +4792,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sds-converter-server"
+name = "sdsconv-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -4800,7 +4800,7 @@ dependencies = [
  "constant_time_eq 0.3.1",
  "rand 0.8.6",
  "reqwest",
- "sds-converter-core",
+ "sdsconv-core",
  "serde",
  "serde_json",
  "tempfile",

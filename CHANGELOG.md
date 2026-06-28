@@ -7,6 +7,267 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (QC r33 + roundtrip test tooling — seed=555 findings)
+
+- **S9-FLASH-POINT-NOT-NUMERIC FP** (`tools/quality_check.py`): Added EN suppression phrases
+  `None detected`, `not detected`, `no flash point detected`, `not measurable` to flash-point
+  N/A list. en/mgchemicals sds-4120-l had flash point `'None detected'` (no flammable H-codes)
+  firing spurious HIGH. Note: `'該当しない'` + H226 in ja/cerij is kept as a real finding.
+
+- **S4-NO-PHYSICIAN FP for zh-cn Simplified** (`tools/quality_check.py`): Added `求医` (求 +
+  医 U+533B) and `就诊` (就 + 诊 U+8BCA) to the physician-contact keyword regex. Previous regex
+  had Traditional `求醫`/`就診` (醫 U+91AB, 診 U+8A3A) but not the Simplified forms. zh-cn/tci_cn
+  had `'求医/就诊'` (seek medical treatment / go to the doctor) that was unmatched.
+
+- **S8-OEL-NO-NUMERIC FP for zh-cn dust-OEL reference** (`tools/quality_check.py`): Added
+  `使用粉尘的职业接触限值|在控制.*职业接触限值` to OEL suppression. zh-cn/fpcusa uses the phrase
+  "when controlling exposure, use the dust OEL" — a legitimate compliance reference to general
+  dust standards. Combined with prior r31/r32 fixes, **S8-OEL-NO-NUMERIC is now 0/208 files**.
+
+- **Roundtrip test timeout robustness** (`tools/roundtrip_diverse50.py`, `tools/roundtrip_random30.py`):
+  Replaced `subprocess.run(capture_output=True, timeout=180)` with `subprocess.Popen` +
+  `start_new_session=True` + `os.killpg(SIGKILL)` on timeout. On macOS, the old approach could
+  hang indefinitely when the Anthropic SDK's internal retry logic accumulated to ~30 minutes
+  (ja/cometkato: 1907s with subprocess.run vs expected 300s kill). The process-group kill
+  ensures the entire process and all its threads are terminated reliably. Timeout raised to 300s.
+
+### Fixed (converter — zh-cn/cup and zh-tw/herli persistent failures)
+
+- **`max_tokens` raised for medium quality** (`sdsconv/src/tasks.rs`): `Quality::Medium`
+  max_tokens increased from 16,384 → 32,768. Complex zh-cn/zh-tw SDSs (dense classification
+  tables, verbose Chinese content) exceeded 16k output tokens, causing the API to return
+  `stop_reason=max_tokens` with a truncated JSON that failed deserialization (herli:
+  `Invalid JSON: expected ',' at line 208 column 5`). herli now converts to **16/16 sections**.
+
+- **N-element array unwrapping for struct-typed sections** (`sdsconv_core/src/converter/llm.rs`):
+  Added targeted section-key-based array unwrapping in `lenient_deserialize`. When claude-haiku
+  processes certain zh-cn PDFs (e.g. cup/1,2-dichloropropane), it returns every struct-typed
+  section as a **7-element array** where element[0] is the correct data and elements[1..6] are
+  repeated stacking of the same 7-section block:
+  - `"Identification": [{Id}, {HazardId}, {Comp}, ..., {ExposureCtrl}]`  (7 elements)
+  - `"HazardIdentification": [{HazardId}, {Comp}, ..., {ExposureCtrl}]`  (7 elements)
+  - ...every section gets an array starting with its own correct data
+  Fix: for the 15 known struct-typed section keys, take `element[0]` (correct data) and discard
+  `[1..6]`. `ToxicologicalInformation` / `EcologicalInformation` (Vec<T>) excluded — handled
+  by the existing `vec_section!` macro. cup now converts to **16/16 sections** (was 5/16).
+
+- **`vec_section!` macro for Vec<T> sections** (`sdsconv_core/src/converter/llm.rs`):
+  Added a `vec_section!` macro variant used for `ToxicologicalInformation` and
+  `EcologicalInformation`. These sections use `Vec<T>` Rust types but some LLMs return them
+  as plain objects instead of arrays. The macro wraps bare objects in `vec![obj]` before
+  serde deserialization. herli had ToxicologicalInformation/EcologicalInformation as plain
+  objects — both sections now deserialize successfully.
+
+### Added (QC r32 — seed=314 diverse 50-file roundtrip test — 53 manufacturers, 48/50 success)
+
+- **QC r32: S3-MAJORITY-CONC-MISSING (HIGH)** (`tools/quality_check.py`): New rule fires when
+  a mixture with >3 components has >50% (but NOT all) components lacking numeric concentration
+  values. Bridges existing `S3-MIXTURE-ALL-CONC-MISSING` (all-absent HIGH) and per-component
+  `S3-CONC-UNIT-NO-VALUE` (MED). Confirmed extraction failure by `extract-text` on ja/eneos PDF:
+  source has `3質量%以上5質量%未満` range values that the LLM captures only as unit `質量%`.
+  When this fires, per-component `S3-CONC-UNIT-NO-VALUE` MEDs are suppressed (exactly one HIGH
+  per file, following r28 dedup precedent). Fires 7/158 files — distinct from all-missing cases.
+
+### Fixed (QC r32)
+
+- **S3-CAS-FORMAT false positives for proprietary ingredients** (`tools/quality_check.py`):
+  Added suppression for proprietary/trade-secret CAS placeholders: `Proprietary`, `Trade Secret`,
+  `Confidential`, `未特定`, `機密`, `専売品`, `不明`, etc. GHS guidelines allow withholding CAS
+  numbers for confidential ingredients — these are not format violations. Confirmed in
+  zh-tw/tsrc (`Proprietary`) and ja/shell_lubes_jp (`未特定`). 2 FPs → 0.
+
+- **S8-OEL-NO-NUMERIC false positives (additional phrases)** (`tools/quality_check.py`):
+  Added EN `No biological limit`/`no.*biological.*limit`/`not.*allocated` (en/shell),
+  zh-cn Simplified `不含有职业接触限值|不含.*职业接触限值` (职 U+804C ≠ Traditional 職 U+8077 —
+  r31 added Traditional only, r32 adds Simplified), zh-tw `無資料` (無 U+7121 ≠ 无 U+65E0),
+  standalone `\b無\b`/`\b无\b` (zh-tw/tsrc OEL = `["無"]`; word-boundary-safe: confirmed
+  does NOT match inside `無資料`, `無機化合物`, `無相關`). Across 158 files: **7 → 2**.
+
+- **S4-NO-PHYSICIAN false positives for zh-tw** (`tools/quality_check.py`):
+  Added `送醫`/`送医` (send to hospital/doctor) to the physician-contact keyword list.
+  Confirmed FP in sfchem/ttl: both use `立即送醫` (immediately send for medical care)
+  which is standard zh-tw emergency guidance but was not matched by existing keywords.
+
+### Notes
+
+- **zh-cn/cup and zh-tw/herli consistently fail PDF→JSON conversion** (exit after 81.4s/39.7s,
+  model downgraded to `haiku-4-5` medium quality). Both PDFs have extractable text (confirmed by
+  `extract-text`). The failure is in the conversion engine — haiku medium quality fails on these
+  particular formats. This is a converter-side issue, not a QC rule issue.
+
+### Added (QC r31 — seed=77 diverse 50-file roundtrip test — 53 manufacturers, 4 languages)
+
+- **QC r31: walk_text NFKC normalization** (`tools/quality_check.py`): Every string value
+  processed by `walk_text` is now NFKC-normalized (fullwidth Latin → ASCII: `ｍ→m`, `℃→°C`,
+  `３→3`). CJK characters are unaffected. Tested across all 160 on-disk JSONs: zero regressions,
+  fixes fullwidth unit failures (e.g. `0.2mg/ｍ3` in ja/nipponkinzoku OEL fields), and newly
+  detects flash point fields containing only ` ℃` unit with no numeric value (true positives).
+
+- **QC r31: S2-MULTIPLE-SIGNAL-WORDS (HIGH)** (`tools/quality_check.py`): Detects
+  `SignalWord` fields that concatenate two valid GHS signal words (e.g. `危険、警告`, `Danger/Warning`).
+  GHS requires exactly one signal word per SDS. Confirmed in ja/pacific_steel. Branches from
+  S2-INVALID-SIGNAL-WORD to avoid double-count — same field fires either HIGH (concatenated)
+  or MED (unknown word), never both.
+
+### Fixed (QC r31)
+
+- **S9-FLASH-POINT-NOT-NUMERIC bug fix** (`tools/quality_check.py`): Changed `if not fp_val`
+  to `if fp_val is None`. Python `not 0.0 == True` caused ExactValue=0.0 (zh-cn/akzonobel)
+  to be treated as absent, firing spurious HIGH. 1 FP → 0.
+
+- **S9-FLASH-POINT-NOT-NUMERIC suppression** (`tools/quality_check.py`): Added
+  `沸騰するまで引火せず`/`引火しない`/`非引火性`/`不燃` for substances that genuinely don't
+  ignite (ja/d_kasei, no flammable H-codes). Substances WITH flammable H-codes + "not applicable"
+  still fire correctly (H226 + `該当しない` in ja/cerij remains HIGH).
+
+- **S4-EYE-HCODE-NO-EYE-AID false positives** (`tools/quality_check.py`): Suppressed when
+  `ExposureRoute.FirstAidEye` sub-field is populated (6/6 FPs: ja SDSs use `水で…洗う` +
+  `コンタクトレンズ` without `目/眼/rinse`). Also added `コンタクトレンズ|まぶた|contact.*lens`
+  to keyword list. Akzonobel (eye={}, H314/H319) still fires as true positive.
+  6 FPs → 0.
+
+- **S8-OEL-NO-NUMERIC new false positives** (`tools/quality_check.py`): Added suppression
+  phrases from diverse manufacturer corpus: `未設定` (ja, not established),
+  `無相關|無相關職業接觸限值|無相關職業暴露` (zh-tw, no relevant OEL data),
+  `不含.*職業接觸限值|不含.*職業暴露極限値` (zh-tw/zh-cn, no substances with OEL).
+  Combined with NFKC fix: `0.2mg/ｍ3` fullwidth unit now correctly detected as numeric.
+  S8-OEL-NO-NUMERIC total across 160 files: **51 → 6** (88% reduction).
+
+- **S13-NO-DISPOSAL-KEYWORDS false positives for gas products** (`tools/quality_check.py`):
+  Added gas-specific disposal keywords: `dissipat`, `消散` (release/dissipate to atmosphere),
+  `气瓶`/`氣瓶` (gas cylinder), `返.*供[应應]商` (return to supplier). Added zh-tw Traditional
+  `法規` (U+898F ≠ Simplified 规 U+89C4) and `環保法規`. Covers zh-cn/sandiego, zh-tw/fpcc,
+  zh-tw/gs_battery, zh-tw/sh_gas. S13-NO-DISPOSAL-KEYWORDS: **45 → 1** across 160 files.
+
+### Added (QC r30 — seed=202 30-file roundtrip test findings)
+
+- **QC r30: S1-ALL-SUPPLIER-FIELDS-ABSENT (HIGH)** (`tools/quality_check.py`): New rule fires
+  when a **hazardous product** (has H-codes) has the `SupplierInformation` key **completely absent**
+  from `Identification` — distinguished from `S1-NO-COMPANY-NAME` (which fires when the key exists
+  but `CompanyName` is empty). Verified by `sdsconv extract-text` on ichemistry 2933.pdf:
+  source document has blank `供应商名称/电话/地址` fields — the entire supplier section was never
+  filled in. A hazardous SDS with no supplier contact information is a JIS Z 7253 Section 1
+  regulatory violation. Fires for 6/60 files across both test seeds (all ichemistry zh-cn files
+  where `SupplierInformation` key is entirely absent).
+
+### Fixed (QC r30)
+
+- **S7-FLAMMABLE-NO-STORAGE-TEMP false positives for EN/zh** (`tools/quality_check.py`):
+  Added `keep cool`, `cool place`, `cool.*area`, `cool.*dry` (EN) and `阴凉` (zh-cn) /
+  `陰涼` (zh-tw Traditional, U+9670+U+6DBC ≠ Simplified U+9634+U+51C9) to storage-temperature
+  suppression. These are legitimate "store in a cool place" instructions without numeric limits.
+  Reduced from 8/30 to 0 false positives.
+
+- **S9-CORROSIVE-NO-PH false positives** (`tools/quality_check.py`): Tightened trigger from
+  `{H314, H290, H318, H319}` to `{H314, H290}` only. H318 (serious eye damage) and H319 (eye
+  irritation) do not imply acidic/basic chemistry — confirmed: acetone oxime (H318), IPA,
+  ethanol, 2-propanol (all H319) fired false positives. H314 (skin corrosion) and H290 (corrosive
+  to metals) reliably require acid/base chemistry. Reduced 6 of 7 FPs; 2 true positives verified
+  (W01W0102-0240JGHEEN H314, W01W0103-0115JGHEJP H314+H290).
+
+- **S2-NON-ENGLISH-SIGNAL-WORD false positives for all-caps EN SDSs** (`tools/quality_check.py`):
+  Changed from exact-match `{"Danger","Warning","N/A"}` to case-insensitive comparison.
+  mgchemicals EN SDSs write `DANGER`/`WARNING` (all caps) which was not in the valid set.
+  2 FPs → 0.
+
+- **S12-NO-LOGP false positive for fujifilm SDSs** (`tools/quality_check.py`):
+  Extended search to also check Section 9 (`PhysicalChemicalProperties.OtherPhysicalChemicalProperty`)
+  for numeric LogP values. JIS Z 7253 allows partition coefficient in Sec 9 or Sec 12; fujifilm_wako
+  SDSs list `n-オクタノール/水分配係数: 2.64` in Section 9. Only suppresses when Section 9 has a
+  NUMERIC value (not `"Not specified"`/`"データなし"`), preserving true positives.
+  1 FP → 0.
+
+### Added (QC r29 — seed=99 30-file roundtrip test findings)
+
+- **QC r29: CX-JA-TEXT-IN-ZH-SDS (HIGH)** (`tools/quality_check.py`): New cross-field rule
+  fires when a zh-cn or zh-tw SDS contains **Japanese hiragana** in `HazardIdentification`
+  or `Composition`. Hiragana is exclusive to Japanese and its presence indicates LLM language
+  contamination — the model sourced Japanese classification templates for Chinese-language SDSs
+  (e.g. Classification values `"分類できない"`, `"該当区分なし"` injected into zh-cn/zh-tw
+  Classification objects). Confirmed across 8/30 files (6 zh-cn including all ichemistry files,
+  2 zh-tw thu_orglab files). Fires as HIGH to surface this silently wrong extraction to the user.
+
+### Fixed (QC r29)
+
+- **S8-OEL-NO-NUMERIC false positives for zh-tw Traditional Chinese** (`tools/quality_check.py`):
+  Added Traditional Chinese "no OEL" phrases `無職業接觸限值`, `未建立職業接觸限值`,
+  `無職業接觸限值資料` to the suppression list. The Simplified Chinese equivalents (`无职业接触限值`)
+  were already handled but Traditional forms use different Unicode code points
+  (U+7121 `無` ≠ U+65E0 `无`, U+81E5 `職` ≠ U+804C `职`) — causing 3 FPs per run → 0.
+
+- **S8-OEL-NO-NUMERIC false positive for zh-cn "不要求"** (`tools/quality_check.py`):
+  Added `不要求` (not required) to the OEL suppression list. Strem zh-cn SDSs use this phrase
+  when Chinese OEL monitoring is not mandated for the substance. Caused 3-4 FPs per run → 0.
+
+- **S8-OEL-NO-NUMERIC false positive for footnote-annotated values** (`tools/quality_check.py`):
+  Fixed numeric detection regex to allow asterisk footnote markers between number and unit
+  (e.g. `"0.05* 0.03** mg/m³"` in lead-containing strem SDS). Pattern updated from
+  `\d+\.?\d*\s*(mg/m|...)` to `\d+\.?\d*[*＊]*\s*(mg/m|...)`. Was causing 1 FP → 0.
+
+- **S4-H314-NO-REMOVE-CLOTHING false positives for zh-tw** (`tools/quality_check.py`):
+  Added Traditional Chinese `脫掉` and `脫去` (U+812B) to the remove-clothing detection regex.
+  Simplified Chinese uses `脱` (U+8131) — different Unicode code point — so `脫掉污染的衣物`
+  in zh-tw SDSs was not matched. Confirmed in 2 thu_orglab/thu_gclab files → 0 FPs.
+
+- **S8-SKIN-NO-GLOVE-MATERIAL false positive for zh-tw** (`tools/quality_check.py`):
+  Added Traditional Chinese `橡膠` (rubber, U+81A0) to the glove material keyword list.
+  Simplified Chinese uses `橡胶` (胶 U+80F6) — different Unicode code point — so
+  `合成橡膠材質手套` (synthetic rubber gloves) in zh-tw SDSs was not matched → 0 FPs.
+
+### Added (QC r28 — seed=137 30-file roundtrip test findings)
+
+- **QC r28: S3-MIXTURE-ALL-CONC-MISSING (HIGH)** (`tools/quality_check.py`): New rule fires
+  when a mixture with >2 components has **zero numeric concentration values** across all
+  components. Detects cases where the LLM extracted component structure and unit strings
+  (`"% w/w"`) but missed all numeric ranges (confirmed by `extract-text` against Shell diesel
+  SDS source which contained `>= 0 - <= 100` ranges). Fires as HIGH. Observed in 3/30 files
+  (Shell diesel, ENEOS lubricant, GS Battery).
+
+### Fixed (QC r28)
+
+- **S2 pictogram double-counting** (`tools/quality_check.py`): Specific pictogram rules
+  `S2-FLAMMABLE-NO-GHS02`, `S2-CORROSIVE-NO-GHS05`, `S2-ACUTETOX-NO-GHS06`,
+  `S2-EXPLOSIVE-NO-GHS01`, `S2-ENV-NO-GHS09` now only fire when the Pictogram list is
+  **non-empty** (i.e. some pictograms were extracted but the required one is absent).
+  When `S2-HAZARD-NO-PICTOGRAM` fires (all pictograms absent), these rules are suppressed
+  to avoid triple-counting. Eliminated 23 redundant MED issues in the 30-file test.
+
+- **S3-CONC-UNIT-NO-VALUE per-component dedup** (`tools/quality_check.py`): When new
+  `S3-MIXTURE-ALL-CONC-MISSING` (HIGH) fires, per-component `S3-CONC-UNIT-NO-VALUE` (MED)
+  hits for the same file are suppressed (N components × 1 HIGH is cleaner than N+1 issues).
+
+- **S4-NO-PHYSICIAN false positives for zh-tw/zh-cn** (`tools/quality_check.py`): Added
+  `就醫` (Traditional Chinese for "seek medical", U+91AB vs Simplified `就医` U+533B), plus
+  `醫師`, `醫生`, `醫療`, `就診`, `求醫`, `医生`, `医疗`, `医院` to the physician detection
+  regex. Eliminated 9 false positives in the 30-file test (→0).
+
+- **S6-NO-CLEANUP-KEYWORDS false positives for zh-tw/zh-cn** (`tools/quality_check.py`):
+  Added Chinese character variants that differ from Japanese Kanji in Unicode: `吸收` (absorb,
+  U+6536) vs JA `吸収` (U+53CE), `收集`/`回收` vs JA `収集`/`回収`, `沙` (sand, U+6C99) vs
+  JA `砂` (U+7802). Also added `围堵`, `通風` (Traditional), `收容`, `处置`/`處置`.
+  Reduced false positives from 7 to 1.
+
+- **S10-NO-STABILITY-KEYWORDS false positives for EN/zh** (`tools/quality_check.py`):
+  Added English terms `temperature`, `oxidiz`, `decompos`, `reaction`, `processing` (fujifilm
+  EN SDSs use "Extremes of temperature", "Strong oxidizing agents" which were not matched).
+  Added Chinese terms `稳定`/`穩定` (stable, zh), `氧化` (oxidation, zh, ≠ JA `酸化`),
+  `反应`/`反應` (reaction, zh), `不相容` (incompatible), `避免` (avoid). Eliminated 4 FPs → 0.
+
+- **S13-NO-DISPOSAL-KEYWORDS false positives for zh-tw** (`tools/quality_check.py`):
+  Added Traditional Chinese disposal terms: `廢棄物`, `廢棄`, `廢物`, `廢液`, `焚燒` (Traditional
+  incineration, ≠ Simplified `焚烧`), `處置`/`处置`, `廢棄`/`废弃`, `丢弃`, `弃置`, plus
+  zh-cn regulatory disposal patterns `规章`. Eliminated 11 false positives → 0.
+
+- **S15-NO-LAW-KEYWORDS false positives for zh-cn** (`tools/quality_check.py`):
+  Added Chinese regulatory terms: `办法`/`管理办法` (administrative regulations), `规范`/`規範`
+  (standards), `名录`/`名錄` (chemical inventories, e.g. IECSC), `管制`, `IECSC`,
+  `化学品`, `危险化学`, `安全生产`, `化学品登记`, `环境管理`. Strem zh-cn SDSs reference
+  "新化学物质环境管理办法" and "中国现有化学物质名录" which are legitimate regulatory citations.
+  Reduced false positives from 6 to 1.
+
+**Net r28 effect on 30-file test:** HIGH 11→14 (+3 new true positives), MED 251→180 (−71 FPs
+eliminated, 28% noise reduction). Seven rule categories reach zero false positives.
+
 ## [0.2.8] / [0.3.8] — 2026-06-01
 
 ### Added
@@ -149,20 +410,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added (continued from prior unreleased)
 
-- **Automated Windows & macOS release builds** (`.github/workflows/release.yml`): pushing a `v*.*.*` tag now automatically builds `sds-converter-windows-portable.zip` (Windows x86_64) and `sds-converter-macos.zip` (macOS Universal — Apple Silicon + Intel) and attaches them to the GitHub Release. Homebrew Cask auto-update is skipped gracefully when `HOMEBREW_TAP_TOKEN` is not configured.
+- **Automated Windows & macOS release builds** (`.github/workflows/release.yml`): pushing a `v*.*.*` tag now automatically builds `sdsconv-windows-portable.zip` (Windows x86_64) and `sdsconv-macos.zip` (macOS Universal — Apple Silicon + Intel) and attaches them to the GitHub Release. Homebrew Cask auto-update is skipped gracefully when `HOMEBREW_TAP_TOKEN` is not configured.
 
 ### Security
 
-- **Timing-safe Bearer token comparison** (`sds_converter_server`): replaced `t == token.as_str()` with `constant_time_eq(t.as_bytes(), token.as_bytes())` to eliminate timing side-channel attacks on the authentication check. New dependency: `constant_time_eq = "0.3"`.
+- **Timing-safe Bearer token comparison** (`sdsconv_server`): replaced `t == token.as_str()` with `constant_time_eq(t.as_bytes(), token.as_bytes())` to eliminate timing side-channel attacks on the authentication check. New dependency: `constant_time_eq = "0.3"`.
 - **HTTP redirect disabled on URL fetch client** (`extractor.rs`): `shared_http_client` now sets `.redirect(Policy::none())`. Previously, an attacker could bypass the SSRF `is_private_host` guard by redirecting through a public URL to a private address.
 - **IPv6 SSRF guard extended** (`extractor.rs`): `is_private_host` now blocks `fc00::/7` (ULA unique-local), `fe80::/10` (link-local), and `::ffff:` IPv4-mapped addresses whose embedded IPv4 is loopback/private/link-local. Previously only `::1` and `::` were blocked.
-- **Upload size limit reduced to 50 MB** (`sds_converter_server`): `DefaultBodyLimit` lowered from 512 MB to 50 MB — sufficient for any real SDS document. The previous limit allowed DoS via memory exhaustion on large uploads.
-- **REST API server now requires authentication** (`sds_converter_server`): Bearer token auth via `SDS_SERVER_TOKEN` env var (auto-generates and prints a random token if not set). Default bind address changed from `0.0.0.0` to `127.0.0.1` (`SDS_SERVER_BIND` override)
-- **CORS restricted to localhost** (`sds_converter_server`): replaced `CorsLayer::permissive()` with an allowlist of `http://localhost` and `http://127.0.0.1` only
-- **Concurrency cap on REST server** (`sds_converter_server`): `ConcurrencyLimitLayer(10)` prevents resource exhaustion from concurrent requests
+- **Upload size limit reduced to 50 MB** (`sdsconv_server`): `DefaultBodyLimit` lowered from 512 MB to 50 MB — sufficient for any real SDS document. The previous limit allowed DoS via memory exhaustion on large uploads.
+- **REST API server now requires authentication** (`sdsconv_server`): Bearer token auth via `SDS_SERVER_TOKEN` env var (auto-generates and prints a random token if not set). Default bind address changed from `0.0.0.0` to `127.0.0.1` (`SDS_SERVER_BIND` override)
+- **CORS restricted to localhost** (`sdsconv_server`): replaced `CorsLayer::permissive()` with an allowlist of `http://localhost` and `http://127.0.0.1` only
+- **Concurrency cap on REST server** (`sdsconv_server`): `ConcurrencyLimitLayer(10)` prevents resource exhaustion from concurrent requests
 - **SSRF protection** (`extractor.rs`): URL fetches now reject private/loopback/link-local/metadata IP addresses and hostnames (`localhost`, `169.254.x.x`, RFC-1918 ranges, `::1`) before issuing the HTTP request
 - **Prompt injection mitigation strengthened** (`llm.rs`): `</document>` occurrences in document text are escaped to `</_document>` before insertion into LLM user messages
-- **LLM error body no longer forwarded to API clients** (`sds_converter_server`): full provider error responses are logged server-side only; clients receive a sanitized `{"error": "LLM API request failed", "status": N}` response
+- **LLM error body no longer forwarded to API clients** (`sdsconv_server`): full provider error responses are logged server-side only; clients receive a sanitized `{"error": "LLM API request failed", "status": N}` response
 
 ### Added
 
@@ -197,7 +458,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hover.
 
 - **Settings persistence** (`config.rs`): App configuration is written to and read from
-  `~/.config/sds-converter/config.toml` (created with Unix 0o600 permissions). Includes API keys,
+  `~/.config/sdsconv/config.toml` (created with Unix 0o600 permissions). Includes API keys,
   provider, model name, base URL, output directory, language, and quality preset.
 
 - **BusyGuard RAII, error modals, and log panel** (`app.rs`): `BusyGuard` ensures the busy flag
@@ -218,7 +479,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Silent discard of retry-parse errors** (`llm.rs`): both the text-extraction retry (`llm.rs:660`) and the vision-path retry (`llm.rs:926`) used `if let Ok(...)` on the result of `lenient_deserialize`, silently swallowing parse errors. Replaced with `match` + `Err(e) => tracing::warn!(...)` so failures are always visible in logs.
 - **False-positive chemical name matching** (`enrichment.rs`): `names_similar` used substring containment (`a.contains(&b) || b.contains(&a)`), causing short generic words (e.g. `"acid"`) to match unrelated names (e.g. `"hydrochloric acid"`). Replaced with Jaccard word-overlap (intersection/union ≥ 0.5). 5 new unit tests added.
 - **`section!` macro schema-mismatch warning lacks context** (`llm.rs`): the `WARN` log only reported the serde error message. Now also logs the first 200 characters of the failing JSON value, making it much easier to diagnose LLM output schema drift.
-- **`/api/health` blocked by auth middleware** (`sds_converter_server`): The `require_auth` middleware was applied via `.layer()` to the entire router, causing `GET /api/health` to return 401 for unauthenticated callers (e.g. AWS LWA / load-balancer health checks). Fixed by splitting into a protected router (`.route_layer(require_auth)`) merged with a public router containing only the health route.
+- **`/api/health` blocked by auth middleware** (`sdsconv_server`): The `require_auth` middleware was applied via `.layer()` to the entire router, causing `GET /api/health` to return 401 for unauthenticated callers (e.g. AWS LWA / load-balancer health checks). Fixed by splitting into a protected router (`.route_layer(require_auth)`) merged with a public router containing only the health route.
 - **Japanese CID font PDF panic** (`extractor.rs`): `pdf-extract` panics with `FromUtf8Error` when processing PDFs that use CID fonts (e.g. Shift-JIS encoded Japanese text). The panic was caught by `spawn_blocking` and silently converted to an empty string, causing unnecessary OCR fallback. Added `pdftotext -utf8` (poppler) as a middle tier between `pdf-extract` and OCR: full 3-tier fallback chain is now `pdf-extract` -> `pdftotext` -> tesseract/Vision. `pdftotext` is silently skipped if poppler is not installed.
 - URL response body now capped at 50 MB (Content-Length pre-check + streaming byte cap) to prevent OOM on large responses
 - CJK text truncation: `out.len()` (byte count) was compared against `max_chars` (character count), causing Japanese text to be cut at 1/3 the intended length. Fixed to use `chars().count()`

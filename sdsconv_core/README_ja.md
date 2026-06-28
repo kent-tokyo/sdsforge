@@ -1,10 +1,10 @@
-# sds-converter-core
+# sdsconv-core
 
 安全データシート（SDS）文書（Word/PDF）と厚生労働省が定める標準フォーマット（JSON）を**双方向に変換**するRustライブラリです。
 
 **日本語**・英語・簡体字中国語・繁体字中国語のSDS文書に対応。
 
-> **CLIツールをお探しですか？** [`sds-converter`](https://crates.io/crates/sds-converter) をインストールしてください。
+> **CLIツールをお探しですか？** [`sdsconv`](https://crates.io/crates/sdsconv) をインストールしてください。
 
 ---
 
@@ -25,7 +25,7 @@
 
 ```toml
 [dependencies]
-sds-converter-core = "0.3"
+sdsconv-core = "0.3"
 ```
 
 ---
@@ -35,7 +35,7 @@ sds-converter-core = "0.3"
 ### SDS文書をJSONに変換する（Anthropic Claude）
 
 ```rust
-use sds_converter_core::{
+use sdsconv_core::{
     AnthropicBackend, LlmConfig,
     convert_to_json, ConvertConfig, Language,
 };
@@ -63,7 +63,7 @@ async fn main() -> anyhow::Result<()> {
 ### JSONをWord文書に変換する
 
 ```rust
-use sds_converter_core::{convert_from_json, ConvertConfig, Language, SdsRoot};
+use sdsconv_core::{convert_from_json, ConvertConfig, Language, SdsRoot};
 
 fn main() -> anyhow::Result<()> {
     let json = std::fs::read_to_string("output.json")?;
@@ -83,7 +83,7 @@ fn main() -> anyhow::Result<()> {
 ### OpenAI GPT / Google Gemini バックエンド
 
 ```rust
-use sds_converter_core::{OpenAiCompatBackend, LlmConfig};
+use sdsconv_core::{OpenAiCompatBackend, LlmConfig};
 
 // OpenAI GPT
 let config = LlmConfig { model: "gpt-4o-mini".into(), max_tokens: 8192 };
@@ -106,7 +106,7 @@ let backend = OpenAiCompatBackend::new(
 LLM呼び出しなしでPDF/DOCX/XLSXのテキストを抽出します。カスタムパイプラインの構築やLLMへの入力内容の確認に使用できます。
 
 ```rust
-use sds_converter_core::extract_text;
+use sdsconv_core::extract_text;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -123,7 +123,7 @@ async fn main() -> anyhow::Result<()> {
 `validate` は `SdsRoot` の構造的な完全性をチェックし、警告メッセージのリストを返します。エラーで中断はしません — 部分的な結果もそのまま使用できます。
 
 ```rust
-use sds_converter_core::{validate, SdsRoot};
+use sdsconv_core::{validate, SdsRoot};
 
 fn main() -> anyhow::Result<()> {
     let json = std::fs::read_to_string("output.json")?;
@@ -143,7 +143,7 @@ fn main() -> anyhow::Result<()> {
 `LlmBackend`トレイトを実装することで任意のLLMプロバイダーを使用できます：
 
 ```rust
-use sds_converter_core::{LlmBackend, SdsError};
+use sdsconv_core::{LlmBackend, SdsError};
 
 struct MyLlmBackend { /* ... */ }
 

@@ -25,7 +25,7 @@ from datetime import datetime
 
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_DIR = SCRIPT_DIR.parent
-BIN = PROJECT_DIR / "target" / "release" / "sds-converter"
+BIN = PROJECT_DIR / "target" / "release" / "sdsconv"
 QC_SCRIPT = SCRIPT_DIR / "quality_check.py"
 SDS_BASE = PROJECT_DIR / "references" / "sds"
 OUT_BASE = PROJECT_DIR / "references" / "json" / f"random30_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -66,7 +66,7 @@ def sample_balanced(pdf_by_lang: dict, n_per_lang: dict, seed: int) -> list[tupl
 
 
 def run_to_json(pdf_path: Path, lang: str, out_json: Path) -> tuple[bool, str]:
-    """Convert PDF to JSON. Returns (success, stderr)."""
+    """Convert PDF to JSON. Uses process-group kill on timeout to handle macOS subprocess hang."""
     cmd = [
         str(BIN), "to-json",
         "--input", str(pdf_path),
@@ -74,16 +74,27 @@ def run_to_json(pdf_path: Path, lang: str, out_json: Path) -> tuple[bool, str]:
         "--lang", lang,
     ]
     t0 = time.time()
+    import os, signal
+    _TIMEOUT = 300
     try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=180
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
         )
-        elapsed = time.time() - t0
-        ok = result.returncode == 0 and out_json.exists()
-        stderr = result.stderr.strip()
-        return ok, stderr, elapsed
-    except subprocess.TimeoutExpired:
-        return False, "TIMEOUT (180s)", time.time() - t0
+        try:
+            stdout_b, stderr_b = proc.communicate(timeout=_TIMEOUT)
+            elapsed = time.time() - t0
+            ok = proc.returncode == 0 and out_json.exists()
+            return ok, stderr_b.decode("utf-8", errors="replace").strip(), elapsed
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            proc.communicate()
+            return False, f"TIMEOUT ({_TIMEOUT}s)", time.time() - t0
     except Exception as e:
         return False, str(e), time.time() - t0
 
@@ -156,7 +167,7 @@ def main():
 
     if not BIN.exists():
         print(f"ERROR: Binary not found: {BIN}", file=sys.stderr)
-        print("Run: cargo build --release -p sds-converter", file=sys.stderr)
+        print("Run: cargo build --release -p sdsconv", file=sys.stderr)
         sys.exit(1)
 
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")

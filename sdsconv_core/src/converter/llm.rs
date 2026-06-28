@@ -14,7 +14,7 @@ use crate::schema::SdsRoot;
 
 /// Abstraction over LLM completion providers.
 ///
-/// Implement this trait to use any LLM backend with `sds-converter-core`.
+/// Implement this trait to use any LLM backend with `sdsconv-core`.
 /// The library ships with [`AnthropicBackend`] and [`OpenAiCompatBackend`].
 pub trait LlmBackend {
     /// Send a system + user message pair and return the raw text response.
@@ -72,7 +72,7 @@ impl Default for LlmConfig {
 ///
 /// # Example
 /// ```no_run
-/// use sds_converter_core::converter::llm::{AnthropicBackend, LlmConfig};
+/// use sdsconv_core::converter::llm::{AnthropicBackend, LlmConfig};
 /// let backend = AnthropicBackend::new("sk-ant-...", LlmConfig::default());
 /// ```
 pub struct AnthropicBackend {
@@ -166,14 +166,14 @@ impl LlmBackend for AnthropicBackend {
 ///
 /// # Example — OpenAI GPT
 /// ```no_run
-/// use sds_converter_core::converter::llm::{OpenAiCompatBackend, LlmConfig};
+/// use sdsconv_core::converter::llm::{OpenAiCompatBackend, LlmConfig};
 /// let config = LlmConfig { model: "gpt-4o".into(), max_tokens: 16384 };
 /// let backend = OpenAiCompatBackend::openai("sk-...", config);
 /// ```
 ///
 /// # Example — Google Gemini
 /// ```no_run
-/// use sds_converter_core::converter::llm::{OpenAiCompatBackend, LlmConfig};
+/// use sdsconv_core::converter::llm::{OpenAiCompatBackend, LlmConfig};
 /// let config = LlmConfig { model: "gemini-2.0-flash".into(), max_tokens: 16384 };
 /// let backend = OpenAiCompatBackend::gemini("AIza...", config);
 /// ```
@@ -1217,11 +1217,71 @@ fn lenient_deserialize(json_str: &str) -> Result<(SdsRoot, Vec<String>), SdsErro
         _ => return Err(SdsError::LlmParse("LLM output is not a JSON object".into())),
     };
 
+    // Unwrap array-wrapped sections for struct-typed keys.
+    //
+    // Some LLMs return sections as JSON arrays instead of plain objects:
+    //   "HazardIdentification": [{"Classification": {...}}]   →  {"Classification": {...}}
+    //   "Identification":       [{"SupplierInformation": …}]  →  {"SupplierInformation": …}
+    //
+    // Worse, certain PDFs (e.g. zh-cn/cup) cause Haiku to return EVERY struct-typed section
+    // as a 7-element array where element[0] is the correct data and elements[1..6] are the
+    // same 7-section block repeated:
+    //   "Identification":      [{Id data}, {HazardId data}, ..., {ExposureCtrl data}]  (7 items)
+    //   "HazardIdentification":[{HazardId data}, {Composition data}, ...]              (7 items)
+    //   ...each section gets an array starting with its own correct data
+    //
+    // Fix: for known struct-typed sections, take element[0] if it is an Object and discard
+    // the rest. ToxicologicalInformation and EcologicalInformation are Vec<T> sections and
+    // are excluded here (handled by vec_section! which wraps bare objects in arrays).
+    const STRUCT_TYPED_SECTIONS: &[&str] = &[
+        "Datasheet", "Identification", "HazardIdentification", "Composition",
+        "FirstAidMeasures", "FireFightingMeasures", "AccidentalReleaseMeasures",
+        "HandlingAndStorage", "ExposureControlPersonalProtection",
+        "PhysicalChemicalProperties", "StabilityReactivity",
+        "DisposalConsiderations", "TransportInformation",
+        "RegulatoryInformation", "OtherInformation",
+    ];
+    for key in STRUCT_TYPED_SECTIONS {
+        if let Some(v) = obj.get_mut(*key) {
+            if let Value::Array(arr) = v {
+                if !arr.is_empty() {
+                    if let Some(Value::Object(_)) = arr.first() {
+                        *v = arr.swap_remove(0); // take element[0], discard stacked duplicates
+                    }
+                }
+            }
+        }
+    }
+
     let mut skipped: Vec<&'static str> = Vec::new();
 
     macro_rules! section {
         ($key:literal, $type:ty) => {
             obj.remove($key).and_then(|v| {
+                let preview: String = v.to_string().chars().take(200).collect();
+                serde_json::from_value::<$type>(v)
+                    .map_err(|e| {
+                        warn!(
+                            "Section '{}' skipped (schema mismatch): {} | value preview: {}",
+                            $key, e, preview
+                        );
+                        skipped.push($key);
+                    })
+                    .ok()
+            })
+        };
+    }
+
+    // Variant for Vec<T> sections (ToxicologicalInformation, EcologicalInformation).
+    // Some LLMs return a plain object instead of a single-element array for these.
+    // Wrapping the object in an array lets serde deserialize it as Vec<T>.
+    macro_rules! vec_section {
+        ($key:literal, $type:ty) => {
+            obj.remove($key).and_then(|v| {
+                let v = match v {
+                    Value::Object(_) => Value::Array(vec![v]),
+                    other => other,
+                };
                 let preview: String = v.to_string().chars().take(200).collect();
                 serde_json::from_value::<$type>(v)
                     .map_err(|e| {
@@ -1251,8 +1311,8 @@ fn lenient_deserialize(json_str: &str) -> Result<(SdsRoot, Vec<String>), SdsErro
         ),
         physical_chemical_properties: section!("PhysicalChemicalProperties", PhysicalChemicalProperties),
         stability_reactivity: section!("StabilityReactivity", StabilityReactivity),
-        toxicological_information: section!("ToxicologicalInformation", Vec<ToxicologicalInformation>),
-        ecological_information: section!("EcologicalInformation", Vec<EcologicalInformation>),
+        toxicological_information: vec_section!("ToxicologicalInformation", Vec<ToxicologicalInformation>),
+        ecological_information: vec_section!("EcologicalInformation", Vec<EcologicalInformation>),
         disposal_considerations: section!("DisposalConsiderations", DisposalConsiderations),
         transport_information: section!("TransportInformation", TransportInformation),
         regulatory_information: section!("RegulatoryInformation", RegulatoryInformation),

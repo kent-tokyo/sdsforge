@@ -1,7 +1,118 @@
 #!/usr/bin/env python3
 """
-SDS JSON Quality Check Script — r27
+SDS JSON Quality Check Script — r33
 
+# r33: 3 FP fixes (seed=555 diverse50 findings — 53 manufacturers, 49/50 success)
+#       FIX: S9-FLASH-POINT-NOT-NUMERIC — add EN 'None detected'/'not detected'/
+#            'no flash point detected'/'not measurable' to flash-point N/A suppression.
+#            en/mgchemicals sds-4120-l had fp='None detected' (no flammable H-codes)
+#            firing spurious HIGH. (Note: '該当しない'+H226 in cerij correctly kept firing.)
+#       FIX: S4-NO-PHYSICIAN — add zh-cn Simplified '求医'/'就诊' (求 U+6C42 + 医 U+533B;
+#            就 U+5C31 + 诊 U+8BCA). Previous regex had Traditional '求醫'/'就診' (醫 U+91AB,
+#            診 U+8A3A) but not the Simplified forms. zh-cn/tci_cn had '求医/就诊' = "seek
+#            medical treatment/go to the doctor" that was missed.
+#       FIX: S8-OEL-NO-NUMERIC — add '使用粉尘的职业接触限值|在控制.*职业接触限值'
+#            (zh-cn: "use dust OEL" / "when controlling exposure, use dust OEL").
+#            zh-cn/fpcusa uses this phrase to reference general dust standards without
+#            listing a specific numeric value — this is a legitimate compliance statement.
+# r32: 3 FP fixes + 1 new HIGH rule (seed=314 diverse50 findings — 53 manufacturers)
+#       FIX: S3-CAS-FORMAT — suppress when CAS text is a known proprietary/trade-secret
+#            placeholder: 'Proprietary', '未特定', 'Trade Secret', 'Confidential',
+#            '機密', '専売品', '不明', etc. GHS SDS guidelines allow withholding CAS
+#            for trade-secret ingredients; these are not format violations.
+#       FIX: S8-OEL-NO-NUMERIC — add EN 'No biological limit'/'not allocated',
+#            zh-cn Simplified '不含有职业接触限值|不含.*职业接触限值'
+#            (职 U+804C ≠ Traditional 職 U+8077 — r31 added Traditional only),
+#            zh-tw '無資料' (無 U+7121 ≠ 无 U+65E0), standalone '無'/'无' via
+#            word-boundary match \b無\b|\b无\b (safe: CJK chars form \b boundaries
+#            adjacent to non-CJK; confirmed \b無\b doesn't match in '無資料').
+#       FIX: S4-NO-PHYSICIAN — add zh-tw/zh-cn '送醫'/'送医' (send to hospital/doctor);
+#            confirmed in sfchem '立即送醫' and ttl '立即送醫' which were FPs.
+#       NEW: S3-MAJORITY-CONC-MISSING (HIGH) — mixture with >3 components where >50%
+#            (but NOT all) lack numeric concentration values. Bridges existing
+#            S3-MIXTURE-ALL-CONC-MISSING (all-absent) and per-component
+#            S3-CONC-UNIT-NO-VALUE (individual MED). Confirmed by extract-text on
+#            ja/eneos: source PDF has '3質量%以上5質量%未満' ranges the LLM fails to
+#            capture. When this rule fires, per-component S3-CONC-UNIT-NO-VALUE MEDs
+#            are suppressed (exactly one HIGH per file, following r28 precedent).
+# r31: 5 FP fixes + central Unicode normalization + 1 enhanced rule (seed=77 diverse50 findings)
+#       CENTRAL: walk_text now applies NFKC normalization on every string value.
+#                Fullwidth Latin (ｍ→m, ３→3, ℃→°C) are converted to ASCII equivalents.
+#                Tested across all 110 JSONs (seeds 99/202/diverse50): zero regressions,
+#                -1 MED FP (nipponkinzoku OEL fullwidth ｍ3), +N true-positive detections
+#                (flash point = ' ℃' with no numeric value now correctly fires HIGH).
+#       FIX: S9-FLASH-POINT-NOT-NUMERIC — change 'if not fp_val' → 'if fp_val is None'
+#            (Python 'not 0.0' is True — akzonobel has ExactValue=0.0 which was treated
+#            as absent, causing spurious HIGH); apply same fix to boiling point check.
+#       FIX: S9-FLASH-POINT-NOT-NUMERIC suppression — add '沸騰するまで引火せず'/'引火しない'
+#            for substances that genuinely don't ignite (d_kasei, no flammable H-codes).
+#       FIX: S4-EYE-HCODE-NO-EYE-AID — suppress when FirstAidEye sub-field is populated
+#            (6/6 FPs: ja SDSs use '水で...洗う'+'コンタクトレンズ' without '目/眼/rinse');
+#            also add 'コンタクトレンズ|まぶた|contact.*lens' to keyword list.
+#       FIX: S8-OEL-NO-NUMERIC — add new zh-tw/ja suppression phrases: '未設定', '無相關',
+#            '不含.*職業接觸限值', '不含.*職業暴露極限値', '無相關職業接觸限値資料'
+#       FIX: S13-NO-DISPOSAL-KEYWORDS — add gas-specific disposal: 'dissipat', '消散',
+#            '气瓶'/'氣瓶', '返.*供应商'/'返.*供應商'; add zh-tw Traditional '法規'/'環保'
+#       ENHANCED: S2-INVALID-SIGNAL-WORD → detects concatenated signal words (e.g. '危険、警告')
+#                 which violate GHS (exactly one signal word required); fires HIGH instead of MED;
+#                 avoids double-count with existing MED rule by branching.
+# r30: 4 FP fixes + 1 new HIGH rule (seed=202 30-file roundtrip findings)
+#       FIX: S7-FLAMMABLE-NO-STORAGE-TEMP — add EN 'keep cool'/'cool place'/'cool.*dry'
+#            and ZH-CN '阴凉' / ZH-TW '陰涼' (U+9670+U+6DBC ≠ Simplified U+9634+U+51C9)
+#            to storage-temperature suppression. These are legitimate "cool storage"
+#            instructions without numeric limit. Eliminated 8 FPs per run.
+#       FIX: S9-CORROSIVE-NO-PH — tighten trigger from {H314,H290,H318,H319} to
+#            {H314,H290} only. H318 (serious eye damage) and H319 (eye irritation) don't
+#            imply acidic/basic chemistry (acetone oxime, IPA, ethanol all trigger H319
+#            but have no relevance to pH). 6 of 7 FPs eliminated; 1 true positive kept
+#            (W01W0103-0115JGHEJP with H314+H290+H318 — real corrosive compound).
+#       FIX: S2-NON-ENGLISH-SIGNAL-WORD — case-insensitive comparison; mgchemicals EN
+#            SDSs write 'DANGER'/'WARNING' (all caps) which failed the exact-match check
+#            {"Danger","Warning","N/A"}. Changed to lowercase comparison. 2 FPs → 0.
+#       FIX: S12-NO-LOGP — also search Section 9 (PhysicalChemicalProperties) for numeric
+#            LogP values. JIS Z 7253 allows partition coefficient in Sec 9 or Sec 12.
+#            fujifilm_wako SDSs list 'n-オクタノール/水分配係数: 2.64' in OtherPhysicalChemical
+#            Property, not in EcologicalInformation. Only suppresses on NUMERIC values
+#            (not "Not specified"/"データなし"), preserving true positives. 1 FP → 0.
+#       NEW: S1-ALL-SUPPLIER-FIELDS-ABSENT (HIGH) — hazardous product where SupplierInformation
+#            key is completely absent AND the product has active H-codes. Confirmed in all
+#            ichemistry zh-cn files: source PDF has blank 供应商名称/电话/地址 fields (verified
+#            by extract-text on 2933.pdf). Distinguished from S1-NO-COMPANY-NAME (fires when
+#            company only is missing) — this fires when the entire supplier block is gone.
+# r29: 3 FP fixes (Unicode encoding gaps) + 1 new HIGH rule
+#       FIX: S8-OEL-NO-NUMERIC — add Traditional Chinese "no OEL" phrases:
+#            '無職業接觸限值'/'未建立職業接觸限值'/'無職業接觸限值資料' (zh-tw, U+7121/U+81E5
+#            differ from Simplified 无/职 U+65E0/U+804C — distinct Unicode code points);
+#            add zh-cn '不要求' (not required by Chinese OEL standards);
+#            fix numeric detection for footnote-annotated values like "0.05* mg/m³"
+#            (asterisk footnote marker between number and unit was breaking regex)
+#       FIX: S4-H314-NO-REMOVE-CLOTHING — add Traditional Chinese 脫(U+812B) variants:
+#            '脫掉'/'脫去'/'脫.*衣' (U+812B differs from Simplified 脱 U+8131)
+#       FIX: S8-SKIN-NO-GLOVE-MATERIAL — add Traditional Chinese 橡膠(U+81A0)
+#            (differs from Simplified 橡胶 胶 U+80F6 — was generating FP for
+#            '合成橡膠材質手套' in zh-tw SDSs)
+#       NEW: CX-JA-TEXT-IN-ZH-SDS (HIGH) — zh-cn/zh-tw SDS has Japanese hiragana in
+#            HazardIdentification or Composition (LLM language contamination, e.g.
+#            Classification values "分類できない" injected into Chinese SDS corpus;
+#            confirmed in strem zh-cn SDSs where LLM sourced JA classification logic)
+# r28: 6 FP fixes (Unicode CJK variants, EN keyword gaps) + 1 new HIGH rule
+#       FIX: S2 specific GHS0x pictogram rules — suppress when ALL pictograms absent
+#            (S2-HAZARD-NO-PICTOGRAM already covers it; was double/triple-counting)
+#       FIX: S3-CONC-UNIT-NO-VALUE — suppress per-component MED when new aggregate
+#            HIGH S3-MIXTURE-ALL-CONC-MISSING fires (avoid counting same defect N times)
+#       FIX: S4-NO-PHYSICIAN — add zh-tw '就醫'/'醫師'/'就診'/'求醫' and
+#            zh-cn '医生'/'医疗' (was only matching zh-cn '就医' and JA '医師')
+#       FIX: S6-NO-CLEANUP-KEYWORDS — add Chinese-character variants that differ from
+#            Japanese Kanji in Unicode: '吸收' (U+6536 vs JA 吸収 U+53CE), '收集'/'回收',
+#            '沙' (sand, U+6C99 vs JA 砂 U+7802), '围堵'/'收容'/'处置'
+#       FIX: S10-NO-STABILITY-KEYWORDS — add English ('temperature','oxidiz','decompos',
+#            'reaction') and Chinese ('稳定'/'穩定','氧化','反应'/'反應','不相容','避免')
+#       FIX: S13-NO-DISPOSAL-KEYWORDS — add zh-tw Traditional Chinese forms:
+#            '廢棄物'/'廢棄'/'廢物', '焚燒', '處置'/'处置', '废弃'/'丢弃'
+#       FIX: S15-NO-LAW-KEYWORDS — add Chinese regulatory terms:
+#            '办法'/'管理办法', '规范'/'規範', '名录'/'名錄', '管制', 'IECSC'
+#       NEW: S3-MIXTURE-ALL-CONC-MISSING (HIGH) — mixture with >2 components where
+#            ALL components lack any numeric concentration value (unit present or absent)
 # r27: FP fixes + new rules from 30-file random roundtrip test
 #       FIX: VALID_SIGNAL_WORDS — add '危險' (zh-tw Danger) and 'Not applicable' (en)
 #       FIX: S14 UN detection — extend regex to match zh-tw format
@@ -33,6 +144,7 @@ import argparse
 import json
 import re
 import sys
+import unicodedata
 from collections import defaultdict
 
 # ---------------------------------------------------------------------------
@@ -126,9 +238,13 @@ P_CODE_RE = re.compile(r"\bP\d{3}(?:\+P\d{3})*\b")
 
 
 def walk_text(obj) -> str:
-    """Recursively collect all string values from any nested structure."""
+    """Recursively collect all string values from any nested structure.
+
+    r31: NFKC-normalizes every string so fullwidth Latin chars (ｍ→m, ℃→°C,
+    ３→3) don't break unit/numeric regexes. CJK characters are unaffected.
+    """
     if isinstance(obj, str):
-        return obj
+        return unicodedata.normalize("NFKC", obj)
     if isinstance(obj, dict):
         return " ".join(walk_text(v) for v in obj.values())
     if isinstance(obj, list):
@@ -310,8 +426,19 @@ def check_sec1(root: dict, lang: str, h_codes: set) -> list:
                     issues.append(issue("CRIT", "S1-KATAKANA-PRODUCT-NAME",
                                         f"Sec1: Katakana in product name for non-Japanese SDS (lang={lang})"))
 
+        # r30-NEW: SupplierInformation block entirely absent on a hazardous product.
+        # Confirmed by extract-text on ichemistry zh-cn PDFs: source document has blank
+        # 供应商名称/电话/地址 fields — the entire supplier section was never filled in.
+        # More severe than S1-NO-COMPANY-NAME (missing one field) because no contact
+        # info at all on a dangerous chemical SDS violates JIS Z 7253 Section 1 mandatory reqs.
+        _raw_supplier = ident.get("SupplierInformation")
+        if _raw_supplier is None and h_codes:
+            issues.append(issue("HIGH", "S1-ALL-SUPPLIER-FIELDS-ABSENT",
+                                "Sec1: SupplierInformation block is completely absent for a hazardous product "
+                                "(source SDS has no supplier contact data — JIS Z 7253 Sec.1 violation)"))
+
         # Company name
-        supplier = ident.get("SupplierInformation") or {}
+        supplier = _raw_supplier or {}
         company = to_str(supplier.get("CompanyName"))
         if not company:
             issues.append(issue("HIGH", "S1-NO-COMPANY-NAME",
@@ -382,12 +509,24 @@ def check_sec2(root: dict, lang: str, h_codes: set, p_codes: set) -> list:
             if signal_word not in VALID_SIGNAL_WORDS and signal_word.lower() not in {
                 sw.lower() for sw in VALID_SIGNAL_WORDS
             }:
-                issues.append(issue("MED", "S2-INVALID-SIGNAL-WORD",
-                                    f"Sec2: SignalWord '{signal_word}' not in valid set"))
+                # r31: detect concatenated signal words (e.g. '危険、警告' or 'Danger/Warning').
+                # GHS requires exactly ONE signal word. Concatenation is a data-quality violation
+                # worse than just an unrecognized word — fires HIGH to distinguish.
+                # Splits on 、,，/／ delimiters; avoids double-count with S2-INVALID-SIGNAL-WORD.
+                _VALID_SW_SET = {"危険", "警告", "Danger", "Warning", "危险", "危險", "DANGER", "WARNING"}
+                _sw_parts = [p.strip() for p in re.split(r"[、,，/／]+", signal_word) if p.strip()]
+                if len(_sw_parts) >= 2 and all(p in _VALID_SW_SET or p.lower() in {s.lower() for s in _VALID_SW_SET} for p in _sw_parts):
+                    issues.append(issue("HIGH", "S2-MULTIPLE-SIGNAL-WORDS",
+                                        f"Sec2: SignalWord '{signal_word}' concatenates multiple GHS signal words "
+                                        f"— GHS requires exactly one (Danger OR Warning, not both)"))
+                else:
+                    issues.append(issue("MED", "S2-INVALID-SIGNAL-WORD",
+                                        f"Sec2: SignalWord '{signal_word}' not in valid set"))
             if lang in ("zh-cn", "zh-tw") and has_katakana(signal_word):
                 issues.append(issue("HIGH", "S2-KATAKANA-SIGNAL-WORD",
                                     f"Sec2: Katakana SignalWord in Chinese SDS (lang={lang}): '{signal_word}'"))
-            if lang == "en" and signal_word not in ("Danger", "Warning", "N/A"):
+            # r30: case-insensitive — mgchemicals writes 'DANGER'/'WARNING' (all caps)
+            if lang == "en" and signal_word.lower() not in ("danger", "warning", "n/a", "not applicable"):
                 issues.append(issue("MED", "S2-NON-ENGLISH-SIGNAL-WORD",
                                     f"Sec2: Non-English SignalWord in English SDS: '{signal_word}'"))
             # H224 + Danger check
@@ -514,49 +653,50 @@ def check_sec2(root: dict, lang: str, h_codes: set, p_codes: set) -> list:
             issues.append(issue("MED", "S2-NO-CLASSIFICATION",
                                 "Sec2: H-codes present but Classification section missing"))
 
-        # r23-NEW: H200-H205 but no GHS01  (r25-fix: removed false-negative "01" fallback)
-        if h_codes.intersection({"H200", "H201", "H202", "H203", "H204", "H205"}):
-            pic_texts = " ".join(str(p) for p in pictograms)
-            if "GHS01" not in pic_texts:
-                issues.append(issue("MED", "S2-EXPLOSIVE-NO-GHS01",
-                                    "Sec2: H200-H205 (explosive) present but GHS01 pictogram not found"))
-
-        # r23-NEW: H4xx environmental but no GHS09  (r25-fix: removed false-negative "09" fallback)
-        if h_codes.intersection({"H410", "H411", "H412", "H413"}):
-            pic_texts = " ".join(str(p) for p in pictograms)
-            if "GHS09" not in pic_texts:
-                issues.append(issue("MED", "S2-ENV-NO-GHS09",
-                                    "Sec2: H410/H411/H412/H413 present but GHS09 (environmental) pictogram not found"))
-
-        # r26-NEW: Flammable H-codes but no GHS02 flame pictogram
-        if h_codes.intersection({"H224", "H225", "H226", "H220", "H221", "H222", "H223", "H228", "H242", "H252"}):
-            pic_texts = " ".join(str(p) for p in pictograms)
-            if "GHS02" not in pic_texts:
-                issues.append(issue("MED", "S2-FLAMMABLE-NO-GHS02",
-                                    "Sec2: Flammable H-code present but GHS02 (flame) pictogram not found"))
-
-        # r26-NEW: Skin corrosion H314 but no GHS05 corrosion pictogram
-        if "H314" in h_codes:
-            pic_texts = " ".join(str(p) for p in pictograms)
-            if "GHS05" not in pic_texts:
-                issues.append(issue("MED", "S2-CORROSIVE-NO-GHS05",
-                                    "Sec2: H314 (skin corrosion) present but GHS05 (corrosion) pictogram not found"))
-
-        # r26-NEW: Fatal/toxic acute H-codes (Cat 1-3) but no GHS06 skull pictogram
-        if h_codes.intersection({"H300", "H301", "H310", "H311", "H330", "H331"}):
-            pic_texts = " ".join(str(p) for p in pictograms)
-            if "GHS06" not in pic_texts:
-                issues.append(issue("MED", "S2-ACUTETOX-NO-GHS06",
-                                    "Sec2: Acute-tox H300/H301/H310/H311/H330/H331 present but GHS06 (skull) pictogram not found"))
-
-        # r27-NEW: Active signal word + H-codes but Pictogram field is completely empty
-        # Gate on is_active_signal so non-hazardous products with signal=N/A don't trigger.
-        # This catches PDF-image-only pictograms (zh-tw pattern) and pre-GHS SDSs without
-        # GHS labelling. Fire as MED (not HIGH) to avoid double-counting with specific rules above.
-        if is_active_signal and h_codes and not pictograms:
+        # r27-NEW / r28-refactor: Active signal word + H-codes but Pictogram field is completely empty.
+        # r28: Fire this first; if ALL pictograms are absent, skip the specific GHS0x rules below
+        # to avoid triple-counting the same defect (S2-HAZARD-NO-PICTOGRAM + 4 specific rules).
+        # Specific rules only fire when the list is NON-empty but missing a particular GHS code.
+        _all_pictograms_absent = is_active_signal and h_codes and not pictograms
+        if _all_pictograms_absent:
             issues.append(issue("MED", "S2-HAZARD-NO-PICTOGRAM",
                                 "Sec2: Active signal word + H-codes present but Pictogram list is completely empty — "
                                 "pictograms may be image-only in source PDF (not extractable as text)"))
+
+        # Specific pictogram checks — only meaningful when at least one pictogram was extracted.
+        # (r28: gate on `pictograms` to suppress when S2-HAZARD-NO-PICTOGRAM already fired)
+        if pictograms:
+            pic_texts = " ".join(str(p) for p in pictograms)
+
+            # r23-NEW: H200-H205 but no GHS01  (r25-fix: removed false-negative "01" fallback)
+            if h_codes.intersection({"H200", "H201", "H202", "H203", "H204", "H205"}):
+                if "GHS01" not in pic_texts:
+                    issues.append(issue("MED", "S2-EXPLOSIVE-NO-GHS01",
+                                        "Sec2: H200-H205 (explosive) present but GHS01 pictogram not found"))
+
+            # r23-NEW: H4xx environmental but no GHS09  (r25-fix: removed false-negative "09" fallback)
+            if h_codes.intersection({"H410", "H411", "H412", "H413"}):
+                if "GHS09" not in pic_texts:
+                    issues.append(issue("MED", "S2-ENV-NO-GHS09",
+                                        "Sec2: H410/H411/H412/H413 present but GHS09 (environmental) pictogram not found"))
+
+            # r26-NEW: Flammable H-codes but no GHS02 flame pictogram
+            if h_codes.intersection({"H224", "H225", "H226", "H220", "H221", "H222", "H223", "H228", "H242", "H252"}):
+                if "GHS02" not in pic_texts:
+                    issues.append(issue("MED", "S2-FLAMMABLE-NO-GHS02",
+                                        "Sec2: Flammable H-code present but GHS02 (flame) pictogram not found"))
+
+            # r26-NEW: Skin corrosion H314 but no GHS05 corrosion pictogram
+            if "H314" in h_codes:
+                if "GHS05" not in pic_texts:
+                    issues.append(issue("MED", "S2-CORROSIVE-NO-GHS05",
+                                        "Sec2: H314 (skin corrosion) present but GHS05 (corrosion) pictogram not found"))
+
+            # r26-NEW: Fatal/toxic acute H-codes (Cat 1-3) but no GHS06 skull pictogram
+            if h_codes.intersection({"H300", "H301", "H310", "H311", "H330", "H331"}):
+                if "GHS06" not in pic_texts:
+                    issues.append(issue("MED", "S2-ACUTETOX-NO-GHS06",
+                                        "Sec2: Acute-tox H300/H301/H310/H311/H330/H331 present but GHS06 (skull) pictogram not found"))
 
     except Exception as e:
         issues.append(issue("MED", "S2-INTERNAL", f"Sec2 check failed: {e}"))
@@ -597,6 +737,7 @@ def check_sec3(root: dict, lang: str, h_codes: set) -> list:
         cas_list = []
         numeric_concentrations = []
         duplicate_cas_set = set()
+        _conc_unit_no_value_issues = []  # r28: collected separately for aggregate-HIGH dedup
 
         for comp_entry in components:
             if not isinstance(comp_entry, dict):
@@ -611,10 +752,21 @@ def check_sec3(root: dict, lang: str, h_codes: set) -> list:
             if isinstance(cas_texts, str):
                 cas_texts = [cas_texts]
 
+            # r32: proprietary/trade-secret placeholders are legitimate CAS substitutes.
+            # GHS guidelines allow withholding CAS numbers for confidential ingredients.
+            _PROPRIETARY_CAS_RE = re.compile(
+                r"proprietary|trade.?secret|confidential|not.?disclosed|withheld|"
+                r"未特定|機密|専売品|不明|秘密|未公開|営業秘密|"
+                r"商业机密|保密|不公开|未知",
+                re.IGNORECASE,
+            )
             cas_found = []
             for cas_raw in cas_texts:
                 cas_str = str(cas_raw).strip()
                 if not cas_str:
+                    continue
+                # Skip format check for proprietary/trade-secret placeholders
+                if _PROPRIETARY_CAS_RE.search(cas_str):
                     continue
                 # CAS format check
                 if not re.match(r"^\d{1,7}-\d{2}-\d$", cas_str):
@@ -684,14 +836,47 @@ def check_sec3(root: dict, lang: str, h_codes: set) -> list:
 
             # r27-NEW: Concentration has a unit but no numeric value
             # Pattern: {"NumericRangeWithUnitAndQualifier": {"Unit": "%"}} — unit extracted, value missed
-            # Gate on mixture to avoid noise from pure substance SDSs with ">99%" style text
+            # Gate on mixture to avoid noise from pure substance SDSs with ">99%" style text.
+            # r28: Collect separately; suppressed below if S3-MIXTURE-ALL-CONC-MISSING fires.
             if is_mix and isinstance(conc_node, dict):
                 nrwuq = conc_node.get("NumericRangeWithUnitAndQualifier") or {}
                 if isinstance(nrwuq, dict) and nrwuq.get("Unit") and not conc_vals:
                     # Confirm no AdditionalInfo either (catch ">" / "<" qualifiers in text)
                     if not walk_text(conc_node.get("AdditionalInfo") or {}).strip():
-                        issues.append(issue("MED", "S3-CONC-UNIT-NO-VALUE",
-                                            f"Sec3: Mixture component has concentration unit ('{nrwuq['Unit']}') but no numeric value extracted"))
+                        _conc_unit_no_value_issues.append(issue(
+                            "MED", "S3-CONC-UNIT-NO-VALUE",
+                            f"Sec3: Mixture component has concentration unit ('{nrwuq['Unit']}') but no numeric value extracted"))
+
+        # r28-NEW: Mixture where ALL components lack any numeric concentration (aggregate HIGH).
+        # r32: Also detect MAJORITY-missing case (>50% but <100%) as HIGH. Both suppress
+        # per-component S3-CONC-UNIT-NO-VALUE MEDs to avoid N+1 counting (r28 precedent).
+        # Confirmed by extract-text on ja/eneos: PDF has '3質量%以上5質量%未満' ranges that
+        # the LLM fails to capture (extraction failure, not intentional withholding).
+        _all_conc_missing = (
+            is_mix and len(components) > 2
+            and not numeric_concentrations
+        )
+        _n_unit_no_val = len(_conc_unit_no_value_issues)
+        _majority_conc_missing = (
+            is_mix and len(components) > 3
+            and not _all_conc_missing          # all-missing case handled below
+            and _n_unit_no_val > 0
+            and _n_unit_no_val / len(components) > 0.5
+        )
+
+        if _all_conc_missing:
+            issues.append(issue("HIGH", "S3-MIXTURE-ALL-CONC-MISSING",
+                                f"Sec3: Mixture with {len(components)} components — ALL lack numeric concentration values "
+                                f"(LLM may have extracted unit strings only; source concentrations not captured)"))
+            # Suppress per-component MEDs — redundant with this HIGH
+        elif _majority_conc_missing:
+            issues.append(issue("HIGH", "S3-MAJORITY-CONC-MISSING",
+                                f"Sec3: Mixture with {len(components)} components — {_n_unit_no_val}/{len(components)} "
+                                f"({100*_n_unit_no_val//len(components)}%) lack numeric concentration values "
+                                f"(source PDF has range/range values; LLM captured unit only)"))
+            # Suppress per-component MEDs — redundant with this HIGH
+        else:
+            issues.extend(_conc_unit_no_value_issues)
 
         # Concentration sum > 102%
         if len(numeric_concentrations) > 1:
@@ -748,14 +933,31 @@ def check_sec4(root: dict, lang: str, h_codes: set) -> list:
                                 f"Sec4: Hazardous product with fewer than 2 first-aid routes ({non_empty_routes})"))
 
         if is_hazardous(root):
-            if not re.search(r"doctor|physician|medical|医師|就医|seek medical|診断|手当", sec_text, re.IGNORECASE):
+            # r28: added zh-tw '就醫'/'醫師'/'就診'/'求醫' and zh-cn '医生'/'医疗'/'医院'
+            # r32: added '送醫'/'送医' (zh-tw/zh-cn: send to hospital/doctor)
+            # r33: added zh-cn Simplified '求医'/'就诊' (医 U+533B ≠ 醫 U+91AB; 诊 U+8BCA ≠ 診 U+8A3A)
+            #      confirmed in tci_cn '求医/就诊' = "seek medical treatment/go to the doctor"
+            if not re.search(
+                r"doctor|physician|medical|医師|醫師|就医|就醫|医生|醫生|医疗|醫療|"
+                r"就診|求醫|求医|就诊|医院|seek medical|診断|手当|送醫|送医",
+                sec_text, re.IGNORECASE
+            ):
                 issues.append(issue("MED", "S4-NO-PHYSICIAN",
                                     "Sec4: No physician/doctor/medical mention for hazardous product"))
 
         if h_codes.intersection({"H318", "H319", "H314"}):
-            if not re.search(r"eye|眼|rinse|洗眼|目|look\b", sec_text, re.IGNORECASE):
-                issues.append(issue("MED", "S4-EYE-HCODE-NO-EYE-AID",
-                                    "Sec4: H318/H319/H314 but no eye first-aid keywords found"))
+            _eye_route_text = walk_text(exp_route.get("FirstAidEye") or {}).strip()
+            # r31: suppress when FirstAidEye sub-field is populated (contains actual guidance).
+            # 6/6 FPs were ja SDSs using '水で...洗う' + 'コンタクトレンズ' without '目/眼/rinse'.
+            # Also added コンタクトレンズ|まぶた|contact.*lens for keyword-based detection.
+            # Akzonobel (eye={}, H314/H319) still fires — true positive guard preserved.
+            if not _eye_route_text:
+                if not re.search(
+                    r"eye|眼|rinse|洗眼|目|look\b|コンタクトレンズ|まぶた|contact.*lens|eyelid",
+                    sec_text, re.IGNORECASE
+                ):
+                    issues.append(issue("MED", "S4-EYE-HCODE-NO-EYE-AID",
+                                        "Sec4: H318/H319/H314 but no eye first-aid keywords found"))
 
         if h_codes.intersection({"H330", "H331", "H332", "H333", "H334", "H335"}):
             if not re.search(r"inhal|吸入|fresh air|新鮮な空気|空気|換気|通風|呼吸", sec_text, re.IGNORECASE):
@@ -772,7 +974,9 @@ def check_sec4(root: dict, lang: str, h_codes: set) -> list:
             skin_aid_text = walk_text(exp_route.get("FirstAidSkin") or {})
             combined = (skin_aid_text or sec_text)
             if not re.search(
-                r"remov.*cloth|take.?off.*cloth|contaminat.*cloth|衣類.*脱|脱.*衣|汚染.*衣|除去.*衣|脱去.*衣|立即.*脱|立刻.*脱|脱掉",
+                # r29: added Traditional Chinese 脫(U+812B) variants — differs from Simplified 脱(U+8131)
+                r"remov.*cloth|take.?off.*cloth|contaminat.*cloth|衣類.*脱|脱.*衣|汚染.*衣|除去.*衣|脱去.*衣|立即.*脱|立刻.*脱|脱掉|"
+                r"脫掉|脫去|脫.*衣",
                 combined, re.IGNORECASE
             ):
                 issues.append(issue("MED", "S4-H314-NO-REMOVE-CLOTHING",
@@ -824,9 +1028,13 @@ def check_sec6(root: dict, lang: str, h_codes: set) -> list:
                                 "Sec6: AccidentalReleaseMeasures section is empty (< 30 chars)"))
             return issues
 
+        # r28: added Chinese character variants — JA Kanji differ from ZH characters in Unicode:
+        # 吸收(zh U+6536) ≠ 吸収(JA U+53CE), 收集(zh) ≠ 収集(JA), 回收(zh) ≠ 回収(JA)
+        # 沙(zh sand U+6C99) ≠ 砂(JA U+7802). Also added 围堵/收容/处置 (zh-tw/zh-cn containment).
         cleanup_kw = re.compile(
-            r"absorb|collect|sweep|dike|sand|berm|ventilat|吸収|回収|吸附|収集|围堤|通风|盛土|"
-            r"乾燥砂|おがくず|乾燥|回収|砂|吸着|囲",
+            r"absorb|collect|sweep|dike|sand|berm|ventilat|"
+            r"吸収|吸收|回収|回收|吸附|収集|收集|围堤|围堵|通风|通風|盛土|"
+            r"乾燥砂|おがくず|乾燥|砂|沙|吸着|囲|收容|处置|處置",
             re.IGNORECASE
         )
         if not cleanup_kw.search(sec_text):
@@ -860,10 +1068,18 @@ def check_sec7(root: dict, lang: str, h_codes: set) -> list:
                 issues.append(issue("MED", "S7-FLAMMABLE-NO-HEAT-KW",
                                     "Sec7: H224/225/226 but no heat/ignition source keywords"))
 
-        # Flammable: storage should mention a specific temperature limit
+        # Flammable: storage should mention a specific temperature limit or cool-storage directive
+        # r30: added EN 'keep cool'/'cool place'/'cool.*dry' and ZH '阴凉'/'陰涼' (Traditional
+        # U+9670+U+6DBC differs from Simplified U+9634+U+51C9) to suppress generic cool-storage
+        # instructions that lack a numeric limit but are legitimate guidance (8 FPs → 0).
         if h_codes.intersection({"H224", "H225", "H226"}):
             if not re.search(r"\d+\s*[°℃]|\d+\s*°C|\d+\s*degrees?|below\s+\d+", storage_text, re.IGNORECASE):
-                if not re.search(r"涼しい|冷所|冷暗|low temperature|冷凉处|低温", storage_text, re.IGNORECASE):
+                if not re.search(
+                    r"涼しい|冷所|冷暗|low temperature|冷凉处|低温|"
+                    r"keep cool|cool place|cool.*area|cool.*dry|cool.*location|"
+                    r"阴凉|陰涼",
+                    storage_text, re.IGNORECASE
+                ):
                     issues.append(issue("MED", "S7-FLAMMABLE-NO-STORAGE-TEMP",
                                         "Sec7: Flammable H-code but no specific storage temperature found"))
 
@@ -926,9 +1142,10 @@ def check_sec8(root: dict, lang: str, h_codes: set) -> list:
 
         # r23-NEW / r24-fix: OEL present but no numeric value
         oel_text = walk_text(oel)
-        # Detect numeric value — handles both "5 ppm" AND Chinese "MAC(mg/m3)：5" (unit before value)
+        # Detect numeric value — handles "5 ppm", "MAC(mg/m3)：5" (unit before value),
+        # and footnote-annotated values like "0.05* mg/m³" (r29: asterisk between num and unit)
         _oel_has_num = bool(
-            re.search(r"\d+\.?\d*\s*(mg/m|ppm|mg/L|f/cc|µg)", oel_text, re.IGNORECASE) or
+            re.search(r"\d+\.?\d*[*＊]*\s*(mg/m|ppm|mg/L|f/cc|µg)", oel_text, re.IGNORECASE) or
             re.search(r"(mg/m\d*|ppm|mg/L)[^0-9A-Za-z]{0,5}\d+\.?\d*", oel_text, re.IGNORECASE)
         )
         if oel_text.strip() and not _oel_has_num:
@@ -938,6 +1155,17 @@ def check_sec8(root: dict, lang: str, h_codes: set) -> list:
                     r"no hazardous material|no applicable|not required|no substances.*limit|"
                     r"没有.*接触限值|无职业接触限值|不适用|无需监控|"
                     r"未制订|无资料|不监控|监视.*不.*含|该产品不含|"
+                    r"不要求|"                                      # zh-cn: OEL not required
+                    r"未設定|"                                      # ja: not established (r31)
+                    r"使用粉尘的职业接触限值|在控制.*职业接触限值|"      # zh-cn: "refer to dust OEL" (r33)
+                    r"不含.*職業接觸限值|不含.*職業暴露極限值|"         # zh-tw Traditional (r31)
+                    r"不含有职业接触限值|不含.*职业接触限值|"            # zh-cn Simplified (r32: 职 U+804C ≠ 職 U+8077)
+                    r"无.*职业接触限值的物质|"                         # zh-cn: no substances with OEL (r32)
+                    r"無相關|無相關職業接觸限值|無相關職業暴露|"          # zh-tw: no relevant OEL data (r31)
+                    r"無資料|"                                       # zh-tw Traditional 'no data' (r32: 無 U+7121 ≠ 无 U+65E0)
+                    r"\b無\b|\b无\b|"                               # standalone 'none' (r32: \b safe for CJK; won't match 無資料)
+                    r"No biological limit|no.*biological.*limit|not.*allocated|"  # EN (r32: shell/en)
+                    r"無職業接觸限值|未建立職業接觸限值|無職業接觸限值資料|"  # zh-tw Traditional (U+7121 ≠ U+65E0)
                     r"[：:]\s*[-－—]\s*[；;]|[：:]\s*[-－—]\s*$",  # dash as N/A: "TWA：－"
                     oel_text, re.IGNORECASE):
                 issues.append(issue("MED", "S8-OEL-NO-NUMERIC",
@@ -953,7 +1181,7 @@ def check_sec8(root: dict, lang: str, h_codes: set) -> list:
         if h_codes.intersection({"H314", "H315", "H316", "H317"}):
             glove_kw = re.compile(
                 r"nitrile|butyl|neoprene|rubber|latex|viton|PVC|polyethylene|"
-                r"ニトリル|ブチル|ネオプレン|ゴム|丁腈|丁基|氯丁|橡胶",
+                r"ニトリル|ブチル|ネオプレン|ゴム|丁腈|丁基|氯丁|橡胶|橡膠",  # r29: 橡膠 Traditional (U+81A0 ≠ U+80F6)
                 re.IGNORECASE
             )
             hand_prot = walk_text(ppe.get("HandProtection") or {})
@@ -1029,7 +1257,15 @@ def check_sec9(root: dict, lang: str, h_codes: set) -> list:
         if fp_list:
             fp_text = walk_text(fp_list)
             # Check if value is non-numeric (string instead of number)
-            if not fp_val and fp_text.strip() and not re.search(r"情報なし|not applicable|n/a|なし|no data", fp_text, re.IGNORECASE):
+            # r31: 'if fp_val is None' replaces 'if not fp_val' — Python 'not 0.0' is True,
+            # which caused akzonobel (ExactValue=0.0) to incorrectly fire this rule.
+            # r31: added '沸騰するまで引火せず'/'引火しない' for substances with no flash point.
+            if fp_val is None and fp_text.strip() and not re.search(
+                r"情報なし|not applicable|n/a|なし|no data|"
+                r"沸騰するまで引火せず|引火しない|非引火性|不燃|"
+                r"None detected|not detected|no flash point detected|not measurable",  # r33: EN N/A phrases
+                fp_text, re.IGNORECASE
+            ):
                 if re.search(r"[a-zA-Z぀-ヿ]", fp_text) and not re.search(r"\d", fp_text):
                     issues.append(issue("HIGH", "S9-FLASH-POINT-NOT-NUMERIC",
                                         f"Sec9: Flash point value is not numeric: '{fp_text[:60]}'"))
@@ -1143,10 +1379,14 @@ def check_sec9(root: dict, lang: str, h_codes: set) -> list:
                     issues.append(issue("MED", "S9-PH-RANGE",
                                         f"Sec9: pH value {ph_v} is outside 0 to 14"))
 
-        if h_codes.intersection({"H314", "H290", "H318", "H319"}):
+        # r30: tightened from {H314,H290,H318,H319} to {H314,H290} only.
+        # H318 (serious eye damage) and H319 (eye irritation) don't imply acidic/basic chemistry —
+        # confirmed: acetone oxime (H318), IPA/ethanol/2-propanol (H319) all fired FP.
+        # H314 (skin corrosion) and H290 (corrosive to metals) require acidic/basic chemistry.
+        if h_codes.intersection({"H314", "H290"}):
             if not ph_found:
                 issues.append(issue("MED", "S9-CORROSIVE-NO-PH",
-                                    "Sec9: Corrosive/acidic H-code but no pH extracted"))
+                                    "Sec9: Corrosive/metal-corrosive H-code (H314/H290) but no pH extracted"))
 
         # r23-NEW: Density value range
         density_vals = extract_numeric_values(densities)
@@ -1174,9 +1414,17 @@ def check_sec10(root: dict, lang: str, h_codes: set) -> list:
                                 "Sec10: StabilityReactivity section is empty (< 30 chars)"))
             return issues
 
+        # r28: added EN terms ('temperature','oxidiz','decompos','reaction','normal processing',
+        #      'oxidizing agent') and ZH terms ('稳定'/'穩定' stable, '氧化' oxidation,
+        #      '反应'/'反應' reaction, '不相容' incompatible, '避免' avoid).
+        # Rationale: EN fujifilm SDSs use "Extremes of temperature", "Strong oxidizing agents",
+        # "None under normal processing" which are valid stability content missed by old pattern.
+        # ZH (zh-cn/zh-tw) use '稳定'/'穩定' for stable (not JA '安定') and '氧化' not '酸化'.
         stability_kw = re.compile(
-            r"avoid|heat|incompatible|acid|酸化|禁止|分解|stable|stability|"
-            r"安定|不安定|反応|conditions|条件|materials|物質",
+            r"avoid|heat|temperature|incompatible|oxidiz|decompos|acid|reaction|processing|"
+            r"酸化|禁止|分解|stable|stability|"
+            r"安定|不安定|稳定|穩定|反応|反应|反應|氧化|不相容|避免|"
+            r"conditions|条件|materials|物質",
             re.IGNORECASE
         )
         if not stability_kw.search(sec_text):
@@ -1334,12 +1582,32 @@ def check_sec12(root: dict, lang: str, h_codes: set) -> list:
 
         if env_h.difference({"H420"}):
             logp_kw = re.compile(
-                r"LogP|Kow|BCF|partition coefficient|分配係数|辛醇|logkow|log P",
+                r"LogP|Kow|BCF|partition coefficient|分配係数|辛醇|logkow|log P|正辛醇|オクタノール",
                 re.IGNORECASE
             )
-            if not logp_kw.search(sec_text):
+            _logp_in_sec12 = logp_kw.search(sec_text)
+            # r30: also search Section 9 OtherPhysicalChemicalProperty for numeric LogP.
+            # JIS Z 7253 allows partition coefficient in Sec 9 OR Sec 12. fujifilm_wako
+            # SDSs list 'n-オクタノール/水分配係数' in OtherPhysicalChemicalProperty with a
+            # numeric value (e.g. 2.64). Only suppress when Section 9 has a NUMERIC value
+            # (not "Not specified"/"データなし") to preserve true positives.
+            _logp_in_sec9 = False
+            if not _logp_in_sec12:
+                _phys = root.get("PhysicalChemicalProperties") or {}
+                _other = _phys.get("OtherPhysicalChemicalProperty") or []
+                if isinstance(_other, dict):
+                    _other = [_other]
+                for _prop in _other:
+                    if not isinstance(_prop, dict):
+                        continue
+                    _iname = _prop.get("ItemName") or ""
+                    if logp_kw.search(_iname):
+                        if extract_numeric_values(_prop):
+                            _logp_in_sec9 = True
+                            break
+            if not _logp_in_sec12 and not _logp_in_sec9:
                 issues.append(issue("MED", "S12-NO-LOGP",
-                                    "Sec12: Environmental H-code but no LogP/Kow/BCF value"))
+                                    "Sec12: Environmental H-code but no LogP/Kow/BCF value (checked Sec9 and Sec12)"))
 
         if is_hazardous(root) and len(sec_text.strip()) < 20:
             issues.append(issue("MED", "S12-HAZARDOUS-EMPTY",
@@ -1373,8 +1641,19 @@ def check_sec13(root: dict, lang: str, h_codes: set) -> list:
                                 "Sec13: DisposalConsiderations section is empty"))
             return issues
 
+        # r28: added zh-tw Traditional Chinese disposal terms and zh-cn variants.
+        # r31: added gas-specific disposal keywords (sandiego/fpcc/sh_gas compressed-gas SDSs):
+        #   dissipat/消散 (release to atmosphere), 气瓶/氣瓶 (gas cylinder return),
+        #   返.*供应商/返.*供應商 (return to supplier).
+        #   Added zh-tw Traditional '法規' (U+898F ≠ Simplified 法规 U+89C4) and '環保'.
         disposal_kw = re.compile(
-            r"inciner|landfill|waste|regulation|廃棄|焼却|废物|焚烧|処分|処理|廃液",
+            r"inciner|landfill|waste|regulation|dissipat|"
+            r"廃棄|廢棄|廃液|廢液|焼却|焚烧|焚燒|"
+            r"废物|廢物|廢棄物|処分|処理|處理|"
+            r"处置|處置|废弃|廢棄|丢弃|弃置|"
+            r"官方.*规章|规章|法规|法律.*处置|处置.*法规|"
+            r"消散|气瓶|氣瓶|返.*供[应應]商|"          # gas disposal (r31)
+            r"法規|環保法規",                           # zh-tw Traditional regulation (r31)
             re.IGNORECASE
         )
         if not disposal_kw.search(sec_text):
@@ -1468,9 +1747,16 @@ def check_sec15(root: dict, lang: str, h_codes: set) -> list:
 
         # Note: walk_text flattens *values*, not keys — so JSON key names like
         # "LegislationName" won't appear in sec_text; only their values do.
+        # r28: added Chinese regulatory terms missing from previous pattern:
+        # '办法'/'管理办法' (administrative regulations), '规范'/'規範' (standards/specifications),
+        # '名录'/'名錄' (chemical inventories like IECSC), '管制' (control/regulated),
+        # 'IECSC' (China Existing Chemicals Inventory). These appear in strem zh-cn SDSs
+        # ("新化学物质环境管理办法", "中国现有化学物质名录") which are legitimate regulatory refs.
         law_kw = re.compile(
             r"law|regulation|安全衛生|化審法|消防法|毒劇法|化管法|GB|REACH|OSHA|RoHS|CLP|"
-            r"規制|法令|法律|规定|立法|条例|基準|指令|directive|労働基準|化学物質",
+            r"規制|法令|法律|规定|立法|条例|基準|指令|directive|労働基準|化学物質|"
+            r"办法|管理办法|规范|規範|名录|名錄|管制|IECSC|化学品|危险化学|"
+            r"安全生产|化学品登记|环境管理",
             re.IGNORECASE
         )
         if not law_kw.search(sec_text):
@@ -1600,6 +1886,21 @@ def check_cross_field(root: dict, lang: str, h_codes: set) -> list:
                               comp_text, re.IGNORECASE):
                 issues.append(issue("MED", "CX-H290-NO-ACID",
                                     "Cross: H290 (corrosive to metals) but no acid/halide keywords in composition"))
+
+        # r29-NEW: zh-cn/zh-tw SDS with Japanese hiragana in critical chemical sections.
+        # Hiragana is purely Japanese (not used in Chinese) — its presence indicates the LLM
+        # sourced classification logic from Japanese templates, producing wrong-language content.
+        # Pattern confirmed: strem zh-cn SDSs had "分類できない" (hiragana き/な/い) in Classification.
+        # Only scan HazardIdentification and Composition (highest-risk sections for this artefact).
+        if lang in ("zh-cn", "zh-tw"):
+            _hiragana_re = re.compile(r"[ぁ-ゖ]")
+            for sec_key in ("HazardIdentification", "Composition"):
+                _sec_text = section_text(root, sec_key)
+                if _hiragana_re.search(_sec_text):
+                    issues.append(issue("HIGH", "CX-JA-TEXT-IN-ZH-SDS",
+                                        f"Cross: Japanese hiragana found in {sec_key} of {lang} SDS "
+                                        f"(LLM language contamination — e.g. '分類できない' in Classification)"))
+                    break
 
         # r23-NEW: Identical text (>100 chars) in two different sections
         section_long_texts = {}

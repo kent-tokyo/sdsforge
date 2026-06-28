@@ -1,17 +1,17 @@
 [package]
-name = "sds-converter-server"
+name = "sdsconv-server"
 version = "0.1.0"
 edition = "2021"
-description = "REST API server for sds-converter (axum)"
+description = "REST API server for sdsconv (axum)"
 license = "MIT OR Apache-2.0"
 publish = false
 
 [[bin]]
-name = "sds-converter-server"
+name = "sdsconv-server"
 path = "src/main.rs"
 
 [dependencies]
-sds-converter-core = { path = "../sds_converter_core", version = "0.3" }
+sdsconv-core = { path = "../sdsconv_core", version = "0.3" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

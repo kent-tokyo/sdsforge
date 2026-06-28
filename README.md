@@ -1,4 +1,4 @@
-# sds-converter
+# sdsconv
 
 GUI + CLI tool for **bidirectional conversion** between Safety Data Sheet (SDS) documents (Word/PDF) and the Japanese Ministry of Health, Labour and Welfare (MHLW) standard JSON format.
 
@@ -12,12 +12,12 @@ Supports documents in **Japanese**, **English**, **Simplified Chinese**, and **T
 
 | Platform | Download |
 |---|---|
-| **macOS** (Homebrew) | `brew tap kent-tokyo/sds-converter && brew install --cask sds-converter` |
-| **macOS** (Direct — Universal, Apple Silicon + Intel) | [sds-converter-macos.zip](https://github.com/kent-tokyo/sds-converter/releases/latest/download/sds-converter-macos.zip) |
-| **Windows** (Portable .exe — no install required) | [sds-converter-windows-portable.zip](https://github.com/kent-tokyo/sds-converter/releases/latest/download/sds-converter-windows-portable.zip) |
-| **Rust / CLI** | `cargo install sds-converter` |
+| **macOS** (Homebrew) | `brew tap kent-tokyo/sdsconv && brew install --cask sdsconv` |
+| **macOS** (Direct — Universal, Apple Silicon + Intel) | [sdsconv-macos.zip](https://github.com/kent-tokyo/sdsconv/releases/latest/download/sdsconv-macos.zip) |
+| **Windows** (Portable .exe — no install required) | [sdsconv-windows-portable.zip](https://github.com/kent-tokyo/sdsconv/releases/latest/download/sdsconv-windows-portable.zip) |
+| **Rust / CLI** | `cargo install sdsconv` |
 
-→ [All releases & changelogs](https://github.com/kent-tokyo/sds-converter/releases)
+→ [All releases & changelogs](https://github.com/kent-tokyo/sdsconv/releases)
 
 > **Windows note:** If Windows SmartScreen shows "Windows protected your PC", click **"More info" → "Run anyway"**.
 
@@ -25,10 +25,10 @@ Supports documents in **Japanese**, **English**, **Simplified Chinese**, and **T
 
 ## GUI
 
-Launch the graphical interface by running `sds-converter` **without any arguments**, or double-click the downloaded app:
+Launch the graphical interface by running `sdsconv` **without any arguments**, or double-click the downloaded app:
 
 ```bash
-sds-converter
+sdsconv
 ```
 
 The GUI window opens with five tabs:
@@ -46,7 +46,7 @@ The GUI window opens with five tabs:
 | ![Convert tab](docs/tab_convert.png) | ![Generate tab](docs/tab_generate.png) | ![Extract Text tab](docs/tab_extract.png) |
 
 **Drag & drop** files onto any tab to fill the input field automatically.
-Settings are saved to `~/.config/sds-converter/config.toml` and restored on next launch.
+Settings are saved to `~/.config/sdsconv/config.toml` and restored on next launch.
 
 ---
 
@@ -85,35 +85,35 @@ The `LlmBackend` trait keeps the extraction engine swappable — you can use Cla
 
 ```bash
 # Install the CLI
-cargo install sds-converter
+cargo install sdsconv
 
 # Convert PDF → MHLW standard JSON
 export ANTHROPIC_API_KEY=sk-ant-...
-sds-converter to-json --input input.pdf --output output.json
+sdsconv to-json --input input.pdf --output output.json
 
 # Convert from a URL directly
-sds-converter to-json --input https://example.com/sds.html --output output.json
+sdsconv to-json --input https://example.com/sds.html --output output.json
 
 # Convert JSON → Word document
-sds-converter to-docx --input output.json --output result.docx --lang ja
+sdsconv to-docx --input output.json --output result.docx --lang ja
 
 # Convert JSON → HTML (printable, A4)
-sds-converter to-html --input output.json --output result.html --lang ja
+sdsconv to-html --input output.json --output result.html --lang ja
 
 # Convert JSON → PDF (requires LibreOffice)
-sds-converter to-pdf --input output.json --output result.pdf --lang ja
+sdsconv to-pdf --input output.json --output result.pdf --lang ja
 
 # Validate JSON + check GHS codes and CAS numbers
-sds-converter validate --input output.json
+sdsconv validate --input output.json
 
 # Validate and cross-check CAS numbers against PubChem
-sds-converter to-json --input input.pdf --output output.json --enrich
+sdsconv to-json --input input.pdf --output output.json --enrich
 
 # Convert a Chinese SDS (GB/T 16483) with explicit country and correction pass
-sds-converter to-json --input input.pdf --output output.json --lang zh-cn --country cn --correct
+sdsconv to-json --input input.pdf --output output.json --lang zh-cn --country cn --correct
 ```
 
-See the [`sds-converter` CLI README](./sds_converter/README.md) for full CLI reference and the [`sds-converter-core` README](./sds_converter_core/README.md) for the Rust library API.
+See the [`sdsconv` CLI README](./sdsconv/README.md) for full CLI reference and the [`sdsconv-core` README](./sdsconv_core/README.md) for the Rust library API.
 
 ---
 
@@ -132,7 +132,7 @@ See the [`sds-converter` CLI README](./sds_converter/README.md) for full CLI ref
 
 ### Open-source tools
 
-| | **sds-converter** (this) | [sds_parser](https://github.com/astepe/sds_parser) | [tungsten](https://github.com/CrucibleSDS/tungsten) |
+| | **sdsconv** (this) | [sds_parser](https://github.com/astepe/sds_parser) | [tungsten](https://github.com/CrucibleSDS/tungsten) |
 |---|---|---|---|
 | Language | Rust | Python | Python |
 | AI/LLM | Yes (pluggable) | No (regex) | No (rule-based) |
@@ -144,7 +144,7 @@ See the [`sds-converter` CLI README](./sds_converter/README.md) for full CLI ref
 
 ### Commercial products (Japan)
 
-| | **sds-converter** (this) | [SDS Meister](https://www.kcs.co.jp/ja/service/ind/general/chemical/sds.html) | [SmartSDS](https://smartsds.jp/) | [Dr.EHS Chemical](https://www.iad.co.jp/drehs/chemical2/) |
+| | **sdsconv** (this) | [SDS Meister](https://www.kcs.co.jp/ja/service/ind/general/chemical/sds.html) | [SmartSDS](https://smartsds.jp/) | [Dr.EHS Chemical](https://www.iad.co.jp/drehs/chemical2/) |
 |---|---|---|---|---|
 | Provider | — | さくらケーシーエス | テクノヒル | アイアンドディー |
 | AI | Yes (your API key) | No | Yes (translation) | AI-OCR |
@@ -154,7 +154,7 @@ See the [`sds-converter` CLI README](./sds_converter/README.md) for full CLI ref
 
 ### Commercial products (Global)
 
-| | **sds-converter** (this) | [Affinda](https://www.affinda.com/documents/material-safety-data-sheet) | [SDS Manager API](https://sdsmanager.com/) | [safetydatasheetapi.com](https://safetydatasheetapi.com/) | [EcoOnline](https://www.ecoonline.com/) |
+| | **sdsconv** (this) | [Affinda](https://www.affinda.com/documents/material-safety-data-sheet) | [SDS Manager API](https://sdsmanager.com/) | [safetydatasheetapi.com](https://safetydatasheetapi.com/) | [EcoOnline](https://www.ecoonline.com/) |
 |---|---|---|---|---|---|
 | AI/LLM | Pluggable LLM | LLM (adaptive) | NLP/ML | ML + OCR | AI/NLP |
 | Input | PDF / DOCX | PDF / Word | PDF | PDF (incl. scanned) | PDF |
@@ -169,13 +169,13 @@ See the [`sds-converter` CLI README](./sds_converter/README.md) for full CLI ref
 
 | Crate | Description |
 |---|---|
-| [`sds-converter`](https://crates.io/crates/sds-converter) | CLI + GUI binary — this tool |
-| [`sds-converter-core`](https://crates.io/crates/sds-converter-core) | Rust library — LLM extraction, DOCX/HTML generation, MHLW schema |
+| [`sdsconv`](https://crates.io/crates/sdsconv) | CLI + GUI binary — this tool |
+| [`sdsconv-core`](https://crates.io/crates/sdsconv-core) | Rust library — LLM extraction, DOCX/HTML generation, MHLW schema |
 
 ```toml
 # Cargo.toml
 [dependencies]
-sds-converter-core = "0.3"
+sdsconv-core = "0.3"
 ```
 
 ---
@@ -218,7 +218,7 @@ sds-converter-core = "0.3"
 
 ### Planned
 - [x] GUI application (eframe/egui) — Convert / Generate / Validate / Extract Text / Settings tabs with drag-and-drop, persistent config, and 3-language UI
-- [x] Published to crates.io (`sds-converter-core` + `sds-converter`)
+- [x] Published to crates.io (`sdsconv-core` + `sdsconv`)
 - [ ] GHS pictogram embedding in HTML and DOCX output
 
 ### External dependency

@@ -1,6 +1,6 @@
 # SDS JSON 质量检查（QC）脚本 — 详细手册
 
-> 本页面详细说明 sds-converter 生成的 SDS JSON 文件的自动质量验证机制及各项检查规则。
+> 本页面详细说明 sdsconv 生成的 SDS JSON 文件的自动质量验证机制及各项检查规则。
 
 [English](quality-check.md) | [日本語](quality-check_ja.md)
 

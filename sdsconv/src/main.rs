@@ -8,7 +8,7 @@ use std::sync::Arc;
 use clap::{Parser, Subcommand, ValueEnum};
 use futures::stream::{self, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
-use sds_converter_core::{Language, SourceCountry, SdsRoot};
+use sdsconv_core::{Language, SourceCountry, SdsRoot};
 
 use tasks::{
     LogFn, Provider, Quality, ToDocxParams, ToHtmlParams, ToJsonParams, ToPdfParams,
@@ -113,7 +113,7 @@ impl From<CliProvider> for Provider {
 // ---------------------------------------------------------------------------
 
 #[derive(Parser)]
-#[command(name = "sds-converter", about = "Convert between SDS documents and MHLW standard JSON")]
+#[command(name = "sdsconv", about = "Convert between SDS documents and MHLW standard JSON")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -238,7 +238,7 @@ enum Commands {
 fn main() -> anyhow::Result<()> {
     // Suppress the noisy panic backtrace that Rust's default panic hook emits for
     // pdf-extract crate panics.  Those panics are always caught by std::panic::catch_unwind
-    // in sds_converter_core::converter::extractor and do not represent real failures —
+    // in sdsconv_core::converter::extractor and do not represent real failures —
     // they happen when pdf-extract encounters Shift-JIS / CID-font encoded PDFs, after
     // which the code falls back to pdftotext / OCR automatically.
     //
@@ -387,7 +387,7 @@ async fn run_cli() -> anyhow::Result<()> {
 
         Commands::ExtractText { input, output } => {
             use anyhow::Context as _;
-            use sds_converter_core::{extract_text, extract_text_from_url};
+            use sdsconv_core::{extract_text, extract_text_from_url};
             let is_url = input.starts_with("http://") || input.starts_with("https://");
             let text = if is_url {
                 extract_text_from_url(&input).await?
@@ -405,7 +405,7 @@ async fn run_cli() -> anyhow::Result<()> {
         }
 
         Commands::DetectLang { input } => {
-            use sds_converter_core::{detect_language_from_file, detect_language_from_url};
+            use sdsconv_core::{detect_language_from_file, detect_language_from_url};
             let is_url = input.starts_with("http://") || input.starts_with("https://");
             let lang = if is_url {
                 detect_language_from_url(&input).await?
@@ -545,7 +545,7 @@ fn batch_to_docx(
     lang: Language,
     template: Option<&Path>,
 ) -> anyhow::Result<()> {
-    use sds_converter_core::{convert_from_json, convert_from_template, ConvertConfig};
+    use sdsconv_core::{convert_from_json, convert_from_template, ConvertConfig};
     let files = collect_files(input_dir, &["json"]);
     let total = files.len();
     if total == 0 { eprintln!("No .json files found"); return Ok(()); }
@@ -563,7 +563,7 @@ fn batch_to_docx(
             .and_then(|raw| {
                 // Auto-detect lang per file when the default (Japanese) was not explicitly set.
                 let effective_lang = if lang == Language::default() {
-                    sds_converter_core::detect_language(&raw)
+                    sdsconv_core::detect_language(&raw)
                 } else {
                     lang
                 };
@@ -594,7 +594,7 @@ fn batch_to_docx(
 }
 
 fn batch_to_html(input_dir: &Path, output_dir: &Path, lang: Language) -> anyhow::Result<()> {
-    use sds_converter_core::{converter::html::generate_html, ConvertConfig};
+    use sdsconv_core::{converter::html::generate_html, ConvertConfig};
     let files = collect_files(input_dir, &["json"]);
     let total = files.len();
     if total == 0 { eprintln!("No .json files found"); return Ok(()); }
@@ -641,7 +641,7 @@ fn batch_to_pdf(input_dir: &Path, output_dir: &Path, lang: Language) -> anyhow::
             .and_then(|_| std::fs::read_to_string(path).map_err(anyhow::Error::from))
             .and_then(|raw| serde_json::from_str::<SdsRoot>(&raw).map_err(anyhow::Error::from))
             .and_then(|sds| {
-                sds_converter_core::converter::generate_pdf(&sds, lang)
+                sdsconv_core::converter::generate_pdf(&sds, lang)
                     .map_err(anyhow::Error::from)
                     .and_then(|bytes| std::fs::write(&out_path, bytes).map_err(anyhow::Error::from))
             });

@@ -1,4 +1,4 @@
-# sds-converter
+# sdsconv
 
 GUI + CLI tool for **bidirectional conversion** between Safety Data Sheet (SDS) documents (Word/PDF) and the Japanese Ministry of Health, Labour and Welfare (MHLW) standard JSON format.
 
@@ -6,7 +6,7 @@ Supports **Japanese**, **English**, **Simplified Chinese**, and **Traditional Ch
 
 [日本語](README_ja.md) | [中文](README_zh.md)
 
-> **Embedding in your Rust project?** Use [`sds-converter-core`](https://crates.io/crates/sds-converter-core) directly.
+> **Embedding in your Rust project?** Use [`sdsconv-core`](https://crates.io/crates/sdsconv-core) directly.
 
 ---
 
@@ -14,20 +14,20 @@ Supports **Japanese**, **English**, **Simplified Chinese**, and **Traditional Ch
 
 | Platform | Download |
 |---|---|
-| **macOS** (Universal — Apple Silicon + Intel) | [sds-converter-macos.zip](https://github.com/kent-tokyo/sds-converter/releases/latest/download/sds-converter-macos.zip) |
-| **Windows** (Portable .exe — no install required) | [sds-converter-windows-portable.zip](https://github.com/kent-tokyo/sds-converter/releases/latest/download/sds-converter-windows-portable.zip) |
-| **Rust / CLI** | `cargo install sds-converter` |
+| **macOS** (Universal — Apple Silicon + Intel) | [sdsconv-macos.zip](https://github.com/kent-tokyo/sdsconv/releases/latest/download/sdsconv-macos.zip) |
+| **Windows** (Portable .exe — no install required) | [sdsconv-windows-portable.zip](https://github.com/kent-tokyo/sdsconv/releases/latest/download/sdsconv-windows-portable.zip) |
+| **Rust / CLI** | `cargo install sdsconv` |
 
-→ [All releases & changelogs](https://github.com/kent-tokyo/sds-converter/releases)
+→ [All releases & changelogs](https://github.com/kent-tokyo/sdsconv/releases)
 
 ---
 
 ## GUI Mode
 
-Launch the graphical interface by running `sds-converter` **without any arguments**:
+Launch the graphical interface by running `sdsconv` **without any arguments**:
 
 ```bash
-sds-converter
+sdsconv
 ```
 
 The GUI window (820×640) opens with five tabs:
@@ -46,7 +46,7 @@ The GUI window (820×640) opens with five tabs:
 
 **Drag & drop** files onto any tab to fill the input field automatically.
 
-Settings are saved to `~/.config/sds-converter/config.toml` and restored on next launch.
+Settings are saved to `~/.config/sdsconv/config.toml` and restored on next launch.
 The GUI and CLI share the same conversion engine (`tasks.rs`), so results are identical.
 
 ---
@@ -58,29 +58,29 @@ The GUI and CLI share the same conversion engine (`tasks.rs`), so results are id
 ```bash
 # Single file (Anthropic Claude, default)
 export ANTHROPIC_API_KEY=sk-ant-...
-sds-converter to-json --input input.pdf --output output.json
+sdsconv to-json --input input.pdf --output output.json
 
 # Specify source language
-sds-converter to-json --input sds_en.pdf --output output.json --lang en
+sdsconv to-json --input sds_en.pdf --output output.json --lang en
 
 # Batch mode — process a whole directory
-sds-converter to-json --input-dir ./pdfs/ --output-dir ./json/ --lang ja
+sdsconv to-json --input-dir ./pdfs/ --output-dir ./json/ --lang ja
 
 # OpenAI GPT (defaults to gpt-4o-mini)
-sds-converter to-json --input input.pdf --output output.json \
+sdsconv to-json --input input.pdf --output output.json \
   --provider openai --api-key $OPENAI_API_KEY
 
 # Google Gemini (defaults to gemini-2.0-flash)
-sds-converter to-json --input input.pdf --output output.json \
+sdsconv to-json --input input.pdf --output output.json \
   --provider gemini --api-key $GEMINI_API_KEY
 
 # Local LLM via Ollama (any OpenAI-compatible endpoint)
-sds-converter to-json --input input.pdf --output output.json \
+sdsconv to-json --input input.pdf --output output.json \
   --provider local --base-url http://localhost:11434/v1 \
   --model llama3.2 --api-key dummy
 
 # From pre-extracted text (skip PDF parsing)
-sds-converter to-json --input extracted.txt --output output.json --lang ja
+sdsconv to-json --input extracted.txt --output output.json --lang ja
 ```
 
 | Flag | Default | Description |
@@ -114,17 +114,17 @@ sds-converter to-json --input extracted.txt --output output.json --lang ja
 
 ```bash
 # Single file (built-in layout)
-sds-converter to-docx --input output.json --output result.docx --lang ja
+sdsconv to-docx --input output.json --output result.docx --lang ja
 
 # Batch mode (built-in layout)
-sds-converter to-docx --input-dir ./json/ --output-dir ./docx/ --lang en
+sdsconv to-docx --input-dir ./json/ --output-dir ./docx/ --lang en
 
 # Fill a Word template with {{Placeholder}} substitution
-sds-converter to-docx --input output.json --output result.docx \
+sdsconv to-docx --input output.json --output result.docx \
   --template my_template.docx
 
 # Batch mode with template
-sds-converter to-docx --input-dir ./json/ --output-dir ./docx/ \
+sdsconv to-docx --input-dir ./json/ --output-dir ./docx/ \
   --template my_template.docx
 ```
 
@@ -161,23 +161,23 @@ Extracts the text that the LLM would receive, without making any API call. Usefu
 
 ```bash
 # Save to file
-sds-converter extract-text --input input.pdf --output extracted.txt
+sdsconv extract-text --input input.pdf --output extracted.txt
 
 # Print to stdout
-sds-converter extract-text --input input.pdf
+sdsconv extract-text --input input.pdf
 
 # Then feed back into to-json
-sds-converter to-json --input extracted.txt --output output.json --lang ja
+sdsconv to-json --input extracted.txt --output output.json --lang ja
 ```
 
 ### `validate` — Check a JSON file for structural issues
 
 ```bash
 # Human-readable output (exits 0 = OK, 1 = warnings found)
-sds-converter validate --input output.json
+sdsconv validate --input output.json
 
 # JSON array output for CI/scripting
-sds-converter validate --input output.json --json
+sdsconv validate --input output.json --json
 ```
 
 Checks that key sections (Identification, HazardIdentification, ToxicologicalInformation, etc.) are populated. Exits with code `1` if any issues are found.
@@ -220,11 +220,11 @@ The conversion engine is available as a standalone library:
 
 | Crate | crates.io | Description |
 |---|---|---|
-| `sds-converter-core` | [`sds-converter-core`](https://crates.io/crates/sds-converter-core) | LLM-based extraction, DOCX/HTML generation, MHLW schema |
+| `sdsconv-core` | [`sdsconv-core`](https://crates.io/crates/sdsconv-core) | LLM-based extraction, DOCX/HTML generation, MHLW schema |
 
 ```toml
 [dependencies]
-sds-converter-core = "0.3"
+sdsconv-core = "0.3"
 ```
 
 ---

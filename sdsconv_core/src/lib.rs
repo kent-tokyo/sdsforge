@@ -4,7 +4,7 @@
 //! # Quick start
 //!
 //! ```no_run
-//! use sds_converter_core::{
+//! use sdsconv_core::{
 //!     AnthropicBackend, LlmConfig,
 //!     convert_to_json, convert_to_json_with_report, ConvertConfig, Language,
 //! };
