@@ -547,6 +547,502 @@ pub async fn run_extract_text(params: ExtractTextParams, log: LogFn) -> anyhow::
 }
 
 // ---------------------------------------------------------------------------
+// eval-corpus
+// ---------------------------------------------------------------------------
+
+pub struct EvalCorpusParams {
+    pub input_dir:  PathBuf,
+    pub output_dir: PathBuf,
+    pub provider:   Provider,
+    pub api_key:    String,
+    pub model:      String,
+    pub quality:    Quality,
+    pub lang:       Option<Language>,
+    pub country:    Option<SourceCountry>,
+    pub base_url:   Option<String>,
+    pub jobs:       usize,
+    pub correct:    bool,
+    pub enrich:     bool,
+    pub strict_mhlw: bool,
+    pub max_files:  Option<usize>,
+    /// Path to quality_check.py. Defaults to `tools/quality_check.py` next to the binary.
+    pub qc_script:  PathBuf,
+}
+
+/// One row written to manifest.jsonl and causasv_features.csv.
+#[derive(serde::Serialize, Clone)]
+pub struct EvalRecord {
+    pub filename:              String,
+    pub file_type:             String,
+    pub file_size_kb:          f64,
+    pub text_length_chars:     usize,
+    pub extraction_time_ms:    u64,
+    pub source_language:       String,
+    pub detected_country:      String,
+    pub populated_section_count: usize,
+    pub empty_section_count:   usize,
+    pub cas_count_in_source:   usize,
+    pub h_code_count_in_source: usize,
+    pub p_code_count_in_source: usize,
+    pub un_count_in_source:    usize,
+    pub cas_coverage:          f32,
+    pub h_code_coverage:       f32,
+    pub p_code_coverage:       f32,
+    pub un_coverage:           f32,
+    pub critical_count:        usize,
+    pub high_count:            usize,
+    pub medium_count:          usize,
+    pub overall_score:         f32,
+    pub grade:                 String,
+    pub json_ok:               bool,
+    pub error:                 String,
+}
+
+pub async fn run_eval_corpus(params: EvalCorpusParams, log: LogFn) -> anyhow::Result<()> {
+    use crate::evidence::{extract_evidence, match_evidence};
+    use sdsconv_core::extract_text_limited;
+    use std::sync::atomic::Ordering::Relaxed;
+
+    // Create output subdirectories.
+    let out = &params.output_dir;
+    for sub in &["generated_json", "extracted_text", "validation_reports", "evidence_reports"] {
+        std::fs::create_dir_all(out.join(sub))?;
+    }
+
+    let extensions = &["pdf", "docx", "xlsx", "xls", "txt", "html", "htm"];
+    let mut files = collect_files(&params.input_dir, extensions);
+    if let Some(max) = params.max_files {
+        files.truncate(max);
+    }
+    let total = files.len();
+    if total == 0 {
+        log(format!("No SDS files found in {}", params.input_dir.display()));
+        return Ok(());
+    }
+    log(format!("eval-corpus: {} files, {} workers", total, params.jobs));
+
+    let manifest_path = out.join("manifest.jsonl");
+    let manifest_file = Arc::new(std::sync::Mutex::new(
+        std::fs::OpenOptions::new()
+            .create(true).write(true).truncate(true)
+            .open(&manifest_path)?
+    ));
+
+    let records: Arc<std::sync::Mutex<Vec<EvalRecord>>> = Arc::new(std::sync::Mutex::new(Vec::new()));
+
+    let ok_count     = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let failed_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+    let pb = {
+        use indicatif::{ProgressBar, ProgressStyle};
+        let pb = ProgressBar::new(total as u64);
+        pb.set_style(
+            ProgressStyle::with_template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} {msg}")
+                .unwrap_or_else(|_| ProgressStyle::default_bar()),
+        );
+        Arc::new(pb)
+    };
+
+    let qc_script   = Arc::new(params.qc_script.clone());
+    let output_dir  = Arc::new(params.output_dir.clone());
+    let provider    = params.provider;
+    let api_key     = params.api_key.clone();
+    let model       = params.model.clone();
+    let quality     = params.quality;
+    let lang        = params.lang;
+    let country     = params.country;
+    let base_url    = params.base_url.clone();
+    let correct     = params.correct;
+    let enrich      = params.enrich;
+
+    use futures::stream::{self, StreamExt};
+    stream::iter(files)
+        .map(|path| {
+            let pb           = Arc::clone(&pb);
+            let output_dir   = Arc::clone(&output_dir);
+            let qc_script    = Arc::clone(&qc_script);
+            let records      = Arc::clone(&records);
+            let manifest_file = Arc::clone(&manifest_file);
+            let ok_count     = Arc::clone(&ok_count);
+            let failed_count = Arc::clone(&failed_count);
+            let api_key      = api_key.clone();
+            let model        = model.clone();
+            let base_url     = base_url.clone();
+            let log2         = Arc::clone(&log);
+
+            async move {
+                let stem = match path.file_stem().and_then(|s| s.to_str()) {
+                    Some(s) => s.to_string(),
+                    None => { pb.inc(1); return; }
+                };
+                pb.set_message(stem.clone());
+
+                let file_type = path.extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("unknown")
+                    .to_lowercase();
+                let file_type2 = file_type.clone();
+                let file_size_kb = std::fs::metadata(&path)
+                    .map(|m| m.len() as f64 / 1024.0)
+                    .unwrap_or(0.0);
+
+                let pb3 = Arc::clone(&pb);
+                let inner_log: LogFn = Arc::new(move |msg| { pb3.println(msg); });
+
+                let result: anyhow::Result<EvalRecord> = async {
+                    // 1. Extract text
+                    let t0 = std::time::Instant::now();
+                    let max_chars = quality.max_chars();
+                    let text = extract_text_limited(&path, max_chars).await
+                        .map_err(|e| anyhow::anyhow!("extract: {e}"))?;
+                    // Save extracted text
+                    let txt_path = output_dir.join("extracted_text").join(format!("{stem}.txt"));
+                    let _ = std::fs::write(&txt_path, &text);
+
+                    // 2. Convert to JSON
+                    let json_path = output_dir.join("generated_json").join(format!("{stem}.json"));
+                    let to_json_result = run_to_json(ToJsonParams {
+                        input: path.to_string_lossy().into_owned(),
+                        output: json_path.clone(),
+                        provider, api_key: api_key.clone(), model: model.clone(),
+                        quality, lang, country, base_url: base_url.clone(),
+                        enrich, correct, use_suggested_filename: false,
+                    }, Arc::clone(&inner_log)).await;
+
+                    let extraction_time_ms = t0.elapsed().as_millis() as u64;
+                    let json_ok = to_json_result.is_ok();
+                    let error_msg = to_json_result.as_ref().err().map(|e| e.to_string()).unwrap_or_default();
+
+                    // Read report for language/section info
+                    let report_path = output_dir.join("generated_json").join(format!("{stem}_report.json"));
+                    let report: Option<ConversionReport> = std::fs::read_to_string(&report_path)
+                        .ok()
+                        .and_then(|s| serde_json::from_str(&s).ok());
+                    let source_language = report.as_ref()
+                        .map(|r| r.source_language.clone())
+                        .unwrap_or_default();
+                    let detected_country = report.as_ref()
+                        .and_then(|r| r.compliance_diff.as_ref())
+                        .map(|d| d.target_country.clone())
+                        .unwrap_or_default();
+                    let populated_section_count = report.as_ref()
+                        .map(|r| r.populated_sections.len())
+                        .unwrap_or(0);
+                    let empty_section_count = report.as_ref()
+                        .map(|r| r.empty_sections.len())
+                        .unwrap_or(0);
+
+                    // 3. Evidence matching
+                    let ev = extract_evidence(&text);
+                    let cas_count_in_source  = ev.cas.len();
+                    let h_code_count_in_source = ev.h_codes.len();
+                    let p_code_count_in_source = ev.p_codes.len();
+                    let un_count_in_source   = ev.un_numbers.len();
+
+                    let json_val: serde_json::Value = if json_path.exists() {
+                        std::fs::read_to_string(&json_path)
+                            .ok()
+                            .and_then(|s| serde_json::from_str(&s).ok())
+                            .unwrap_or(serde_json::Value::Null)
+                    } else {
+                        serde_json::Value::Null
+                    };
+                    let cov = match_evidence(&ev, &json_val);
+                    // Save evidence report
+                    let ev_path = output_dir.join("evidence_reports").join(format!("{stem}_ev.json"));
+                    let ev_report = serde_json::json!({
+                        "file": stem,
+                        "evidence": {
+                            "cas": ev.cas, "h_codes": ev.h_codes,
+                            "p_codes": ev.p_codes, "un_numbers": ev.un_numbers,
+                            "signal_words": ev.signal_words,
+                        },
+                        "coverage": {
+                            "cas": cov.cas, "h_codes": cov.h_codes,
+                            "p_codes": cov.p_codes, "un_numbers": cov.un_numbers,
+                        }
+                    });
+                    let _ = std::fs::write(&ev_path, serde_json::to_string_pretty(&ev_report).unwrap_or_default());
+
+                    // 4. QC via quality_check.py
+                    let (critical_count, high_count, medium_count, qc_lines) =
+                        run_qc_script(&qc_script, &json_path, &log2).await;
+                    // Save QC findings
+                    let qc_path = output_dir.join("validation_reports").join(format!("{stem}_qc.jsonl"));
+                    let _ = std::fs::write(&qc_path, qc_lines.join("\n"));
+
+                    // 5. Score
+                    let total_checks = (critical_count + high_count + medium_count).max(1);
+                    let penalty = critical_count * 40 + high_count * 5 + medium_count;
+                    let overall_score = (100.0f32 - (penalty as f32 / total_checks as f32 * 100.0)).max(0.0);
+                    let grade = compute_grade(overall_score, critical_count, high_count);
+
+                    Ok(EvalRecord {
+                        filename: path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string(),
+                        file_type, file_size_kb,
+                        text_length_chars: text.chars().count(),
+                        extraction_time_ms, source_language, detected_country,
+                        populated_section_count, empty_section_count,
+                        cas_count_in_source, h_code_count_in_source,
+                        p_code_count_in_source, un_count_in_source,
+                        cas_coverage: cov.cas, h_code_coverage: cov.h_codes,
+                        p_code_coverage: cov.p_codes, un_coverage: cov.un_numbers,
+                        critical_count, high_count, medium_count,
+                        overall_score, grade, json_ok,
+                        error: error_msg,
+                    })
+                }.await;
+
+                match result {
+                    Ok(rec) => {
+                        // Append to manifest.jsonl
+                        if let Ok(line) = serde_json::to_string(&rec) {
+                            use std::io::Write;
+                            let _ = manifest_file.lock().map(|mut f| writeln!(f, "{line}"));
+                        }
+                        records.lock().unwrap().push(rec);
+                        ok_count.fetch_add(1, Relaxed);
+                    }
+                    Err(e) => {
+                        pb.println(format!("[ERROR] {stem}: {e}"));
+                        failed_count.fetch_add(1, Relaxed);
+                        // Write a failed record
+                        let rec = EvalRecord {
+                            filename: stem.clone(), file_type: file_type2,
+                            file_size_kb, text_length_chars: 0, extraction_time_ms: 0,
+                            source_language: String::new(), detected_country: String::new(),
+                            populated_section_count: 0, empty_section_count: 0,
+                            cas_count_in_source: 0, h_code_count_in_source: 0,
+                            p_code_count_in_source: 0, un_count_in_source: 0,
+                            cas_coverage: 0.0, h_code_coverage: 0.0,
+                            p_code_coverage: 0.0, un_coverage: 0.0,
+                            critical_count: 0, high_count: 0, medium_count: 0,
+                            overall_score: 0.0, grade: "D".into(),
+                            json_ok: false, error: e.to_string(),
+                        };
+                        if let Ok(line) = serde_json::to_string(&rec) {
+                            use std::io::Write;
+                            let _ = manifest_file.lock().map(|mut f| writeln!(f, "{line}"));
+                        }
+                    }
+                }
+                pb.inc(1);
+            }
+        })
+        .buffer_unordered(params.jobs.max(1))
+        .collect::<Vec<_>>()
+        .await;
+
+    let ok     = ok_count.load(Relaxed);
+    let failed = failed_count.load(Relaxed);
+    pb.finish_and_clear();
+    log(format!("eval-corpus done: {ok} ok, {failed} failed"));
+
+    // Aggregate reports
+    let recs = records.lock().unwrap().clone();
+    write_summary(&params.output_dir, &recs)?;
+    write_failures_by_rule(&params.output_dir, &recs)?;
+    write_causasv_features(&params.output_dir, &recs)?;
+
+    if params.strict_mhlw {
+        let has_crit_or_high = recs.iter().any(|r| r.critical_count > 0 || r.high_count > 0);
+        if has_crit_or_high {
+            anyhow::bail!("strict-mhlw: HIGH/CRIT findings present in corpus");
+        }
+    }
+
+    Ok(())
+}
+
+fn compute_grade(score: f32, crit: usize, high: usize) -> String {
+    if crit == 0 && high == 0 && score >= 90.0 { "A".into() }
+    else if crit == 0 && high <= 3 && score >= 80.0 { "B".into() }
+    else if crit == 0 && high <= 10 && score >= 65.0 { "C".into() }
+    else { "D".into() }
+}
+
+/// Invoke quality_check.py for a JSON file via subprocess.
+/// Returns (crit_count, high_count, med_count, raw_jsonl_lines).
+async fn run_qc_script(
+    qc_script: &Path,
+    json_path: &Path,
+    log: &LogFn,
+) -> (usize, usize, usize, Vec<String>) {
+    if !json_path.exists() {
+        return (0, 0, 0, Vec::new());
+    }
+    let result = tokio::task::spawn_blocking({
+        let qc   = qc_script.to_path_buf();
+        let json = json_path.to_path_buf();
+        move || {
+            std::process::Command::new("python3")
+                .arg(&qc)
+                .arg(&json)
+                .arg("--jsonl")
+                .output()
+        }
+    }).await;
+
+    let output = match result {
+        Ok(Ok(o))  => o,
+        Ok(Err(e)) => { log(format!("WARN: quality_check.py spawn failed: {e}")); return (0, 0, 0, Vec::new()); }
+        Err(e)     => { log(format!("WARN: quality_check.py task panicked: {e}")); return (0, 0, 0, Vec::new()); }
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut crit = 0usize;
+    let mut high = 0usize;
+    let mut med  = 0usize;
+    let mut lines: Vec<String> = Vec::new();
+
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() { continue; }
+        lines.push(line.to_string());
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+            match v.get("level").and_then(|l| l.as_str()) {
+                Some("CRIT") => crit += 1,
+                Some("HIGH") => high += 1,
+                Some("MED")  => med  += 1,
+                _ => {}
+            }
+        }
+    }
+    (crit, high, med, lines)
+}
+
+fn write_summary(out_dir: &Path, recs: &[EvalRecord]) -> anyhow::Result<()> {
+    if recs.is_empty() { return Ok(()); }
+    let n = recs.len() as f32;
+    let avg_score = recs.iter().map(|r| r.overall_score).sum::<f32>() / n;
+    let total_crit = recs.iter().map(|r| r.critical_count).sum::<usize>();
+    let total_high = recs.iter().map(|r| r.high_count).sum::<usize>();
+    let total_med  = recs.iter().map(|r| r.medium_count).sum::<usize>();
+    let grade_counts = {
+        let mut m = std::collections::HashMap::new();
+        for r in recs { *m.entry(r.grade.as_str()).or_insert(0usize) += 1; }
+        m
+    };
+
+    let summary = serde_json::json!({
+        "total_files": recs.len(),
+        "json_ok": recs.iter().filter(|r| r.json_ok).count(),
+        "avg_score": avg_score,
+        "grade_distribution": grade_counts,
+        "total_critical": total_crit,
+        "total_high": total_high,
+        "total_medium": total_med,
+        "avg_cas_coverage": recs.iter().map(|r| r.cas_coverage).sum::<f32>() / n,
+        "avg_h_code_coverage": recs.iter().map(|r| r.h_code_coverage).sum::<f32>() / n,
+    });
+    std::fs::write(
+        out_dir.join("summary.json"),
+        serde_json::to_string_pretty(&summary)?,
+    )?;
+
+    // Markdown summary
+    let grades_md = ["A", "B", "C", "D"].iter()
+        .map(|g| format!("{g}: {}", grade_counts.get(g).unwrap_or(&0)))
+        .collect::<Vec<_>>()
+        .join(" / ");
+    let md = format!(
+        "# eval-corpus summary\n\n\
+         | Metric | Value |\n\
+         |--------|-------|\n\
+         | Files | {} |\n\
+         | JSON ok | {} |\n\
+         | Avg score | {:.1} |\n\
+         | Grades | {grades_md} |\n\
+         | CRIT | {total_crit} |\n\
+         | HIGH | {total_high} |\n\
+         | MED  | {total_med} |\n\
+         | Avg CAS coverage | {:.0}% |\n\
+         | Avg H-code coverage | {:.0}% |\n",
+        recs.len(),
+        recs.iter().filter(|r| r.json_ok).count(),
+        avg_score,
+        recs.iter().map(|r| r.cas_coverage).sum::<f32>() / n * 100.0,
+        recs.iter().map(|r| r.h_code_coverage).sum::<f32>() / n * 100.0,
+    );
+    std::fs::write(out_dir.join("summary.md"), md)?;
+    Ok(())
+}
+
+fn write_failures_by_rule(out_dir: &Path, recs: &[EvalRecord]) -> anyhow::Result<()> {
+    // Read all QC JSONL files and aggregate by rule
+    use std::io::Write;
+    let qc_dir = out_dir.join("validation_reports");
+    let mut rule_map: std::collections::HashMap<String, (String, usize, std::collections::HashSet<String>)> = Default::default();
+
+    for entry in std::fs::read_dir(&qc_dir).into_iter().flatten().flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("jsonl") { continue; }
+        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+        let file_stem = stem.trim_end_matches("_qc").to_string();
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            for line in content.lines() {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+                    let rule  = v["rule"].as_str().unwrap_or("UNKNOWN").to_string();
+                    let level = v["level"].as_str().unwrap_or("?").to_string();
+                    let entry = rule_map.entry(rule).or_insert_with(|| (level.clone(), 0, Default::default()));
+                    entry.1 += 1;
+                    entry.2.insert(file_stem.clone());
+                }
+            }
+        }
+    }
+
+    let mut rows: Vec<(String, String, usize, usize)> = rule_map.into_iter()
+        .map(|(rule, (level, count, files))| (rule, level, count, files.len()))
+        .collect();
+    rows.sort_by(|a, b| b.2.cmp(&a.2));
+
+    let mut f = std::fs::File::create(out_dir.join("failures_by_rule.csv"))?;
+    writeln!(f, "rule_id,level,count,affected_files")?;
+    for (rule, level, count, files) in &rows {
+        writeln!(f, "{rule},{level},{count},{files}")?;
+    }
+
+    // failures_by_section.csv
+    let section_prefixes = ["S1","S2","S3","S4","S5","S6","S7","S8","S9","S10","S11","S12","S13","S14","S15","S16"];
+    let mut f2 = std::fs::File::create(out_dir.join("failures_by_section.csv"))?;
+    writeln!(f2, "section,total_failures,high_crit_failures")?;
+    for sec in &section_prefixes {
+        let total: usize = rows.iter().filter(|(r,_,_,_)| r.starts_with(sec)).map(|(_,_,c,_)| c).sum();
+        let hc: usize    = rows.iter()
+            .filter(|(r,l,_,_)| r.starts_with(sec) && (l == "HIGH" || l == "CRIT"))
+            .map(|(_,_,c,_)| c).sum();
+        writeln!(f2, "{sec},{total},{hc}")?;
+    }
+    Ok(())
+}
+
+fn write_causasv_features(out_dir: &Path, recs: &[EvalRecord]) -> anyhow::Result<()> {
+    use std::io::Write;
+    let mut f = std::fs::File::create(out_dir.join("causasv_features.csv"))?;
+    writeln!(f, "filename,file_type,file_size_kb,text_length_chars,extraction_time_ms,\
+                 source_language,detected_country,populated_section_count,empty_section_count,\
+                 cas_count_in_source,h_code_count_in_source,p_code_count_in_source,un_count_in_source,\
+                 cas_coverage,h_code_coverage,p_code_coverage,un_coverage,\
+                 critical_count,high_count,medium_count,overall_score,grade")?;
+    for r in recs {
+        writeln!(f,
+            "{},{},{:.1},{},{},{},{},{},{},{},{},{},{},{:.3},{:.3},{:.3},{:.3},{},{},{},{:.1},{}",
+            r.filename, r.file_type, r.file_size_kb,
+            r.text_length_chars, r.extraction_time_ms,
+            r.source_language, r.detected_country,
+            r.populated_section_count, r.empty_section_count,
+            r.cas_count_in_source, r.h_code_count_in_source,
+            r.p_code_count_in_source, r.un_count_in_source,
+            r.cas_coverage, r.h_code_coverage, r.p_code_coverage, r.un_coverage,
+            r.critical_count, r.high_count, r.medium_count,
+            r.overall_score, r.grade,
+        )?;
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
 

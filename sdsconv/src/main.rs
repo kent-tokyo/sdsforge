@@ -1,5 +1,6 @@
 mod app;
 mod config;
+mod evidence;
 mod tasks;
 
 use std::path::{Path, PathBuf};
@@ -11,7 +12,8 @@ use indicatif::{ProgressBar, ProgressStyle};
 use sdsconv_core::{Language, SourceCountry, SdsRoot};
 
 use tasks::{
-    LogFn, Provider, Quality, ToDocxParams, ToHtmlParams, ToJsonParams, ToPdfParams,
+    EvalCorpusParams, LogFn, Provider, Quality,
+    ToDocxParams, ToHtmlParams, ToJsonParams, ToPdfParams,
     check_json_file_size, collect_files,
 };
 
@@ -232,6 +234,49 @@ enum Commands {
         #[arg(short, long)]
         input: String,
     },
+
+    /// Evaluate a corpus of SDS files and produce quality scores + causasv features
+    EvalCorpus {
+        /// Directory containing SDS files (PDF/DOCX/XLSX/HTML/TXT)
+        #[arg(long)]
+        input_dir: PathBuf,
+        /// Output directory for all reports and generated JSON
+        #[arg(long)]
+        output_dir: PathBuf,
+        /// Number of parallel workers
+        #[arg(long, default_value = "8")]
+        jobs: usize,
+        /// Exit 1 if any HIGH or CRIT finding exists across the corpus
+        #[arg(long)]
+        strict_mhlw: bool,
+        /// Run validation-driven correction pass (extra LLM call)
+        #[arg(long)]
+        correct: bool,
+        /// Enrich CAS numbers via PubChem
+        #[arg(long)]
+        enrich: bool,
+        /// Source language (omit for auto-detect)
+        #[arg(long, value_enum)]
+        lang: Option<CliLanguage>,
+        #[arg(long, value_enum)]
+        country: Option<CliCountry>,
+        #[arg(long, value_enum, default_value = "anthropic")]
+        provider: CliProvider,
+        #[arg(long, env = "ANTHROPIC_API_KEY")]
+        api_key: Option<String>,
+        #[arg(long, default_value = "claude-sonnet-4-5")]
+        model: String,
+        #[arg(long, value_enum, default_value = "medium")]
+        quality: CliQuality,
+        #[arg(long)]
+        base_url: Option<String>,
+        /// Limit number of files processed (useful for smoke tests)
+        #[arg(long)]
+        max_files: Option<usize>,
+        /// Path to quality_check.py (default: tools/quality_check.py)
+        #[arg(long)]
+        qc_script: Option<PathBuf>,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -425,6 +470,26 @@ async fn run_cli() -> anyhow::Result<()> {
                 detect_language_from_file(Path::new(&input)).await?
             };
             println!("{} ({})", lang.name_en(), lang.bcp47());
+        }
+
+        Commands::EvalCorpus {
+            input_dir, output_dir, jobs, strict_mhlw, correct, enrich,
+            lang, country, provider, api_key, model, quality, base_url,
+            max_files, qc_script,
+        } => {
+            let provider = Provider::from(provider);
+            let api_key  = resolve_api_key(api_key, provider, &cfg)?;
+            let lang     = lang.map(Language::from);
+            let country  = country.map(SourceCountry::from);
+            // Default qc_script: tools/quality_check.py relative to current dir
+            let qc_script = qc_script.unwrap_or_else(|| PathBuf::from("tools/quality_check.py"));
+            std::fs::create_dir_all(&output_dir)?;
+            tasks::run_eval_corpus(EvalCorpusParams {
+                input_dir, output_dir, provider, api_key,
+                model, quality: Quality::from(quality),
+                lang, country, base_url, jobs, correct, enrich, strict_mhlw,
+                max_files, qc_script,
+            }, log).await?;
         }
     }
 

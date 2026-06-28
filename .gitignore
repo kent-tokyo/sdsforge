@@ -12,3 +12,5 @@ references/
 .DS_Store
 samples/
 memo.txt
+data/sds_raw/
+runs/
