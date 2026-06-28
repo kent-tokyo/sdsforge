@@ -18,7 +18,7 @@ for pkg in ("causasv", "sklearn", "pandas", "numpy"):
     try:
         __import__(pkg)
     except ImportError:
-        print(f"[ERROR] {pkg} not found. pip install causasv scikit-learn pandas")
+        print(f'[ERROR] {pkg} not found. Run: pip install "sdsconv[analysis]"')
         sys.exit(1)
 
 # ── CSV パス解決 ──────────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 """causasv_bridge — DAG-aware quality failure analysis for sdsconv.
 
-Requires: pip install causasv scikit-learn pandas
+Requires: pip install "sdsconv[analysis]"
+  or:     pip install causasv>=0.8.2 scikit-learn pandas
 
 Usage:
     from sdsconv.causasv_bridge import compute_asv, print_ranking
