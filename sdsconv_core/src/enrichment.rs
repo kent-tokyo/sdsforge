@@ -15,7 +15,7 @@ pub struct CasInfo {
     pub pubchem_cid: Option<u64>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum CasWarning {
     NotFound { cas: String },
     NameMismatch { cas: String, pubchem_name: String, sds_name: String },

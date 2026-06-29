@@ -60,6 +60,14 @@ def _compute_grade(score: float, crit: int, high: int) -> str:
 def _count_unique(pattern: str, text: str) -> int:
     return len(set(re.findall(pattern, text, re.IGNORECASE)))
 
+def _extract_from_json(pattern: str, data: dict) -> set:
+    return set(re.findall(pattern, json.dumps(data, ensure_ascii=False), re.IGNORECASE))
+
+def _coverage(json_set: set, src_count: int) -> float:
+    if src_count == 0:
+        return 1.0   # source に該当なし → coverage 不問
+    return min(1.0, len(json_set) / src_count)
+
 def _count_cas(text: str) -> int:
     return _count_unique(r'\b\d{2,7}-\d{2}-\d\b', text)
 
@@ -141,6 +149,15 @@ def eval_one(
         high = sum(1 for f in findings if f.get("level") == "HIGH")
         med  = sum(1 for f in findings if f.get("level") == "MED")
 
+        cas_in_json = _extract_from_json(r'\b\d{2,7}-\d{2}-\d\b', data)
+        h_in_json   = _extract_from_json(r'\bH[23456]\d{2}\b', data)
+        p_in_json   = _extract_from_json(r'\bP[123456]\d{2}\b', data)
+        un_in_json  = _extract_from_json(r'\bUN\s*\d{4}\b', data)
+        record["cas_coverage"]    = _coverage(cas_in_json, record.get("cas_count_in_source", 0))
+        record["h_code_coverage"] = _coverage(h_in_json,   record.get("h_code_count_in_source", 0))
+        record["p_code_coverage"] = _coverage(p_in_json,   record.get("p_code_count_in_source", 0))
+        record["un_coverage"]     = _coverage(un_in_json,  record.get("un_count_in_source", 0))
+
         record["critical_count"] = crit
         record["high_count"]     = high
         record["medium_count"]   = med
@@ -164,6 +181,8 @@ def eval_one(
                   "h_code_count_in_source", "p_code_count_in_source",
                   "un_count_in_source"):
             record.setdefault(k, 0)
+        for k in ("cas_coverage", "h_code_coverage", "p_code_coverage", "un_coverage"):
+            record.setdefault(k, 0.0)
 
     return record
 
@@ -270,6 +289,7 @@ _CAUSASV_COLS = [
     "source_language", "populated_section_count", "empty_section_count",
     "cas_count_in_source", "h_code_count_in_source",
     "p_code_count_in_source", "un_count_in_source",
+    "cas_coverage", "h_code_coverage", "p_code_coverage", "un_coverage",
     "critical_count", "high_count", "medium_count",
     "overall_score", "grade",
 ]

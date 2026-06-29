@@ -153,20 +153,27 @@ fn to_json_with_report(
             .await
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
 
-        if enrich {
+        let enrichment_warnings = if enrich {
             let client = reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(30))
                 .build()
-                .unwrap();
-            enrich_composition(&sds, &client).await;
-        }
+                .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+            enrich_composition(&sds, &client).await
+        } else {
+            vec![]
+        };
 
         let pruned = prune_empty_fields(
             serde_json::to_value(&sds).map_err(|e| PyRuntimeError::new_err(e.to_string()))?,
         );
-        let sds_json    = serde_json::to_string_pretty(&pruned).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-        let report_json = serde_json::to_string_pretty(&report).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-        let _ = sds; // sds is moved into pruned above via to_value
+        let sds_json = serde_json::to_string_pretty(&pruned).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        let mut report_value = serde_json::to_value(&report).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        if !enrichment_warnings.is_empty() {
+            report_value["enrichment_warnings"] =
+                serde_json::to_value(&enrichment_warnings).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        }
+        let report_json = serde_json::to_string_pretty(&report_value).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        let _ = sds;
         Ok((sds_json, report_json))
     })
 }
