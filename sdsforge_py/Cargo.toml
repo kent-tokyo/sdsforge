@@ -1,0 +1,18 @@
+[package]
+name = "sdsforge-py"
+version = "0.2.0"
+edition = "2021"
+
+[lib]
+# Stays "_sdsconv" until the Python package itself is renamed (pyproject.toml
+# module-name + python/sdsconv/__init__.py import must move together — see
+# commit "refactor: rename Python package and bindings").
+name = "_sdsconv"
+crate-type = ["cdylib"]
+
+[dependencies]
+sdsforge-core = { path = "../sdsforge_core" }
+pyo3 = { version = "0.29", features = ["extension-module", "abi3-py39"] }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }

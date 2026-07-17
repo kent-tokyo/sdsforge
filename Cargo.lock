@@ -4804,7 +4804,18 @@ dependencies = [
 
 [[package]]
 name = "sdsconv"
-version = "0.2.8"
+version = "0.3.0"
+
+[[package]]
+name = "sdsconv-core"
+version = "0.3.10"
+dependencies = [
+ "sdsforge-core",
+]
+
+[[package]]
+name = "sdsforge"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4815,7 +4826,7 @@ dependencies = [
  "indicatif",
  "reqwest",
  "rfd",
- "sdsconv-core",
+ "sdsforge-core",
  "serde",
  "serde_json",
  "tempfile",
@@ -4827,8 +4838,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "sdsconv-core"
-version = "0.3.8"
+name = "sdsforge-core"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "base64",
@@ -4849,18 +4860,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "sdsconv-py"
-version = "0.1.0"
+name = "sdsforge-py"
+version = "0.2.0"
 dependencies = [
  "pyo3",
  "reqwest",
- "sdsconv-core",
+ "sdsforge-core",
  "serde_json",
  "tokio",
 ]
 
 [[package]]
-name = "sdsconv-server"
+name = "sdsforge-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -4868,7 +4879,7 @@ dependencies = [
  "constant_time_eq 0.3.1",
  "rand 0.8.6",
  "reqwest",
- "sdsconv-core",
+ "sdsforge-core",
  "serde",
  "serde_json",
  "tempfile",

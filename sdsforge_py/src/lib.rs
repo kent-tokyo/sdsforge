@@ -4,12 +4,12 @@ use std::sync::OnceLock;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 
-use sdsconv_core::{
+use sdsforge_core::{
     build_any_backend, convert_bytes_to_json_with_report, convert_to_json_with_report,
     convert_url_to_json, enrich_composition, extract_text_limited, prune_empty_fields,
     validate_typed, ConvertConfig, Language, LlmConfig, SourceCountry, SdsRoot,
 };
-use sdsconv_core::converter::CorrectionConfig;
+use sdsforge_core::converter::CorrectionConfig;
 
 // ---------------------------------------------------------------------------
 // Shared Tokio runtime

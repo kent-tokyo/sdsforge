@@ -14,7 +14,7 @@ use crate::schema::SdsRoot;
 
 /// Abstraction over LLM completion providers.
 ///
-/// Implement this trait to use any LLM backend with `sdsconv-core`.
+/// Implement this trait to use any LLM backend with `sdsforge-core`.
 /// The library ships with [`AnthropicBackend`] and [`OpenAiCompatBackend`].
 pub trait LlmBackend {
     /// Send a system + user message pair and return the raw text response.
@@ -72,7 +72,7 @@ impl Default for LlmConfig {
 ///
 /// # Example
 /// ```no_run
-/// use sdsconv_core::converter::llm::{AnthropicBackend, LlmConfig};
+/// use sdsforge_core::converter::llm::{AnthropicBackend, LlmConfig};
 /// let backend = AnthropicBackend::new("sk-ant-...", LlmConfig::default());
 /// ```
 pub struct AnthropicBackend {
@@ -166,14 +166,14 @@ impl LlmBackend for AnthropicBackend {
 ///
 /// # Example — OpenAI GPT
 /// ```no_run
-/// use sdsconv_core::converter::llm::{OpenAiCompatBackend, LlmConfig};
+/// use sdsforge_core::converter::llm::{OpenAiCompatBackend, LlmConfig};
 /// let config = LlmConfig { model: "gpt-4o".into(), max_tokens: 16384 };
 /// let backend = OpenAiCompatBackend::openai("sk-...", config);
 /// ```
 ///
 /// # Example — Google Gemini
 /// ```no_run
-/// use sdsconv_core::converter::llm::{OpenAiCompatBackend, LlmConfig};
+/// use sdsforge_core::converter::llm::{OpenAiCompatBackend, LlmConfig};
 /// let config = LlmConfig { model: "gemini-2.0-flash".into(), max_tokens: 16384 };
 /// let backend = OpenAiCompatBackend::gemini("AIza...", config);
 /// ```

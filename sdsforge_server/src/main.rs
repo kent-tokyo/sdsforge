@@ -33,7 +33,7 @@ use tower::limit::ConcurrencyLimitLayer;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
-use sdsconv_core::{
+use sdsforge_core::{
     convert_bytes_to_json, convert_from_json, converter::html::generate_html,
     enrich_composition, openai_compat_url, prune_empty_fields, validate_typed, Finding,
     AnthropicBackend, ConvertConfig, Language, LlmBackend, LlmConfig,

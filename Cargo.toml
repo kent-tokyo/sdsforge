@@ -1,5 +1,10 @@
 [workspace]
-members = ["sdsconv_core", "sdsconv", "sdsconv_server", "sdsconv_py"]
+members = [
+    "sdsforge_core", "sdsforge", "sdsforge_server", "sdsforge_py",
+    # Deprecated compat shims — re-export/redirect to the sdsforge_* crates above.
+    # See docs/migration-from-sdsconv.md.
+    "sdsconv_core", "sdsconv",
+]
 resolver = "2"
 
 [workspace.dependencies]

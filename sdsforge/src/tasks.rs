@@ -5,7 +5,7 @@ use anyhow::Context as _;
 use chrono::Local;
 use walkdir::WalkDir;
 
-use sdsconv_core::{
+use sdsforge_core::{
     converter::{
         AnthropicBackend, CorrectionConfig, LlmBackend, LlmConfig,
         OpenAiCompatBackend, openai_compat_url,
@@ -460,7 +460,7 @@ pub async fn run_to_docx(params: ToDocxParams, log: LogFn) -> anyhow::Result<()>
 }
 
 pub async fn run_to_html(params: ToHtmlParams, log: LogFn) -> anyhow::Result<()> {
-    use sdsconv_core::converter::html::generate_html;
+    use sdsforge_core::converter::html::generate_html;
 
     let input = params.input.clone();
     let output = params.output.clone();
@@ -514,7 +514,7 @@ pub async fn run_to_pdf(params: ToPdfParams, log: LogFn) -> anyhow::Result<()> {
         let json = std::fs::read_to_string(&input)
             .with_context(|| format!("reading {}", input.display()))?;
         let sds: SdsRoot = serde_json::from_str(&json)?;
-        let bytes = sdsconv_core::converter::generate_pdf(&sds, lang)
+        let bytes = sdsforge_core::converter::generate_pdf(&sds, lang)
             .map_err(|e| anyhow::anyhow!("{e}"))?;
         std::fs::write(&output, bytes)
             .with_context(|| format!("writing {}", output.display()))
@@ -600,7 +600,7 @@ pub struct EvalRecord {
 
 pub async fn run_eval_corpus(params: EvalCorpusParams, log: LogFn) -> anyhow::Result<()> {
     use crate::evidence::{extract_evidence, match_evidence};
-    use sdsconv_core::extract_text_limited;
+    use sdsforge_core::extract_text_limited;
     use std::sync::atomic::Ordering::Relaxed;
 
     // Create output subdirectories.

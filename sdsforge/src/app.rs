@@ -1015,7 +1015,7 @@ impl SdsApp {
         }
         let input    = PathBuf::from(self.gen_input.trim());
         let output   = gen_output;
-        let lang     = lang_from_str(&self.gen_lang).unwrap_or(sdsconv_core::Language::Japanese);
+        let lang     = lang_from_str(&self.gen_lang).unwrap_or(sdsforge_core::Language::Japanese);
         let format   = self.gen_format;
         let template = if self.gen_template.is_empty() { None }
                        else { Some(PathBuf::from(self.gen_template.trim())) };
@@ -1268,7 +1268,7 @@ impl SdsApp {
         busy.store(true, Ordering::Relaxed);
 
         self.rt.spawn(async move {
-            use sdsconv_core::{detect_language_from_file, detect_language_from_url};
+            use sdsforge_core::{detect_language_from_file, detect_language_from_url};
             let is_url = input.starts_with("http://") || input.starts_with("https://");
             let result = if is_url {
                 detect_language_from_url(&input).await.ok()
@@ -1883,12 +1883,12 @@ fn lang_combo(ui: &mut egui::Ui, id: &str, value: &mut String, with_auto: bool) 
         });
 }
 
-fn lang_from_str(s: &str) -> Option<sdsconv_core::Language> {
+fn lang_from_str(s: &str) -> Option<sdsforge_core::Language> {
     match s {
-        "ja"    => Some(sdsconv_core::Language::Japanese),
-        "en"    => Some(sdsconv_core::Language::English),
-        "zh-cn" => Some(sdsconv_core::Language::ChineseSimplified),
-        "zh-tw" => Some(sdsconv_core::Language::ChineseTraditional),
+        "ja"    => Some(sdsforge_core::Language::Japanese),
+        "en"    => Some(sdsforge_core::Language::English),
+        "zh-cn" => Some(sdsforge_core::Language::ChineseSimplified),
+        "zh-tw" => Some(sdsforge_core::Language::ChineseTraditional),
         _       => None,
     }
 }
