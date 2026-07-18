@@ -1,4 +1,4 @@
-# sdsconv-core
+# sdsforge-core
 
 A Rust library for **bidirectional conversion** between Safety Data Sheet (SDS) documents (Word/PDF) and the Japanese Ministry of Health, Labour and Welfare (MHLW) standard JSON format.
 
@@ -6,7 +6,9 @@ Supports documents in **Japanese**, **English**, **Simplified Chinese**, and **T
 
 [日本語](README_ja.md) | [中文](README_zh.md)
 
-> **Looking for the CLI?** Install [`sdsconv`](https://crates.io/crates/sdsconv) instead.
+> **Looking for the CLI?** Install [`sdsforge`](https://crates.io/crates/sdsforge) instead.
+>
+> **Migrating from `sdsconv-core`?** See [`../docs/migration-from-sdsconv.md`](../docs/migration-from-sdsconv.md). `sdsconv-core` remains available as a thin `#[deprecated]` re-export of this crate.
 
 ---
 
@@ -27,7 +29,7 @@ Supports documents in **Japanese**, **English**, **Simplified Chinese**, and **T
 
 ```toml
 [dependencies]
-sdsconv-core = "0.3"
+sdsforge-core = "0.4"
 ```
 
 ---
@@ -37,8 +39,8 @@ sdsconv-core = "0.3"
 ### Convert SDS document to JSON (Anthropic Claude)
 
 ```rust
-use sdsconv_core::{
-    converter::{AnthropicBackend, LlmConfig},
+use sdsforge_core::{
+    AnthropicBackend, LlmConfig,
     convert_to_json, ConvertConfig, Language,
 };
 
@@ -65,7 +67,7 @@ async fn main() -> anyhow::Result<()> {
 ### Convert JSON to Word document
 
 ```rust
-use sdsconv_core::{convert_from_json, ConvertConfig, Language, SdsRoot};
+use sdsforge_core::{convert_from_json, ConvertConfig, Language, SdsRoot};
 
 fn main() -> anyhow::Result<()> {
     let json = std::fs::read_to_string("output.json")?;
@@ -85,7 +87,7 @@ fn main() -> anyhow::Result<()> {
 ### OpenAI GPT or Google Gemini backend
 
 ```rust
-use sdsconv_core::{OpenAiCompatBackend, LlmConfig};
+use sdsforge_core::{OpenAiCompatBackend, LlmConfig};
 
 // OpenAI GPT
 let config = LlmConfig { model: "gpt-4o".into(), max_tokens: 8192 };
@@ -108,7 +110,7 @@ let backend = OpenAiCompatBackend::new(
 Use `extract_text` to pull the raw text out of a PDF, DOCX, or plain-text file without making an LLM call. Useful for building custom pipelines or inspecting what the LLM receives.
 
 ```rust
-use sdsconv_core::extract_text;
+use sdsforge_core::extract_text;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -125,7 +127,7 @@ Supported extensions: `.pdf`, `.docx`, `.xlsx`, `.txt`.
 `validate` checks the structural completeness of an `SdsRoot` and returns a list of warning strings. It does not hard-fail — partial results remain usable.
 
 ```rust
-use sdsconv_core::{validate, SdsRoot};
+use sdsforge_core::{validate, SdsRoot};
 
 fn main() -> anyhow::Result<()> {
     let json = std::fs::read_to_string("output.json")?;
@@ -145,7 +147,7 @@ fn main() -> anyhow::Result<()> {
 Implement the `LlmBackend` trait to use any LLM provider:
 
 ```rust
-use sdsconv_core::{LlmBackend, SdsError};
+use sdsforge_core::{LlmBackend, SdsError};
 
 struct MyLlmBackend { /* ... */ }
 

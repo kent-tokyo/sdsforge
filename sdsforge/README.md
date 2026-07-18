@@ -1,4 +1,4 @@
-# sdsconv
+# sdsforge
 
 GUI + CLI tool for **bidirectional conversion** between Safety Data Sheet (SDS) documents (Word/PDF) and the Japanese Ministry of Health, Labour and Welfare (MHLW) standard JSON format.
 
@@ -6,7 +6,9 @@ Supports **Japanese**, **English**, **Simplified Chinese**, and **Traditional Ch
 
 [日本語](README_ja.md) | [中文](README_zh.md)
 
-> **Embedding in your Rust project?** Use [`sdsconv-core`](https://crates.io/crates/sdsconv-core) directly.
+> **Embedding in your Rust project?** Use [`sdsforge-core`](https://crates.io/crates/sdsforge-core) directly.
+>
+> **Migrating from `sdsconv`?** See [`docs/migration-from-sdsconv.md`](../docs/migration-from-sdsconv.md). The old `sdsconv` binary still works during the deprecation window — it forwards to `sdsforge` with a warning.
 
 ---
 
@@ -16,7 +18,7 @@ Supports **Japanese**, **English**, **Simplified Chinese**, and **Traditional Ch
 |---|---|
 | **macOS** (Universal — Apple Silicon + Intel) | [sdsconv-macos.zip](https://github.com/kent-tokyo/sdsconv/releases/latest/download/sdsconv-macos.zip) |
 | **Windows** (Portable .exe — no install required) | [sdsconv-windows-portable.zip](https://github.com/kent-tokyo/sdsconv/releases/latest/download/sdsconv-windows-portable.zip) |
-| **Rust / CLI** | `cargo install sdsconv` |
+| **Rust / CLI** | `cargo install sdsforge` |
 
 → [All releases & changelogs](https://github.com/kent-tokyo/sdsconv/releases)
 
@@ -24,10 +26,10 @@ Supports **Japanese**, **English**, **Simplified Chinese**, and **Traditional Ch
 
 ## GUI Mode
 
-Launch the graphical interface by running `sdsconv` **without any arguments**:
+Launch the graphical interface by running `sdsforge` **without any arguments**:
 
 ```bash
-sdsconv
+sdsforge
 ```
 
 The GUI window (820×640) opens with five tabs:
@@ -35,18 +37,23 @@ The GUI window (820×640) opens with five tabs:
 | Tab | Function |
 |---|---|
 | **Convert** | SDS document (PDF/DOCX/XLSX/HTML/URL) → MHLW standard JSON |
-| **Generate** | MHLW JSON → DOCX / HTML / PDF (with optional DOCX template) |
+| **Render Document** | MHLW JSON → DOCX / HTML / PDF (with optional DOCX template) |
 | **Validate** | Structural validation of MHLW JSON with colored OK/Warning/Error results |
 | **Extract Text** | Raw text extraction from documents — no LLM API required |
 | **Settings** | API key, model name, base URL, quality, language, UI language |
 
-| Convert tab | Generate tab | Extract Text tab |
+| Convert tab | Render tab | Extract Text tab |
 |---|---|---|
-| ![Convert tab](../docs/tab_convert.png) | ![Generate tab](../docs/tab_generate.png) | ![Extract Text tab](../docs/tab_extract.png) |
+| ![Convert tab](../docs/tab_convert.png) | ![Render tab](../docs/tab_generate.png) | ![Extract Text tab](../docs/tab_extract.png) |
 
 **Drag & drop** files onto any tab to fill the input field automatically.
 
-Settings are saved to `~/.config/sdsconv/config.toml` and restored on next launch.
+Settings are saved to your OS config directory under `sdsforge/config.toml`
+(`~/Library/Application Support/sdsforge/config.toml` on macOS,
+`~/.config/sdsforge/config.toml` on Linux), migrated automatically from the
+pre-rename `sdsconv/config.toml` location the first time you launch this
+version if the new file doesn't exist yet — your saved API key and settings
+carry over, and the old file is left untouched.
 The GUI and CLI share the same conversion engine (`tasks.rs`), so results are identical.
 
 ---
@@ -58,29 +65,29 @@ The GUI and CLI share the same conversion engine (`tasks.rs`), so results are id
 ```bash
 # Single file (Anthropic Claude, default)
 export ANTHROPIC_API_KEY=sk-ant-...
-sdsconv to-json --input input.pdf --output output.json
+sdsforge to-json --input input.pdf --output output.json
 
 # Specify source language
-sdsconv to-json --input sds_en.pdf --output output.json --lang en
+sdsforge to-json --input sds_en.pdf --output output.json --lang en
 
 # Batch mode — process a whole directory
-sdsconv to-json --input-dir ./pdfs/ --output-dir ./json/ --lang ja
+sdsforge to-json --input-dir ./pdfs/ --output-dir ./json/ --lang ja
 
 # OpenAI GPT (defaults to gpt-4o-mini)
-sdsconv to-json --input input.pdf --output output.json \
+sdsforge to-json --input input.pdf --output output.json \
   --provider openai --api-key $OPENAI_API_KEY
 
 # Google Gemini (defaults to gemini-2.0-flash)
-sdsconv to-json --input input.pdf --output output.json \
+sdsforge to-json --input input.pdf --output output.json \
   --provider gemini --api-key $GEMINI_API_KEY
 
 # Local LLM via Ollama (any OpenAI-compatible endpoint)
-sdsconv to-json --input input.pdf --output output.json \
+sdsforge to-json --input input.pdf --output output.json \
   --provider local --base-url http://localhost:11434/v1 \
   --model llama3.2 --api-key dummy
 
 # From pre-extracted text (skip PDF parsing)
-sdsconv to-json --input extracted.txt --output output.json --lang ja
+sdsforge to-json --input extracted.txt --output output.json --lang ja
 ```
 
 | Flag | Default | Description |
@@ -110,23 +117,31 @@ sdsconv to-json --input extracted.txt --output output.json --lang ja
 | `cohere` | `command-r-plus` | `COHERE_API_KEY` |
 | `local` | `llama3` | `LOCAL_LLM_API_KEY` (optional; defaults to `ollama`) |
 
-### `to-docx` — Convert MHLW standard JSON → Word document
+### `render` — Convert MHLW standard JSON → Word / HTML / PDF
 
 ```bash
 # Single file (built-in layout)
-sdsconv to-docx --input output.json --output result.docx --lang ja
+sdsforge render --input output.json --to docx --output result.docx --lang ja
 
 # Batch mode (built-in layout)
-sdsconv to-docx --input-dir ./json/ --output-dir ./docx/ --lang en
+sdsforge render --input-dir ./json/ --output-dir ./docx/ --to docx --lang en
+
+# HTML or PDF instead of DOCX
+sdsforge render --input output.json --to html --output result.html --lang ja
+sdsforge render --input output.json --to pdf  --output result.pdf  --lang ja
 
 # Fill a Word template with {{Placeholder}} substitution
-sdsconv to-docx --input output.json --output result.docx \
+sdsforge render --input output.json --to docx --output result.docx \
   --template my_template.docx
 
 # Batch mode with template
-sdsconv to-docx --input-dir ./json/ --output-dir ./docx/ \
+sdsforge render --input-dir ./json/ --output-dir ./docx/ --to docx \
   --template my_template.docx
 ```
+
+`to-docx`, `to-html`, and `to-pdf` still work as deprecated aliases for
+`render --to docx|html|pdf` (same implementation, a deprecation warning is
+printed to stderr) — switch to `render` at your own pace.
 
 #### Word template format
 
@@ -150,10 +165,11 @@ the tool automatically merges such splits before substitution.
 |---|---|---|
 | `--input` | — | Input JSON file |
 | `--input-dir` | — | Input directory (batch — processes all `.json`) |
-| `--output` | — | Output DOCX file |
+| `--output` | — | Output file |
 | `--output-dir` | — | Output directory (batch) |
+| `--to` | — | Output format: `docx`, `html`, or `pdf` |
 | `--lang` | `ja` | Output language: `ja`, `en`, `zh-cn`, `zh-tw` (without `--template`) |
-| `--template` | — | Word template with `{{FieldName}}` placeholders |
+| `--template` | — | Word template with `{{FieldName}}` placeholders (`--to docx` only) |
 
 ### `extract-text` — Extract raw text from PDF/DOCX
 
@@ -161,23 +177,23 @@ Extracts the text that the LLM would receive, without making any API call. Usefu
 
 ```bash
 # Save to file
-sdsconv extract-text --input input.pdf --output extracted.txt
+sdsforge extract-text --input input.pdf --output extracted.txt
 
 # Print to stdout
-sdsconv extract-text --input input.pdf
+sdsforge extract-text --input input.pdf
 
 # Then feed back into to-json
-sdsconv to-json --input extracted.txt --output output.json --lang ja
+sdsforge to-json --input extracted.txt --output output.json --lang ja
 ```
 
 ### `validate` — Check a JSON file for structural issues
 
 ```bash
 # Human-readable output (exits 0 = OK, 1 = warnings found)
-sdsconv validate --input output.json
+sdsforge validate --input output.json
 
 # JSON array output for CI/scripting
-sdsconv validate --input output.json --json
+sdsforge validate --input output.json --json
 ```
 
 Checks that key sections (Identification, HazardIdentification, ToxicologicalInformation, etc.) are populated. Exits with code `1` if any issues are found.
@@ -220,11 +236,11 @@ The conversion engine is available as a standalone library:
 
 | Crate | crates.io | Description |
 |---|---|---|
-| `sdsconv-core` | [`sdsconv-core`](https://crates.io/crates/sdsconv-core) | LLM-based extraction, DOCX/HTML generation, MHLW schema |
+| `sdsforge-core` | [`sdsforge-core`](https://crates.io/crates/sdsforge-core) | LLM-based extraction, DOCX/HTML generation, MHLW schema |
 
 ```toml
 [dependencies]
-sdsconv-core = "0.3"
+sdsforge-core = "0.4"
 ```
 
 ---

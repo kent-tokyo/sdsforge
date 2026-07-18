@@ -1,4 +1,4 @@
-# sdsconv
+# sdsforge
 
 **Python优先、Rust驱动的SDS文档转换与MHLW JSON质量评估工具包。**
 
@@ -11,9 +11,9 @@
 ## 安装
 
 ```bash
-pip install sdsconv                   # Python绑定
-pip install "sdsconv[analysis]"       # + causasv质量分析
-cargo install sdsconv                 # CLI / GUI二进制
+pip install sdsforge                   # Python绑定
+pip install "sdsforge[analysis]"       # + causasv质量分析
+cargo install sdsforge                 # CLI / GUI二进制
 ```
 
 ---
@@ -21,37 +21,37 @@ cargo install sdsconv                 # CLI / GUI二进制
 ## 快速开始 — Python
 
 ```python
-import sdsconv
+import sdsforge
 
 # 仅提取文本（不使用LLM）
-text = sdsconv.extract_text("sample.pdf")
+text = sdsforge.extract_text("sample.pdf")
 
 # 从URL直接转换
-data, report = sdsconv.to_json_url_with_report(
+data, report = sdsforge.to_json_url_with_report(
     "https://example.com/sds.pdf", lang="zh-cn",
 )
 
 # SDS文档 → MHLW标准JSON
-data, report = sdsconv.to_json_with_report(
+data, report = sdsforge.to_json_with_report(
     "sample.pdf",
     lang="zh-cn",
     strict_mhlw=True,
 )
 
 # 获取结构化检查结果
-findings = sdsconv.validate(data, strict_mhlw=True)
+findings = sdsforge.validate(data, strict_mhlw=True)
 
 print(f"已提取章节: {len(report['populated_sections'])}")
 print(f"发现问题: {len(findings)} (HIGH: {sum(1 for f in findings if f['level']=='HIGH')})")
 
 # 保存MHLW JSON
-sdsconv.write_json(data, "output.json")
+sdsforge.write_json(data, "output.json")
 ```
 
 语料库规模评估（无需人工审核）：
 
 ```python
-from sdsconv.eval import eval_corpus
+from sdsforge.eval import eval_corpus
 
 df = eval_corpus(
     input_dir="data/sds_raw",
@@ -76,7 +76,7 @@ python examples/mhlw_allyl_chloride/convert.py
 
 ---
 
-## 为什么选择 sdsconv
+## 为什么选择 sdsforge
 
 - **MHLW原生支持**: 直接转换为日本厚生劳动省SDS数据交换格式v1.0（`SDS_Schema_v1.0.json`），并进行官方模式验证。
 - **基于证据的提取**: 使用LLM将自由格式SDS文本映射到约200个深层嵌套字段，字段级原文交叉验证可检测幻觉。
@@ -112,7 +112,7 @@ python examples/mhlw_allyl_chloride/convert.py
 无需人工审核：
 
 ```python
-from sdsconv.eval import eval_corpus
+from sdsforge.eval import eval_corpus
 
 df = eval_corpus("data/sds_raw", "runs/eval_001", jobs=8)
 ```
@@ -133,22 +133,24 @@ df = eval_corpus("data/sds_raw", "runs/eval_001", jobs=8)
 
 ```bash
 # PDF/DOCX/XLSX/HTML/URL → MHLW JSON
-sdsconv to-json --input input.pdf --output output.json --lang zh-cn
+sdsforge to-json --input input.pdf --output output.json --lang zh-cn
 
 # 带修正流程和PubChem富集
-sdsconv to-json --input input.pdf --output output.json --correct --enrich
+sdsforge to-json --input input.pdf --output output.json --correct --enrich
 
-# JSON → Word文档（16节JIS Z 7253格式）
-sdsconv to-docx --input output.json --output result.docx --lang zh-cn
+# MHLW JSON → Word / HTML / PDF
+sdsforge render --input output.json --to docx --output result.docx --lang zh-cn
+sdsforge render --input output.json --to html --output result.html --lang zh-cn
+sdsforge render --input output.json --to pdf  --output result.pdf  --lang zh-cn
 
 # 严格MHLW模式验证
-sdsconv validate --input output.json --strict-mhlw
+sdsforge validate --input output.json --strict-mhlw
 
 # 批量处理目录
-sdsconv to-json --input-dir data/ --output-dir out/ --jobs 8
+sdsforge to-json --input-dir data/ --output-dir out/ --jobs 8
 
 # 语料库评估
-sdsconv eval-corpus --input-dir data/sds_raw --output-dir runs/eval_001 --jobs 8
+sdsforge eval-corpus --input-dir data/sds_raw --output-dir runs/eval_001 --jobs 8
 ```
 
 ---
@@ -158,10 +160,10 @@ sdsconv eval-corpus --input-dir data/sds_raw --output-dir runs/eval_001 --jobs 8
 无参数运行即可打开图形界面：
 
 ```bash
-sdsconv
+sdsforge
 ```
 
-五个标签页：**转换** · **生成文档** · **验证** · **提取文本** · **设置**
+五个标签页：**转换** · **渲染文档** · **验证** · **提取文本** · **设置**
 
 桌面应用下载：[macOS](https://github.com/kent-tokyo/sdsconv/releases/latest/download/sdsconv-macos.zip) · [Windows](https://github.com/kent-tokyo/sdsconv/releases/latest/download/sdsconv-windows-portable.zip) · `brew install --cask sdsconv`
 
@@ -183,12 +185,12 @@ sdsconv
 
 ```toml
 [dependencies]
-sdsconv-core = "0.3"
+sdsforge-core = "0.4"
 ```
 
-**Crate：** [`sdsconv`](https://crates.io/crates/sdsconv) · [`sdsconv-core`](https://crates.io/crates/sdsconv-core)
+**Crate：** [`sdsforge`](https://crates.io/crates/sdsforge) · [`sdsforge-core`](https://crates.io/crates/sdsforge-core)
 
-**Python包：** [`sdsconv`](https://pypi.org/project/sdsconv/) — `pip install sdsconv`
+**Python包：** [`sdsforge`](https://pypi.org/project/sdsforge/) — `pip install sdsforge`
 
 ---
 

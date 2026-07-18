@@ -1,4 +1,4 @@
-# sdsconv
+# sdsforge
 
 **SDS文書を厚生労働省SDSデータ交換フォーマットJSONへ変換し、スキーマ検証・GHS/CAS検証・コーパス規模品質評価まで行う Python-first / Rust-powered ツールキット。**
 
@@ -9,9 +9,9 @@
 ## インストール
 
 ```bash
-pip install sdsconv                   # Python バインディング
-pip install "sdsconv[analysis]"       # + causasv 品質分析
-cargo install sdsconv                 # CLI / GUI バイナリ
+pip install sdsforge                   # Python バインディング
+pip install "sdsforge[analysis]"       # + causasv 品質分析
+cargo install sdsforge                 # CLI / GUI バイナリ
 ```
 
 ---
@@ -19,37 +19,37 @@ cargo install sdsconv                 # CLI / GUI バイナリ
 ## クイックスタート — Python
 
 ```python
-import sdsconv
+import sdsforge
 
 # テキスト抽出のみ（LLM不使用）
-text = sdsconv.extract_text("sample.pdf")
+text = sdsforge.extract_text("sample.pdf")
 
 # URL から直接変換
-data, report = sdsconv.to_json_url_with_report(
+data, report = sdsforge.to_json_url_with_report(
     "https://example.com/sds.pdf", lang="ja",
 )
 
 # SDS文書 → 厚労省標準JSON
-data, report = sdsconv.to_json_with_report(
+data, report = sdsforge.to_json_with_report(
     "sample.pdf",
     lang="ja",
     strict_mhlw=True,
 )
 
 # 構造化 findings を取得
-findings = sdsconv.validate(data, strict_mhlw=True)
+findings = sdsforge.validate(data, strict_mhlw=True)
 
 print(f"抽出セクション数: {len(report['populated_sections'])}")
 print(f"検知件数: {len(findings)} (HIGH: {sum(1 for f in findings if f['level']=='HIGH')})")
 
 # MHLW JSON を保存
-sdsconv.write_json(data, "output.json")
+sdsforge.write_json(data, "output.json")
 ```
 
 コーパス規模評価（人手レビュー不要）:
 
 ```python
-from sdsconv.eval import eval_corpus
+from sdsforge.eval import eval_corpus
 
 df = eval_corpus(
     input_dir="data/sds_raw",
@@ -74,7 +74,7 @@ python examples/mhlw_allyl_chloride/convert.py
 
 ---
 
-## なぜ sdsconv か
+## なぜ sdsforge か
 
 - **MHLW ネイティブ**: 厚生労働省 SDS データ交換フォーマット v1.0（`SDS_Schema_v1.0.json`）への直接変換とスキーマ検証に対応。
 - **根拠付き抽出**: LLM が SDS 自由記述文を約200の深いネストフィールドへマッピング。フィールド単位の原文照合によりハルシネーションを検出。
@@ -110,7 +110,7 @@ python examples/mhlw_allyl_chloride/convert.py
 人手レビューなしで実行:
 
 ```python
-from sdsconv.eval import eval_corpus
+from sdsforge.eval import eval_corpus
 
 df = eval_corpus("data/sds_raw", "runs/eval_001", jobs=8)
 ```
@@ -128,7 +128,7 @@ df = eval_corpus("data/sds_raw", "runs/eval_001", jobs=8)
 [causasv](https://github.com/kent-tokyo/causasv) で失敗要因を因果分析:
 
 ```python
-from sdsconv.causasv_bridge import print_ranking
+from sdsforge.causasv_bridge import print_ranking
 print_ranking("runs/eval_001/causasv_features.csv")
 ```
 
@@ -138,28 +138,27 @@ print_ranking("runs/eval_001/causasv_features.csv")
 
 ```bash
 # PDF/DOCX/XLSX/HTML/URL → MHLW JSON
-sdsconv to-json --input input.pdf --output output.json --lang ja
+sdsforge to-json --input input.pdf --output output.json --lang ja
 
 # 補正パス＋PubChem照合付き
-sdsconv to-json --input input.pdf --output output.json --correct --enrich
+sdsforge to-json --input input.pdf --output output.json --correct --enrich
 
-# JSON → Word文書（JIS Z 7253 16項目）
-sdsconv to-docx --input output.json --output result.docx --lang ja
-
-# JSON → HTML（印刷対応・A4・inline CSS）
-sdsconv to-html --input output.json --output result.html --lang ja
+# MHLW JSON → Word / HTML / PDF
+sdsforge render --input output.json --to docx --output result.docx --lang ja
+sdsforge render --input output.json --to html --output result.html --lang ja
+sdsforge render --input output.json --to pdf  --output result.pdf  --lang ja
 
 # strict MHLW モードで検証
-sdsconv validate --input output.json --strict-mhlw
+sdsforge validate --input output.json --strict-mhlw
 
 # バッチ処理（ディレクトリ単位）
-sdsconv to-json --input-dir data/ --output-dir out/ --jobs 8
+sdsforge to-json --input-dir data/ --output-dir out/ --jobs 8
 
 # コーパス評価
-sdsconv eval-corpus --input-dir data/sds_raw --output-dir runs/eval_001 --jobs 8
+sdsforge eval-corpus --input-dir data/sds_raw --output-dir runs/eval_001 --jobs 8
 ```
 
-CLI 詳細リファレンス → [sdsconv/README_ja.md](./sdsconv/README_ja.md)
+CLI 詳細リファレンス → [sdsforge/README_ja.md](./sdsforge/README_ja.md)
 
 ---
 
@@ -167,7 +166,7 @@ CLI 詳細リファレンス → [sdsconv/README_ja.md](./sdsconv/README_ja.md)
 
 ```bash
 # サーバー起動（デフォルト: 127.0.0.1:3000）
-SDS_SERVER_TOKEN=secret sdsconv-server
+SDS_SERVER_TOKEN=secret sdsforge-server
 
 # PDF を変換
 curl -X POST http://localhost:3000/api/to-json \
@@ -184,10 +183,10 @@ curl -X POST http://localhost:3000/api/to-json \
 引数なしで起動するとグラフィカルインターフェースが開きます:
 
 ```bash
-sdsconv
+sdsforge
 ```
 
-5タブ構成: **変換** · **文書生成** · **検証** · **テキスト抽出** · **設定**
+5タブ構成: **変換** · **文書レンダリング** · **検証** · **テキスト抽出** · **設定**
 
 デスクトップアプリ: [macOS](https://github.com/kent-tokyo/sdsconv/releases/latest/download/sdsconv-macos.zip) · [Windows](https://github.com/kent-tokyo/sdsconv/releases/latest/download/sdsconv-windows-portable.zip) · `brew install --cask sdsconv`
 
@@ -209,14 +208,14 @@ sdsconv
 
 ```toml
 [dependencies]
-sdsconv-core = "0.3"
+sdsforge-core = "0.4"
 ```
 
-Rust API 詳細 → [sdsconv_core/README_ja.md](./sdsconv_core/README_ja.md)
+Rust API 詳細 → [sdsforge_core/README_ja.md](./sdsforge_core/README_ja.md)
 
-**クレート:** [`sdsconv`](https://crates.io/crates/sdsconv) · [`sdsconv-core`](https://crates.io/crates/sdsconv-core)
+**クレート:** [`sdsforge`](https://crates.io/crates/sdsforge) · [`sdsforge-core`](https://crates.io/crates/sdsforge-core)
 
-**Python パッケージ:** [`sdsconv`](https://pypi.org/project/sdsconv/) — `pip install sdsconv`
+**Python パッケージ:** [`sdsforge`](https://pypi.org/project/sdsforge/) — `pip install sdsforge`
 
 ---
 

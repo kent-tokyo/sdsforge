@@ -1,10 +1,12 @@
-# sdsconv-core
+# sdsforge-core
 
 用于**双向转换**安全数据表（SDS）文档（Word/PDF）与日本厚生劳动省（MHLW）标准JSON格式的Rust库。
 
 支持**日语、英语、简体中文、繁体中文**的SDS文档处理。
 
-> **需要命令行工具？** 请安装 [`sdsconv`](https://crates.io/crates/sdsconv)。
+> **需要命令行工具？** 请安装 [`sdsforge`](https://crates.io/crates/sdsforge)。
+>
+> **从 `sdsconv-core` 迁移？** 参见 [`../docs/migration-from-sdsconv.md`](../docs/migration-from-sdsconv.md)。`sdsconv-core` 作为本crate的轻量 `#[deprecated]` 重新导出，仍可继续使用。
 
 ---
 
@@ -25,7 +27,7 @@
 
 ```toml
 [dependencies]
-sdsconv-core = "0.3"
+sdsforge-core = "0.4"
 ```
 
 ---
@@ -35,7 +37,7 @@ sdsconv-core = "0.3"
 ### 将SDS文档转换为JSON（Anthropic Claude）
 
 ```rust
-use sdsconv_core::{
+use sdsforge_core::{
     AnthropicBackend, LlmConfig,
     convert_to_json, ConvertConfig, Language,
 };
@@ -63,7 +65,7 @@ async fn main() -> anyhow::Result<()> {
 ### 将JSON转换为Word文档
 
 ```rust
-use sdsconv_core::{convert_from_json, ConvertConfig, Language, SdsRoot};
+use sdsforge_core::{convert_from_json, ConvertConfig, Language, SdsRoot};
 
 fn main() -> anyhow::Result<()> {
     let json = std::fs::read_to_string("output.json")?;
@@ -83,7 +85,7 @@ fn main() -> anyhow::Result<()> {
 ### OpenAI GPT / Google Gemini 后端
 
 ```rust
-use sdsconv_core::{OpenAiCompatBackend, LlmConfig};
+use sdsforge_core::{OpenAiCompatBackend, LlmConfig};
 
 // OpenAI GPT
 let config = LlmConfig { model: "gpt-4o-mini".into(), max_tokens: 8192 };
@@ -106,7 +108,7 @@ let backend = OpenAiCompatBackend::new(
 无需调用LLM即可从PDF/DOCX/XLSX中提取文本。可用于构建自定义处理流程或检查LLM接收的输入内容。
 
 ```rust
-use sdsconv_core::extract_text;
+use sdsforge_core::extract_text;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -123,7 +125,7 @@ async fn main() -> anyhow::Result<()> {
 `validate` 检查 `SdsRoot` 的结构完整性并返回警告消息列表。不会中断执行——部分提取结果仍可使用。
 
 ```rust
-use sdsconv_core::{validate, SdsRoot};
+use sdsforge_core::{validate, SdsRoot};
 
 fn main() -> anyhow::Result<()> {
     let json = std::fs::read_to_string("output.json")?;
@@ -143,7 +145,7 @@ fn main() -> anyhow::Result<()> {
 实现 `LlmBackend` trait即可接入任意LLM提供商：
 
 ```rust
-use sdsconv_core::{LlmBackend, SdsError};
+use sdsforge_core::{LlmBackend, SdsError};
 
 struct MyLlmBackend { /* ... */ }
 
