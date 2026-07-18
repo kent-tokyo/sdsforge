@@ -7,8 +7,11 @@
 that forwards instead of exiting 1 have all landed (commit #3 — see the
 CLI-command-mapping table below, stages 1–4). The Python bindings/package
 rename (commit #4) has also landed — see "Python API changes" below. The
-new `generate` command (stage 5, CAS/composition → SDS draft), the GitHub
-repository rename, and the config-directory migration have not shipped yet.
+GUI/CLI config-directory migration (commit #5) has also landed — see
+"Config / environment variables" below. The new `generate` CLI command
+(CAS/composition → SDS draft — see the render-rollout stage table's
+stage 5, a separate numbering from the commit list here), the README
+rewrite, and the GitHub repository rename have not shipped yet.
 
 ## Why
 
@@ -142,13 +145,32 @@ startup log lines, and the crate/binary name change (`sdsconv-server` →
 
 ## Config / environment variables
 
-No change in this round. `sdsconv`'s GUI config currently lives at
-`dirs::config_dir()/sdsconv/config.toml`. When the rename lands, this needs an
-explicit **read-old-if-new-missing** migration on first launch (not a silent
-directory rename) so users don't lose saved API keys/settings — this is a
-rename-commit concern, not a docs concern, and is called out here so it isn't
-missed. Environment variables (`ANTHROPIC_API_KEY`, `SDS_SERVER_TOKEN`, etc.)
-are provider/infra names, not product names — unaffected.
+**Status: landed** (commit "refactor: migrate config directory to sdsforge").
+The GUI/CLI-shared config (`AppConfig` in `sdsforge/src/config.rs`) now lives
+at `dirs::config_dir()/sdsforge/config.toml`, migrated automatically from the
+pre-rename `dirs::config_dir()/sdsconv/config.toml` the first time it's
+loaded — GUI and CLI both go through the same `AppConfig::load()`, so the
+resolution logic can't drift between them.
+
+Resolution order, checked on every `load()` call:
+
+1. `sdsforge/config.toml` exists → use it. If `sdsconv/config.toml` also
+   exists and has different content, a warning naming the two file *paths*
+   (never their contents) is logged and the new file still wins.
+2. It's missing but `sdsconv/config.toml` exists → read the old file, then
+   migrate it to the new path via a write-to-temp-then-rename (atomic,
+   0600 permissions on Unix). If migration fails for any reason (directory
+   uncreatable, target unwritable, ...), the settings already read from the
+   old file are still used — migration failure never blocks loading.
+3. Neither file exists → defaults.
+
+The old `sdsconv/config.toml` is never written to or deleted by this process
+— users can remove it manually once they've confirmed the new file is
+correct. Migration is idempotent: once `sdsforge/config.toml` exists, it's
+read directly and never rewritten by `load()`.
+
+Environment variables (`ANTHROPIC_API_KEY`, `SDS_SERVER_TOKEN`, etc.) are
+provider/infra names, not product names — unaffected.
 
 ## Deprecated APIs & removal timeline
 
