@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::converter::validator::{validate_cas_format, Finding};
-use crate::enrichment::{lookup_cas, CasInfo};
+use crate::enrichment::{lookup_cas, CasInfo, CasResolution};
+use crate::normalize::{ChemicalNormalizer, NormalizationIssue, NormalizationStatus};
 use crate::schema::SdsRoot;
 
 use super::draft::{draft_sections_from_resolved_input, SectionDraftResult};
@@ -11,7 +12,8 @@ use super::input::ProductInput;
 use super::provenance::{path, EvidenceLevel, FieldProvenance};
 use super::resolve;
 use super::unresolved::{
-    build_lookup_failure_unresolved, FieldStatus, NotApplicableReason, UnresolvedField,
+    build_lookup_failure_unresolved, FieldStatus, NotApplicableReason, RegulatoryImpact,
+    RequiredInput, SafetyImpact, UnresolvedField, UnresolvedReason,
 };
 
 /// Generation must never mark its own output approved — approval is a
@@ -223,6 +225,252 @@ pub async fn generate_with_enrichment(
         }
     }
     generate_from_resolved_input(input, &resolved)
+}
+
+/// Adds chematic-backed chemical-identity normalization on top of
+/// [`generate_from_resolved_input`] — reuses it rather than duplicating
+/// Section 1/3 mapping logic. Strategy: derive a plain `HashMap<String,
+/// CasInfo>` containing only genuinely `CasResolution::Resolved` (non-
+/// ambiguous) candidates and call the existing, unchanged
+/// `generate_from_resolved_input` — an ambiguous CAS is simply absent from
+/// that map, so the base pass treats it exactly like today's "lookup
+/// didn't resolve" case (commit #9's `GEN-CAS-ENRICHMENT-MISSING`/
+/// `MissingInput`, unchanged). This function then does one additive pass
+/// over the already-built result: replaces the generic lookup-failure
+/// unresolved entry with a specific `AmbiguousChemicalIdentity` one for
+/// ambiguous components, and for resolved components runs the normalizer
+/// and layers on canonical-SMILES writing / formula-consistency handling.
+///
+/// Never touches any of the seven product-level properties commit A
+/// (2ac2758/d4dd15d) governs — this function's writes are scoped entirely
+/// to `Composition.CompositionAndConcentration[i].{MolecularFormula,SMILES}`.
+pub fn generate_from_normalized_input<N: ChemicalNormalizer>(
+    input: &ProductInput,
+    resolved: &HashMap<String, CasResolution>,
+    normalizer: &N,
+) -> GenerationResult {
+    let basic: HashMap<String, CasInfo> = resolved
+        .iter()
+        .filter_map(|(cas, res)| match res {
+            CasResolution::Resolved(c) => Some((
+                cas.clone(),
+                CasInfo {
+                    cas: c.cas.clone(),
+                    iupac_name: c.iupac_name.clone(),
+                    molecular_formula: c.molecular_formula.clone(),
+                    pubchem_cid: c.pubchem_cid,
+                },
+            )),
+            _ => None,
+        })
+        .collect();
+
+    let mut result = generate_from_resolved_input(input, &basic);
+
+    for (i, component) in input.components.iter().enumerate() {
+        let Some(cas) = &component.cas_number else {
+            continue;
+        };
+        match resolved.get(cas) {
+            Some(CasResolution::Ambiguous(candidates)) => {
+                apply_ambiguous_identity(&mut result, i, cas, candidates);
+            }
+            Some(CasResolution::Resolved(candidate)) => {
+                let normalization = normalizer.normalize(candidate);
+                apply_normalization(&mut result, i, candidate, &normalization);
+            }
+            Some(CasResolution::NotFound) | None => {
+                // Already handled by the base pass (GEN-CAS-ENRICHMENT-MISSING /
+                // MissingInput) — nothing additional to do here.
+            }
+        }
+    }
+
+    result.evidence_summary = compute_evidence_summary(&result.provenance, &result.unresolved);
+    result.release_status = compute_release_status(&result.unresolved, &result.findings);
+    result
+}
+
+fn apply_ambiguous_identity(
+    result: &mut GenerationResult,
+    component_index: usize,
+    cas: &str,
+    candidates: &[crate::enrichment::ChemicalIdentityCandidate],
+) {
+    let cas_path = path::composition_row(component_index, path::CAS_NO);
+    let cids: Vec<String> = candidates
+        .iter()
+        .filter_map(|c| c.pubchem_cid)
+        .map(|cid| cid.to_string())
+        .collect();
+
+    result.findings.push(Finding {
+        level: "HIGH".into(),
+        rule: "GEN-CAS-AMBIGUOUS".into(),
+        message: format!(
+            "CAS '{cas}': PubChem returned {} distinct candidates (CIDs: {}) — a material identity \
+             ambiguity, not resolved automatically.",
+            candidates.len(),
+            if cids.is_empty() { "unknown".to_string() } else { cids.join(", ") }
+        ),
+    });
+
+    // Replace the generic lookup-failure entry the base pass created (the
+    // CAS wasn't in the derived CasInfo map, so it looks like a plain
+    // "not found" to generate_from_resolved_input) with a more specific one.
+    result.unresolved.retain(|f| f.path != cas_path);
+    result.unresolved.push(UnresolvedField {
+        path: cas_path,
+        title: format!("Ambiguous chemical identity for CAS '{cas}'"),
+        reason: UnresolvedReason::AmbiguousChemicalIdentity,
+        required_inputs: vec![RequiredInput::new(
+            "authoritative_identity_source",
+            format!(
+                "An authoritative supplier or regulatory source selecting one specific candidate \
+                 identity from {} PubChem matches (CIDs: {}).",
+                candidates.len(),
+                if cids.is_empty() {
+                    "unknown".to_string()
+                } else {
+                    cids.join(", ")
+                }
+            ),
+        )],
+        acceptable_evidence: vec![
+            EvidenceLevel::SupplierSpecification,
+            EvidenceLevel::SupplierSds,
+            EvidenceLevel::RegulatoryDatabase,
+        ],
+        safety_impact: SafetyImpact::High,
+        regulatory_impact: RegulatoryImpact::High,
+        recommended_action:
+            "Do not select a candidate by name similarity, CID order, or structure \
+            size — obtain authoritative confirmation of which candidate matches this CAS number."
+                .into(),
+        blocks_release: true,
+    });
+}
+
+fn apply_normalization(
+    result: &mut GenerationResult,
+    component_index: usize,
+    candidate: &crate::enrichment::ChemicalIdentityCandidate,
+    normalization: &crate::normalize::ChemicalNormalizationResult,
+) {
+    match normalization.status {
+        NormalizationStatus::MissingStructure => {
+            result.findings.push(Finding {
+                level: "LOW".into(),
+                rule: "GEN-STRUCTURE-MISSING".into(),
+                message: format!(
+                    "CAS '{}': resolver returned no SMILES structure — CAS/name/concentration remain usable.",
+                    candidate.cas
+                ),
+            });
+        }
+        NormalizationStatus::InvalidStructure => {
+            result.findings.push(Finding {
+                level: "MED".into(),
+                rule: "GEN-STRUCTURE-INVALID".into(),
+                message: format!(
+                    "CAS '{}': resolver-supplied SMILES could not be parsed — identity remains \
+                     independently verifiable via CID/IUPAC name.",
+                    candidate.cas
+                ),
+            });
+        }
+        NormalizationStatus::Ambiguous => {
+            // Not reachable via this code path today (ambiguity is handled
+            // at the CasResolution level before a normalizer ever runs),
+            // kept for completeness of the match.
+        }
+        NormalizationStatus::Normalized | NormalizationStatus::ReviewRequired => {
+            let has_mismatch = normalization
+                .issues
+                .contains(&NormalizationIssue::FormulaMismatch);
+            let has_multi_fragment = normalization
+                .issues
+                .contains(&NormalizationIssue::MultiFragmentStructure);
+
+            if has_mismatch {
+                let calculated = normalization
+                    .calculated
+                    .molecular_formula
+                    .as_deref()
+                    .unwrap_or("?");
+                let resolver_formula = candidate.molecular_formula.as_deref().unwrap_or("?");
+                result.findings.push(Finding {
+                    level: "HIGH".into(),
+                    rule: "GEN-STRUCTURE-FORMULA-MISMATCH".into(),
+                    message: format!(
+                        "CAS '{}': resolver formula '{resolver_formula}' does not match chematic-calculated \
+                         formula '{calculated}' from the resolved structure — not reconciled automatically.",
+                        candidate.cas
+                    ),
+                });
+                // Don't expose two conflicting values in the official field
+                // — remove whatever the base pass already wrote.
+                remove_molecular_formula(result, component_index);
+            }
+            if has_multi_fragment {
+                result.findings.push(Finding {
+                    level: "MED".into(),
+                    rule: "GEN-STRUCTURE-MULTIFRAGMENT".into(),
+                    message: format!(
+                        "CAS '{}': structure has more than one disconnected fragment (e.g. a salt or \
+                         solvate) — reported for review, not automatically rejected or reduced to its \
+                         largest fragment.",
+                        candidate.cas
+                    ),
+                });
+            }
+
+            // Canonical SMILES is written whenever normalization produced
+            // one at all -- including the multi-fragment/formula-mismatch
+            // review cases, since the structure itself parsed successfully
+            // and the canonical form is still the accurate representation
+            // of what was parsed.
+            if let Some(canonical) = &normalization.canonical_smiles {
+                set_smiles(result, component_index, canonical);
+                result
+                    .provenance
+                    .push(FieldProvenance::source_smiles(candidate.pubchem_cid));
+                result.provenance.push(FieldProvenance::canonical_smiles(
+                    candidate.pubchem_cid,
+                    normalization
+                        .issues
+                        .iter()
+                        .map(|i| format!("{i:?}"))
+                        .collect(),
+                ));
+            }
+        }
+    }
+}
+
+fn composition_row_mut(
+    result: &mut GenerationResult,
+    index: usize,
+) -> Option<&mut crate::schema::CompositionCompositionAndConcentration> {
+    result
+        .sds
+        .composition
+        .as_mut()?
+        .composition_and_concentration
+        .as_mut()?
+        .get_mut(index)
+}
+
+fn set_smiles(result: &mut GenerationResult, index: usize, canonical: &str) {
+    if let Some(row) = composition_row_mut(result, index) {
+        row.smiles = Some(canonical.to_string());
+    }
+}
+
+fn remove_molecular_formula(result: &mut GenerationResult, index: usize) {
+    if let Some(row) = composition_row_mut(result, index) {
+        row.molecular_formula = None;
+    }
 }
 
 /// Maps an [`EvidenceLevel`] to the [`FieldStatus`] bucket it represents,
@@ -898,5 +1146,319 @@ mod tests {
         assert_eq!(gate.status, ReleaseStatus::Blocked);
         // Both conflicts share identical recommended_action text -> deduplicated to one entry.
         assert_eq!(gate.required_actions.len(), 1);
+    }
+
+    use crate::enrichment::ChemicalIdentityCandidate;
+    use crate::normalize::UnavailableNormalizer;
+
+    fn identity_candidate(
+        cas: &str,
+        cid: u64,
+        smiles: Option<&str>,
+        formula: Option<&str>,
+    ) -> ChemicalIdentityCandidate {
+        ChemicalIdentityCandidate {
+            cas: cas.into(),
+            pubchem_cid: Some(cid),
+            iupac_name: Some("test compound".into()),
+            molecular_formula: formula.map(str::to_string),
+            source_smiles: smiles.map(str::to_string),
+            isomeric_smiles: None,
+            inchi_key: None,
+        }
+    }
+
+    #[test]
+    fn multiple_candidates_are_not_silently_reduced_to_first() {
+        let mut resolved = HashMap::new();
+        resolved.insert(
+            "7732-18-5".to_string(),
+            CasResolution::Ambiguous(vec![
+                identity_candidate("7732-18-5", 1, Some("O"), Some("H2O")),
+                identity_candidate("7732-18-5", 2, Some("[OH2]"), Some("H2O")),
+            ]),
+        );
+        let result = generate_from_normalized_input(&product(), &resolved, &UnavailableNormalizer);
+
+        assert!(result
+            .findings
+            .iter()
+            .any(|f| f.rule == "GEN-CAS-AMBIGUOUS"));
+        let unresolved = result
+            .unresolved
+            .iter()
+            .find(|f| f.path == path::composition_row(0, path::CAS_NO))
+            .unwrap();
+        assert_eq!(
+            unresolved.reason,
+            UnresolvedReason::AmbiguousChemicalIdentity
+        );
+        assert!(unresolved.blocks_release);
+    }
+
+    #[test]
+    fn ambiguous_identity_blocks_release() {
+        let mut resolved = HashMap::new();
+        resolved.insert(
+            "7732-18-5".to_string(),
+            CasResolution::Ambiguous(vec![
+                identity_candidate("7732-18-5", 1, None, None),
+                identity_candidate("7732-18-5", 2, None, None),
+            ]),
+        );
+        let result = generate_from_normalized_input(&product(), &resolved, &UnavailableNormalizer);
+        assert_eq!(result.release_status, ReleaseStatus::Blocked);
+    }
+
+    #[test]
+    fn resolved_candidate_with_no_smiles_via_unavailable_normalizer_writes_nothing() {
+        let mut resolved = HashMap::new();
+        resolved.insert(
+            "7732-18-5".to_string(),
+            CasResolution::Resolved(identity_candidate("7732-18-5", 962, None, Some("H2O"))),
+        );
+        let result = generate_from_normalized_input(&product(), &resolved, &UnavailableNormalizer);
+        let row = &result
+            .sds
+            .composition
+            .as_ref()
+            .unwrap()
+            .composition_and_concentration
+            .as_ref()
+            .unwrap()[0];
+        assert!(row.smiles.is_none());
+        assert!(result
+            .findings
+            .iter()
+            .any(|f| f.rule == "GEN-STRUCTURE-MISSING"));
+    }
+
+    #[test]
+    fn no_chematic_result_ever_populates_a_product_level_property() {
+        let mut resolved = HashMap::new();
+        resolved.insert(
+            "7732-18-5".to_string(),
+            CasResolution::Resolved(identity_candidate("7732-18-5", 962, Some("O"), Some("H2O"))),
+        );
+        let result = generate_from_normalized_input(&product(), &resolved, &UnavailableNormalizer);
+        assert!(result.sds.physical_chemical_properties.is_none());
+        assert!(result.sds.stability_reactivity.is_none());
+        assert!(result.sds.hazard_identification.is_none());
+    }
+
+    #[test]
+    fn official_sds_json_has_no_normalization_report_keys() {
+        let mut resolved = HashMap::new();
+        resolved.insert(
+            "7732-18-5".to_string(),
+            CasResolution::Resolved(identity_candidate("7732-18-5", 962, Some("O"), Some("H2O"))),
+        );
+        let result = generate_from_normalized_input(&product(), &resolved, &UnavailableNormalizer);
+        let json = serde_json::to_string(&result.sds).unwrap();
+        for leak in [
+            "status",
+            "issues",
+            "screening_alerts",
+            "NormalizationStatus",
+            "confidence",
+        ] {
+            assert!(
+                !json.contains(leak),
+                "official SDS JSON must not contain '{leak}'"
+            );
+        }
+    }
+
+    #[cfg(feature = "chematic-normalization")]
+    mod chematic_integration {
+        use super::*;
+        use crate::normalize::ChematicNormalizer;
+
+        #[test]
+        fn matching_formula_populates_smiles_and_keeps_formula() {
+            let mut resolved = HashMap::new();
+            resolved.insert(
+                "7732-18-5".to_string(),
+                CasResolution::Resolved(identity_candidate(
+                    "7732-18-5",
+                    962,
+                    Some("O"),
+                    Some("H2O"),
+                )),
+            );
+            let result = generate_from_normalized_input(&product(), &resolved, &ChematicNormalizer);
+            let row = &result
+                .sds
+                .composition
+                .as_ref()
+                .unwrap()
+                .composition_and_concentration
+                .as_ref()
+                .unwrap()[0];
+            assert!(row.smiles.is_some());
+            assert_eq!(row.molecular_formula.as_deref(), Some("H2O"));
+            assert!(!result
+                .findings
+                .iter()
+                .any(|f| f.rule == "GEN-STRUCTURE-FORMULA-MISMATCH"));
+        }
+
+        #[test]
+        fn formula_mismatch_blocks_release_and_preserves_both_values_in_provenance() {
+            let mut resolved = HashMap::new();
+            resolved.insert(
+                "64-17-5".to_string(),
+                CasResolution::Resolved(identity_candidate(
+                    "64-17-5",
+                    702,
+                    Some("CCO"),
+                    Some("C6H12O6"),
+                )),
+            );
+            let result =
+                generate_from_normalized_input(&product_ethanol(), &resolved, &ChematicNormalizer);
+
+            assert!(result
+                .findings
+                .iter()
+                .any(|f| f.rule == "GEN-STRUCTURE-FORMULA-MISMATCH" && f.level == "HIGH"));
+            assert_eq!(result.release_status, ReleaseStatus::Blocked);
+
+            let row = &result
+                .sds
+                .composition
+                .as_ref()
+                .unwrap()
+                .composition_and_concentration
+                .as_ref()
+                .unwrap()[0];
+            // No conflicting duplicate value exposed in the official field.
+            assert!(row.molecular_formula.is_none());
+
+            // Both values retained in the report's provenance.
+            let calculated_prov = result
+                .provenance
+                .iter()
+                .find(|p| p.path == path::CANONICAL_SMILES)
+                .unwrap();
+            assert!(calculated_prov
+                .warnings
+                .iter()
+                .any(|w| w.contains("FormulaMismatch")));
+        }
+
+        #[test]
+        fn multi_fragment_produces_review_required_not_blocked() {
+            let mut resolved = HashMap::new();
+            resolved.insert(
+                "7647-14-5".to_string(),
+                CasResolution::Resolved(identity_candidate(
+                    "7647-14-5",
+                    5234,
+                    Some("[Na+].[Cl-]"),
+                    None,
+                )),
+            );
+            let result = generate_from_normalized_input(
+                &product_sodium_chloride(),
+                &resolved,
+                &ChematicNormalizer,
+            );
+            assert!(result
+                .findings
+                .iter()
+                .any(|f| f.rule == "GEN-STRUCTURE-MULTIFRAGMENT" && f.level == "MED"));
+            assert_ne!(result.release_status, ReleaseStatus::Blocked);
+            let row = &result
+                .sds
+                .composition
+                .as_ref()
+                .unwrap()
+                .composition_and_concentration
+                .as_ref()
+                .unwrap()[0];
+            // Structure kept intact -- both fragments present in the written SMILES.
+            assert!(row.smiles.as_deref().unwrap().contains('.'));
+        }
+
+        #[test]
+        fn source_and_canonical_smiles_provenance_never_confirmed() {
+            let mut resolved = HashMap::new();
+            resolved.insert(
+                "7732-18-5".to_string(),
+                CasResolution::Resolved(identity_candidate(
+                    "7732-18-5",
+                    962,
+                    Some("O"),
+                    Some("H2O"),
+                )),
+            );
+            let result = generate_from_normalized_input(&product(), &resolved, &ChematicNormalizer);
+            let source = result
+                .provenance
+                .iter()
+                .find(|p| p.path == path::SOURCE_SMILES)
+                .unwrap();
+            let canonical = result
+                .provenance
+                .iter()
+                .find(|p| p.path == path::CANONICAL_SMILES)
+                .unwrap();
+            assert_eq!(source.source_type, EvidenceLevel::ReferenceDatabase);
+            assert_eq!(
+                canonical.source_type,
+                EvidenceLevel::DeterministicCalculation
+            );
+        }
+
+        #[test]
+        fn generation_never_approves_with_normalization() {
+            let mut resolved = HashMap::new();
+            resolved.insert(
+                "7732-18-5".to_string(),
+                CasResolution::Resolved(identity_candidate(
+                    "7732-18-5",
+                    962,
+                    Some("O"),
+                    Some("H2O"),
+                )),
+            );
+            let result = generate_from_normalized_input(&product(), &resolved, &ChematicNormalizer);
+            assert_ne!(result.release_status, ReleaseStatus::Approved);
+        }
+
+        #[test]
+        fn repeated_generation_with_normalization_is_byte_equivalent() {
+            let mut resolved = HashMap::new();
+            resolved.insert(
+                "7732-18-5".to_string(),
+                CasResolution::Resolved(identity_candidate(
+                    "7732-18-5",
+                    962,
+                    Some("O"),
+                    Some("H2O"),
+                )),
+            );
+            let a = generate_from_normalized_input(&product(), &resolved, &ChematicNormalizer);
+            let b = generate_from_normalized_input(&product(), &resolved, &ChematicNormalizer);
+            assert_eq!(
+                serde_json::to_string(&a).unwrap(),
+                serde_json::to_string(&b).unwrap()
+            );
+        }
+
+        fn product_ethanol() -> ProductInput {
+            let mut p = product();
+            p.components[0].cas_number = Some("64-17-5".into());
+            p.components[0].name = Some("Ethanol".into());
+            p
+        }
+
+        fn product_sodium_chloride() -> ProductInput {
+            let mut p = product();
+            p.components[0].cas_number = Some("7647-14-5".into());
+            p.components[0].name = Some("Sodium chloride".into());
+            p
+        }
     }
 }

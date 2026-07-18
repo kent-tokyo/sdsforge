@@ -40,5 +40,13 @@ calamine = "0.35"
 zip = { version = "8", default-features = false, features = ["deflate", "deflate64", "bzip2", "lzma", "ppmd", "time", "zstd", "xz"] }
 scraper = "0.27"
 tempfile = "3"
+# Optional: chemical structure normalization (SMILES canonicalization,
+# formula/charge/fragment consistency checks). Requires Rust 1.85 (chematic's
+# own MSRV) — isolated behind the `chematic-normalization` feature so the
+# default build's MSRV is unaffected. See sdsforge_core::normalize.
+chematic = { version = "0.4.30", default-features = false, features = ["chem"], optional = true }
+
+[features]
+chematic-normalization = ["dep:chematic"]
 
 [dev-dependencies]

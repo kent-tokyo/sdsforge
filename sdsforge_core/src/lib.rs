@@ -48,6 +48,7 @@ pub mod error;
 pub mod generation;
 pub mod ghs_codes;
 pub mod language;
+pub mod normalize;
 pub mod schema;
 
 pub use converter::{
@@ -72,8 +73,9 @@ pub use enrichment::{
 pub use error::SdsError;
 pub use generation::{
     build_product_level_unresolved, compute_evidence_summary, compute_release_status,
-    draft_sections_from_resolved_input, evaluate_release_gate, generate_from_resolved_input,
-    generate_section_1_and_3, generate_with_enrichment, validate_product_input, ComponentInput,
+    draft_sections_from_resolved_input, evaluate_release_gate, generate_from_normalized_input,
+    generate_from_resolved_input, generate_section_1_and_3, generate_with_enrichment,
+    validate_product_input, ComponentInput,
     ConcentrationRange, ConfidenceLevel, EvidenceApplicability, EvidenceLevel, EvidenceSource,
     EvidenceSummary, ExplosiveLimitsEvidence, FieldPolicy, FieldProvenance, FieldStatus,
     GenerationResult, MeasuredPropertiesInput, MeasuredValueEvidence, MeasurementConditions,
@@ -84,4 +86,10 @@ pub use generation::{
 pub use ghs_codes::{h_code_description, is_valid_h_code, is_valid_p_code, p_code_description};
 pub use country::SourceCountry;
 pub use language::{detect_language, Language};
+pub use normalize::{
+    CalculatedIdentityProperties, ChemicalNormalizationResult, ChemicalNormalizer,
+    NormalizationIssue, NormalizationStatus, UnavailableNormalizer,
+};
+#[cfg(feature = "chematic-normalization")]
+pub use normalize::ChematicNormalizer;
 pub use schema::SdsRoot;

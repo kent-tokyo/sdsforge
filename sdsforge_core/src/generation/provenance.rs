@@ -176,6 +176,50 @@ impl FieldProvenance {
             warnings: Vec::new(),
         }
     }
+
+    /// The candidate's own structure as PubChem returned it, before any
+    /// normalization — `ReferenceDatabase`, same evidence level as
+    /// [`Self::from_cas_resolver`], never `Confirmed`.
+    pub fn source_smiles(pubchem_cid: Option<u64>) -> Self {
+        FieldProvenance {
+            path: path::SOURCE_SMILES.to_string(),
+            source_type: EvidenceLevel::ReferenceDatabase,
+            source_reference: pubchem_cid.map(|cid| format!("PubChem CID {cid}")),
+            source_value: None,
+            method: "PubChem CAS lookup".into(),
+            sample_id: None,
+            batch_id: None,
+            test_method: None,
+            conditions: None,
+            retrieved_at: None,
+            confidence: ConfidenceLevel::Medium,
+            warnings: Vec::new(),
+        }
+    }
+
+    /// The chematic-canonicalized SMILES actually written into
+    /// `official_sds.json`'s `SMILES` field. `DeterministicCalculation` —
+    /// a canonical form is a deterministic transformation for this
+    /// chematic version and input, not proof the underlying chemical
+    /// identity is confirmed. Never `Confirmed`/`ProductTestReport`/
+    /// `EquivalentBatchTestReport` — the evidence level is hardcoded here,
+    /// not something a caller can override.
+    pub fn canonical_smiles(pubchem_cid: Option<u64>, warnings: Vec<String>) -> Self {
+        FieldProvenance {
+            path: path::CANONICAL_SMILES.to_string(),
+            source_type: EvidenceLevel::DeterministicCalculation,
+            source_reference: pubchem_cid.map(|cid| format!("PubChem CID {cid}")),
+            source_value: None,
+            method: "chematic 0.4.30 canonical_smiles".into(),
+            sample_id: None,
+            batch_id: None,
+            test_method: None,
+            conditions: None,
+            retrieved_at: None,
+            confidence: ConfidenceLevel::Medium,
+            warnings,
+        }
+    }
 }
 
 /// Canonical MHLW JSON path fragments, so every call site builds paths the
@@ -197,6 +241,15 @@ pub mod path {
     pub const CAS_NO: &str = "SubstanceIdentifiers.SubstanceIdentity.CASno";
     pub const CONCENTRATION: &str = "Concentration";
     pub const MOLECULAR_FORMULA: &str = "MolecularFormula";
+    /// The one real schema field (`CompositionCompositionAndConcentration.smiles`,
+    /// `#[serde(rename = "SMILES")]`) — only the chematic-canonicalized value
+    /// is ever written here.
+    pub const CANONICAL_SMILES: &str = "SMILES";
+    /// Report-only path — the schema has no separate "pre-normalization
+    /// SMILES" field, so the resolver's own value (before chematic
+    /// canonicalization) only ever appears in `generation_report`
+    /// provenance, never in `official_sds.json`.
+    pub const SOURCE_SMILES: &str = "Structure.SourceSmiles (report-only, no schema field)";
 }
 
 #[cfg(test)]
