@@ -232,7 +232,9 @@ mod tests {
             ],
         };
         let findings = validate_product_input(&input);
-        assert!(findings.iter().any(|f| f.rule == "GEN-CONC-SUM-EXCEEDS-100"));
+        assert!(findings
+            .iter()
+            .any(|f| f.rule == "GEN-CONC-SUM-EXCEEDS-100"));
     }
 
     #[test]

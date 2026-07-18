@@ -68,7 +68,8 @@ pub use converter::validator::{validate, validate_typed, Finding};
 pub use enrichment::{CasInfo, CasWarning, enrich_composition, lookup_cas};
 pub use error::SdsError;
 pub use generation::{
-    ComponentInput, ConcentrationRange, ProductInput, SupplierInput, validate_product_input,
+    draft_sections_from_resolved_input, generate_section_1_and_3, validate_product_input,
+    ComponentInput, ConcentrationRange, ProductInput, SectionDraftResult, SupplierInput,
 };
 pub use ghs_codes::{h_code_description, is_valid_h_code, is_valid_p_code, p_code_description};
 pub use country::SourceCountry;
