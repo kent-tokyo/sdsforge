@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download the MHLW allyl chloride sample SDS and convert with sdsconv."""
+"""Download the MHLW allyl chloride sample SDS and convert with sdsforge."""
 import hashlib
 import json
 import sys
@@ -31,15 +31,15 @@ def verify():
 
 
 def convert():
-    import sdsconv
+    import sdsforge
 
     print("Converting ...")
     # ponytail: sonnet needed — haiku's 8k output limit truncates this 16-section SDS
-    data, report = sdsconv.to_json_bytes_with_report(
+    data, report = sdsforge.to_json_bytes_with_report(
         PDF.read_bytes(), PDF.name, lang="ja",
         model="claude-sonnet-4-6", max_tokens=16384,
     )
-    findings = sdsconv.validate(data)
+    findings = sdsforge.validate(data)
 
     OUT_JSON.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     OUT_REPORT.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -53,9 +53,9 @@ def convert():
 
 if __name__ == "__main__":
     try:
-        import sdsconv  # noqa: F401
+        import sdsforge  # noqa: F401
     except ImportError:
-        sys.exit("sdsconv not installed. Run: pip install sdsconv")
+        sys.exit("sdsforge not installed. Run: pip install sdsforge")
 
     download()
     verify()

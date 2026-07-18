@@ -1,7 +1,7 @@
 """causasv quality analysis — SDS JSON 品質劣化の因果寄与分析
 
 Usage:
-    cd sdsconv_py
+    cd sdsforge_py
     pip install causasv scikit-learn pandas
     python3 ../examples/causasv_quality_analysis.py ../runs/eval_YYYYMMDD/causasv_features.csv
 
@@ -18,14 +18,14 @@ for pkg in ("causasv", "sklearn", "pandas", "numpy"):
     try:
         __import__(pkg)
     except ImportError:
-        print(f'[ERROR] {pkg} not found. Run: pip install "sdsconv[analysis]"')
+        print(f'[ERROR] {pkg} not found. Run: pip install "sdsforge[analysis]"')
         sys.exit(1)
 
 # ── CSV パス解決 ──────────────────────────────────────────────────────────────
 if len(sys.argv) >= 2:
     csv_path = Path(sys.argv[1])
 else:
-    # sdsconv_py/ または repo root から実行された場合に最新 run を自動検出
+    # sdsforge_py/ または repo root から実行された場合に最新 run を自動検出
     for candidate in [Path("runs"), Path("../runs")]:
         if candidate.exists():
             runs = sorted(candidate.iterdir(), reverse=True)
@@ -43,14 +43,14 @@ else:
 
 print(f"Loading: {csv_path}")
 
-# ── sdsconv_py パスを sys.path に追加 ─────────────────────────────────────────
-for sp in [Path(__file__).parent.parent / "sdsconv_py" / "python",
-           Path("python"), Path("../sdsconv_py/python")]:
-    if (sp / "sdsconv").exists():
+# ── sdsforge_py パスを sys.path に追加 ─────────────────────────────────────────
+for sp in [Path(__file__).parent.parent / "sdsforge_py" / "python",
+           Path("python"), Path("../sdsforge_py/python")]:
+    if (sp / "sdsforge").exists():
         sys.path.insert(0, str(sp))
         break
 
-from sdsconv.causasv_bridge import compute_asv, print_ranking, explain_stability
+from sdsforge.causasv_bridge import compute_asv, print_ranking, explain_stability
 
 import pandas as pd
 
@@ -74,7 +74,7 @@ else:
 
 # ── DAG 可視化 ────────────────────────────────────────────────────────────────
 try:
-    from sdsconv.causasv_bridge import build_dag
+    from sdsforge.causasv_bridge import build_dag
     dag = build_dag()
     print(f"\nDAG: {len(dag.nodes())} nodes, {len(dag.edges())} edges")
     try:
