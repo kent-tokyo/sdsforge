@@ -217,6 +217,19 @@ pub struct ReleaseGateResult {
 `{level, rule, message}`) is reused as-is for the `findings` field above; it
 already has the severity axis (`CRIT`/`HIGH`/`MED`/`LOW`/`WARN`) this needs.
 `FieldProvenance`/`UnresolvedField` are the net-new types — nothing comparable
+
+**Implementation note (commit #10):** `GenerationResult.sds` is `SdsRoot`,
+not `DomainSds` as sketched above. The `DomainSds → RegulatoryProfile →
+MhlwV1Serializer` layering described earlier in this document is real future
+work, but it doesn't exist yet, and commit #9 already committed to returning
+the current MHLW-backed `SdsRoot` from its Section 1/3 draft generator.
+Introducing a `DomainSds` type alias or thin wrapper now, only to satisfy
+this document's original sketch, would be a speculative abstraction with no
+behavior behind it — `sds: SdsRoot` is documented in code as today's
+`mhlw-v1` representation, and this note exists so a future commit that adds
+real profile-layering doesn't mistake the current shape for a settled
+regulatory-profile design.
+`FieldProvenance`/`UnresolvedField` are the net-new types — nothing comparable
 exists in `sdsconv_core` today (confirmed by grep for "provenance"/
 "confidence").
 
