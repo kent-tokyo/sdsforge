@@ -45,6 +45,7 @@ pub mod converter;
 pub mod country;
 pub mod enrichment;
 pub mod error;
+pub mod generation;
 pub mod ghs_codes;
 pub mod language;
 pub mod schema;
@@ -66,6 +67,9 @@ pub use converter::extractor::{
 pub use converter::validator::{validate, validate_typed, Finding};
 pub use enrichment::{CasInfo, CasWarning, enrich_composition, lookup_cas};
 pub use error::SdsError;
+pub use generation::{
+    ComponentInput, ConcentrationRange, ProductInput, SupplierInput, validate_product_input,
+};
 pub use ghs_codes::{h_code_description, is_valid_h_code, is_valid_p_code, p_code_description};
 pub use country::SourceCountry;
 pub use language::{detect_language, Language};
