@@ -1,4 +1,4 @@
-"""sdsconv — SDS document ↔ MHLW standard JSON converter (Python bindings)."""
+"""sdsforge — SDS document ↔ MHLW standard JSON converter (Python bindings)."""
 from __future__ import annotations
 
 import json
@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from ._sdsconv import (
+from ._sdsforge import (
     extract_text as _extract_text,
     to_json_with_report as _to_json_with_report,
     to_json_bytes_with_report as _to_json_bytes_with_report,

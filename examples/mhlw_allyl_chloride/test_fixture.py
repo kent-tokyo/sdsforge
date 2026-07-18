@@ -9,9 +9,9 @@ HERE = Path(__file__).parent
 def test():
     data = json.loads((HERE / "expected.json").read_text(encoding="utf-8"))
 
-    import sdsconv
+    import sdsforge
 
-    findings = sdsconv.validate(data)
+    findings = sdsforge.validate(data)
     crit = [f for f in findings if f["level"] == "CRIT"]
     assert not crit, f"CRIT findings in fixture: {crit}"
 

@@ -1,10 +1,10 @@
-"""causasv_bridge — DAG-aware quality failure analysis for sdsconv.
+"""causasv_bridge — DAG-aware quality failure analysis for sdsforge.
 
-Requires: pip install "sdsconv[analysis]"
+Requires: pip install "sdsforge[analysis]"
   or:     pip install causasv>=0.8.2 scikit-learn pandas
 
 Usage:
-    from sdsconv.causasv_bridge import compute_asv, print_ranking
+    from sdsforge.causasv_bridge import compute_asv, print_ranking
 
     df = compute_asv("runs/eval_001/causasv_features.csv")
     print_ranking("runs/eval_001/causasv_features.csv")
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     import pandas as pd
 
 # ---------------------------------------------------------------------------
-# DAG definition for sdsconv quality factors
+# DAG definition for sdsforge quality factors
 # ---------------------------------------------------------------------------
 
 # Causal edges: (cause, effect)
@@ -81,7 +81,7 @@ FEATURE_COLS = [
 # ---------------------------------------------------------------------------
 
 def build_dag():
-    """Build and return the sdsconv quality CausalDAG."""
+    """Build and return the sdsforge quality CausalDAG."""
     from causasv import CausalDAG
     return CausalDAG.from_edges(SDS_QUALITY_DAG_EDGES)
 
@@ -115,7 +115,7 @@ def compute_asv(
     n_samples: int = 10_000,
     seed: int = 42,
 ) -> "pd.DataFrame":
-    """Compute DAG-aware ASV for sdsconv quality features.
+    """Compute DAG-aware ASV for sdsforge quality features.
 
     Uses GradientBoostingRegressor + TabularExplainer (causasv).
 

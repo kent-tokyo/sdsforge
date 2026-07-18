@@ -4,10 +4,7 @@ version = "0.2.0"
 edition = "2021"
 
 [lib]
-# Stays "_sdsconv" until the Python package itself is renamed (pyproject.toml
-# module-name + python/sdsconv/__init__.py import must move together — see
-# commit "refactor: rename Python package and bindings").
-name = "_sdsconv"
+name = "_sdsforge"
 crate-type = ["cdylib"]
 
 [dependencies]

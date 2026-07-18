@@ -3,9 +3,9 @@ requires = ["maturin>=1.7,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "sdsconv"
+name = "sdsforge"
 version = "0.1.7"
-description = "Python bindings for sdsconv — SDS ↔ MHLW standard JSON converter"
+description = "Python bindings for sdsforge — SDS ↔ MHLW standard JSON converter"
 readme = { file = "../README.md", content-type = "text/markdown" }
 license = { text = "MIT OR Apache-2.0" }
 requires-python = ">=3.9"
@@ -24,6 +24,6 @@ analysis = ["causasv>=0.8.2", "scikit-learn>=1.3"]
 
 [tool.maturin]
 bindings = "pyo3"
-module-name = "sdsconv._sdsconv"
+module-name = "sdsforge._sdsforge"
 python-source = "python"
 strip = true

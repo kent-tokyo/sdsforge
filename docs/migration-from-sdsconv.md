@@ -5,8 +5,10 @@
 `to-pdf` aliases, the GUI's "Render" tab, the internal `render_docx`/
 `render_html`/`render_pdf` renames, and a working `sdsconv` compat binary
 that forwards instead of exiting 1 have all landed (commit #3 — see the
-CLI-command-mapping table below, stages 1–4). The new `generate` command
-(stage 5, CAS/composition → SDS draft) has not shipped yet.
+CLI-command-mapping table below, stages 1–4). The Python bindings/package
+rename (commit #4) has also landed — see "Python API changes" below. The
+new `generate` command (stage 5, CAS/composition → SDS draft), the GitHub
+repository rename, and the config-directory migration have not shipped yet.
 
 ## Why
 
@@ -106,6 +108,12 @@ pub use sdsforge_core::*;
 
 ## Python API changes
 
+**Status: landed** (commit "refactor: rename Python package and bindings to
+sdsforge"). `sdsforge_py`'s cdylib, pyo3 module, PyPI project name, and
+`python/sdsforge/` package directory all use the new name; `sdsconv` is now
+published from a separate pure-Python `sdsconv_py/` package that depends on
+`sdsforge` and re-exports it.
+
 Old:
 ```python
 import sdsconv
@@ -148,7 +156,7 @@ are provider/infra names, not product names — unaffected.
 |---|---|---|
 | `sdsconv-core` crate (re-export shim) | rename commit | ≥1 minor release after `sdsforge-core` ships |
 | `sdsconv` CLI/GUI crate | rename commit | ≥1 minor release after `sdsforge` ships |
-| `sdsconv` PyPI package (shim) | rename commit | ≥1 minor release after `sdsforge` ships |
+| `sdsconv` PyPI package (shim, `sdsconv_py/`, v0.1.8+) | Python rename commit | ≥1 minor release after `sdsforge` PyPI package ships |
 | `to-docx` / `to-html` / `to-pdf` CLI subcommands | render-rollout stage 2 | ≥1 minor release after `render` ships |
 | `generate_docx` / `generate_html` / `generate_pdf` Rust fns | render-rollout stage 4 | ≥1 minor release after `render_*` ships |
 
@@ -162,7 +170,10 @@ decision).
   (or keep the old dependency during the deprecation window — it will keep
   working, just with a compiler warning).
 - Python: `pip install sdsforge` and change `import sdsconv` to
-  `import sdsforge`.
+  `import sdsforge`. Existing `import sdsconv` code keeps working in the
+  meantime — the `sdsconv` package now depends on `sdsforge` and re-exports
+  it (including `sdsconv.eval` / `sdsconv.causasv_bridge`), emitting a
+  `DeprecationWarning` on import.
 - CLI: replace `sdsconv` invocations with `sdsforge`; replace `to-docx`/
   `to-html`/`to-pdf` with `render --to docx|html|pdf` at your own pace before
   the deprecation window closes. Existing `sdsconv` scripts keep working

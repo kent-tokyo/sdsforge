@@ -248,8 +248,8 @@ fn validate_json(json_text: &str) -> PyResult<String> {
 // ---------------------------------------------------------------------------
 
 #[pymodule]
-#[pyo3(name = "_sdsconv")]
-fn sdsconv_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
+#[pyo3(name = "_sdsforge")]
+fn sdsforge_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(extract_text, m)?)?;
     m.add_function(wrap_pyfunction!(to_json_with_report, m)?)?;
     m.add_function(wrap_pyfunction!(to_json_bytes_with_report, m)?)?;

@@ -1,5 +1,5 @@
 """Unit tests for coverage/recall/precision metrics in eval.py."""
-from sdsconv.eval import _extract_cas, _extract_h_codes, _extract_p_codes, _extract_un_numbers, _recall, _precision
+from sdsforge.eval import _extract_cas, _extract_h_codes, _extract_p_codes, _extract_un_numbers, _recall, _precision
 
 
 def test_recall_precision_partial():

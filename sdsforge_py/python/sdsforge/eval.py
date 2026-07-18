@@ -1,7 +1,7 @@
 """eval_corpus — large-scale SDS corpus evaluation in Python.
 
 Usage:
-    from sdsconv.eval import eval_corpus
+    from sdsforge.eval import eval_corpus
 
     df = eval_corpus(
         "data/sds_raw",
@@ -36,7 +36,7 @@ except ImportError:
     def _progress(it, total, desc):
         return it
 
-import sdsconv
+import sdsforge
 
 SDS_EXTENSIONS = {".pdf", ".docx", ".xlsx", ".xls", ".txt", ".html", ".htm"}
 
@@ -112,7 +112,7 @@ def eval_one(
     t0 = time.monotonic()
     try:
         try:
-            raw_text = sdsconv.extract_text(str(path))
+            raw_text = sdsforge.extract_text(str(path))
         except Exception:
             raw_text = ""
         src_cas = _extract_cas(raw_text)
@@ -125,7 +125,7 @@ def eval_one(
         record["p_code_count_in_source"] = len(src_p)
         record["un_count_in_source"]     = len(src_un)
 
-        data, report = sdsconv.to_json_with_report(
+        data, report = sdsforge.to_json_with_report(
             path,
             backend=backend, api_key=api_key, model=model,
             lang=lang, country=country, correct=correct, enrich=enrich,
@@ -142,11 +142,11 @@ def eval_one(
         (out / "reports").mkdir(parents=True, exist_ok=True)
         (out / "findings").mkdir(parents=True, exist_ok=True)
 
-        sdsconv.write_json(data, out / "generated" / f"{stem}.json")
+        sdsforge.write_json(data, out / "generated" / f"{stem}.json")
         (out / "reports"  / f"{stem}.json").write_text(
             json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
-        findings = sdsconv.validate(data)
+        findings = sdsforge.validate(data)
         (out / "findings" / f"{stem}.json").write_text(
             json.dumps(findings, ensure_ascii=False, indent=2), encoding="utf-8")
 

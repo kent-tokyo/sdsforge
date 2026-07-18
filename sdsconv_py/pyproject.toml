@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sdsconv"
+version = "0.1.8"
+description = "DEPRECATED: renamed to sdsforge. This package re-exports sdsforge and will be removed in a future release."
+readme = "README.md"
+license = { text = "MIT OR Apache-2.0" }
+requires-python = ">=3.9"
+keywords = ["sds", "mhlw", "ghs", "safety-data-sheet", "chemistry"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
+]
+dependencies = ["sdsforge>=0.1.7"]
+
+[project.optional-dependencies]
+analysis = ["sdsforge[analysis]>=0.1.7"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["sdsconv*"]
