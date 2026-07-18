@@ -65,7 +65,10 @@ pub use converter::extractor::{
     extract_text, extract_text_from_url, extract_text_limited,
 };
 pub use converter::validator::{validate, validate_typed, Finding};
-pub use enrichment::{CasInfo, CasWarning, enrich_composition, lookup_cas};
+pub use enrichment::{
+    enrich_composition, lookup_cas, lookup_cas_detailed, CasInfo, CasResolution, CasWarning,
+    ChemicalIdentityCandidate,
+};
 pub use error::SdsError;
 pub use generation::{
     build_product_level_unresolved, compute_evidence_summary, compute_release_status,

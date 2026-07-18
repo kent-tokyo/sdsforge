@@ -17,15 +17,25 @@ pub struct CasInfo {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum CasWarning {
-    NotFound { cas: String },
-    NameMismatch { cas: String, pubchem_name: String, sds_name: String },
+    NotFound {
+        cas: String,
+    },
+    NameMismatch {
+        cas: String,
+        pubchem_name: String,
+        sds_name: String,
+    },
 }
 
 impl std::fmt::Display for CasWarning {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CasWarning::NotFound { cas } => write!(f, "CAS {cas}: not found in PubChem"),
-            CasWarning::NameMismatch { cas, pubchem_name, sds_name } => write!(
+            CasWarning::NameMismatch {
+                cas,
+                pubchem_name,
+                sds_name,
+            } => write!(
                 f,
                 "CAS {cas}: PubChem name '{pubchem_name}' differs from SDS name '{sds_name}'"
             ),
@@ -37,10 +47,7 @@ impl std::fmt::Display for CasWarning {
 ///
 /// Returns `Ok(None)` when the CAS is not found in PubChem.
 /// Returns `Err` only for network or parse errors.
-pub async fn lookup_cas(
-    cas: &str,
-    client: &reqwest::Client,
-) -> Result<Option<CasInfo>, SdsError> {
+pub async fn lookup_cas(cas: &str, client: &reqwest::Client) -> Result<Option<CasInfo>, SdsError> {
     if !validate_cas_format(cas) {
         return Err(SdsError::Extract(format!("Invalid CAS number: {cas:?}")));
     }
@@ -95,10 +102,7 @@ pub async fn lookup_cas(
 ///
 /// Returns a list of warnings for CAS numbers not found or whose PubChem
 /// IUPAC name differs substantially from the SDS substance name.
-pub async fn enrich_composition(
-    sds: &SdsRoot,
-    client: &reqwest::Client,
-) -> Vec<CasWarning> {
+pub async fn enrich_composition(sds: &SdsRoot, client: &reqwest::Client) -> Vec<CasWarning> {
     let mut warnings = Vec::new();
     let items = sds
         .composition
@@ -135,9 +139,7 @@ pub async fn enrich_composition(
                 Ok(None) => warnings.push(CasWarning::NotFound { cas: cas.clone() }),
                 Ok(Some(info)) => {
                     if let Some(pubchem_name) = &info.iupac_name {
-                        if !sds_name.is_empty()
-                            && !names_similar(pubchem_name, &sds_name)
-                        {
+                        if !sds_name.is_empty() && !names_similar(pubchem_name, &sds_name) {
                             warnings.push(CasWarning::NameMismatch {
                                 cas: cas.clone(),
                                 pubchem_name: pubchem_name.clone(),
@@ -156,6 +158,120 @@ pub async fn enrich_composition(
     }
 
     warnings
+}
+
+/// A single chemical identity candidate PubChem returned for a CAS number.
+/// Distinct from [`CasInfo`] (which assumes exactly one match, per
+/// `lookup_cas`'s existing behavior) — this carries structure fields too,
+/// and [`CasResolution`] makes ">1 candidate" representable instead of
+/// silently discarding all but the first.
+#[derive(Debug, Clone)]
+pub struct ChemicalIdentityCandidate {
+    pub cas: String,
+    pub pubchem_cid: Option<u64>,
+    pub iupac_name: Option<String>,
+    pub molecular_formula: Option<String>,
+    /// PubChem's `CanonicalSMILES` property — the resolver's own value, kept
+    /// separate from anything a normalizer later derives from it.
+    pub source_smiles: Option<String>,
+    pub isomeric_smiles: Option<String>,
+    pub inchi_key: Option<String>,
+}
+
+/// Result of resolving one CAS number against PubChem, without silently
+/// collapsing multiple matches to the first one the way `lookup_cas` does.
+#[derive(Debug, Clone)]
+pub enum CasResolution {
+    Resolved(ChemicalIdentityCandidate),
+    NotFound,
+    /// PubChem's name-match returned more than one distinct candidate for
+    /// this CAS. A material identity ambiguity — callers must not pick one
+    /// automatically (by name similarity, CID order, or any other
+    /// heuristic); see `generation`'s `AmbiguousChemicalIdentity` handling.
+    Ambiguous(Vec<ChemicalIdentityCandidate>),
+}
+
+/// Pure parsing core of [`lookup_cas_detailed`] — reads every entry under
+/// `/PropertyTable/Properties`, not just index `0`. Kept separate from the
+/// network call so the 0/1/many-candidate logic is testable without
+/// PubChem access.
+fn parse_cas_resolution(cas: &str, body: &serde_json::Value) -> CasResolution {
+    let candidates: Vec<ChemicalIdentityCandidate> = body
+        .pointer("/PropertyTable/Properties")
+        .and_then(|v| v.as_array())
+        .map(|props| {
+            props
+                .iter()
+                .map(|p| candidate_from_properties(cas, p))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    match candidates.len() {
+        0 => CasResolution::NotFound,
+        1 => CasResolution::Resolved(candidates.into_iter().next().expect("len checked above")),
+        _ => CasResolution::Ambiguous(candidates),
+    }
+}
+
+fn candidate_from_properties(cas: &str, props: &serde_json::Value) -> ChemicalIdentityCandidate {
+    ChemicalIdentityCandidate {
+        cas: cas.to_string(),
+        pubchem_cid: props["CID"].as_u64(),
+        iupac_name: props["IUPACName"].as_str().map(str::to_string),
+        molecular_formula: props["MolecularFormula"].as_str().map(str::to_string),
+        source_smiles: props["CanonicalSMILES"].as_str().map(str::to_string),
+        isomeric_smiles: props["IsomericSMILES"].as_str().map(str::to_string),
+        inchi_key: props["InChIKey"].as_str().map(str::to_string),
+    }
+}
+
+/// Like [`lookup_cas`], but never silently discards additional PubChem
+/// candidates — returns [`CasResolution::Ambiguous`] instead of picking the
+/// first. Requests a wider PubChem property list (adds SMILES/InChIKey) via
+/// its own request; `lookup_cas` itself is unchanged so existing callers
+/// keep their exact current behavior.
+pub async fn lookup_cas_detailed(
+    cas: &str,
+    client: &reqwest::Client,
+) -> Result<CasResolution, SdsError> {
+    if !validate_cas_format(cas) {
+        return Err(SdsError::Extract(format!("Invalid CAS number: {cas:?}")));
+    }
+    let url = format!(
+        "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{cas}/property/IUPACName,MolecularFormula,CID,CanonicalSMILES,IsomericSMILES,InChIKey/JSON"
+    );
+    let mut resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| SdsError::Extract(format!("PubChem request failed: {e}")))?;
+
+    if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+        resp = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| SdsError::Extract(format!("PubChem request failed (retry): {e}")))?;
+    }
+
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(CasResolution::NotFound);
+    }
+    if !resp.status().is_success() {
+        return Err(SdsError::Extract(format!(
+            "PubChem returned HTTP {}",
+            resp.status()
+        )));
+    }
+
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| SdsError::Extract(format!("PubChem JSON parse failed: {e}")))?;
+
+    Ok(parse_cas_resolution(cas, &body))
 }
 
 /// Word-level Jaccard similarity check (threshold ≥ 0.5, case-insensitive).
@@ -208,5 +324,63 @@ mod tests {
     fn names_similar_empty_string() {
         assert!(!names_similar("", "acetic acid"));
         assert!(!names_similar("acetic acid", ""));
+    }
+
+    fn property_entry(cid: u64, name: &str, formula: &str, smiles: &str) -> serde_json::Value {
+        serde_json::json!({
+            "CID": cid,
+            "IUPACName": name,
+            "MolecularFormula": formula,
+            "CanonicalSMILES": smiles,
+        })
+    }
+
+    #[test]
+    fn zero_candidates_is_not_found() {
+        let body = serde_json::json!({ "PropertyTable": { "Properties": [] } });
+        let resolution = parse_cas_resolution("7732-18-5", &body);
+        assert!(matches!(resolution, CasResolution::NotFound));
+    }
+
+    #[test]
+    fn missing_properties_key_is_not_found() {
+        let body = serde_json::json!({});
+        let resolution = parse_cas_resolution("7732-18-5", &body);
+        assert!(matches!(resolution, CasResolution::NotFound));
+    }
+
+    #[test]
+    fn one_candidate_is_resolved() {
+        let body = serde_json::json!({
+            "PropertyTable": { "Properties": [property_entry(962, "oxidane", "H2O", "O")] }
+        });
+        let resolution = parse_cas_resolution("7732-18-5", &body);
+        match resolution {
+            CasResolution::Resolved(c) => {
+                assert_eq!(c.pubchem_cid, Some(962));
+                assert_eq!(c.iupac_name.as_deref(), Some("oxidane"));
+                assert_eq!(c.source_smiles.as_deref(), Some("O"));
+            }
+            other => panic!("expected Resolved, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn two_candidates_is_ambiguous_not_first_pick() {
+        let body = serde_json::json!({
+            "PropertyTable": { "Properties": [
+                property_entry(1, "candidate one", "C2H6O", "CCO"),
+                property_entry(2, "candidate two", "C2H6O", "COC"),
+            ] }
+        });
+        let resolution = parse_cas_resolution("64-17-5", &body);
+        match resolution {
+            CasResolution::Ambiguous(candidates) => {
+                assert_eq!(candidates.len(), 2);
+                let cids: Vec<Option<u64>> = candidates.iter().map(|c| c.pubchem_cid).collect();
+                assert_eq!(cids, vec![Some(1), Some(2)]);
+            }
+            other => panic!("expected Ambiguous, got {other:?}"),
+        }
     }
 }
