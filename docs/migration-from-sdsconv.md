@@ -8,10 +8,12 @@ that forwards instead of exiting 1 have all landed (commit #3 — see the
 CLI-command-mapping table below, stages 1–4). The Python bindings/package
 rename (commit #4) has also landed — see "Python API changes" below. The
 GUI/CLI config-directory migration (commit #5) has also landed — see
-"Config / environment variables" below. The new `generate` CLI command
+"Config / environment variables" below. The README rewrite (commit #6) has
+also landed. The GitHub repository rename has also landed — see
+"GitHub repository rename" below. The new `generate` CLI command
 (CAS/composition → SDS draft — see the render-rollout stage table's
-stage 5, a separate numbering from the commit list here), the README
-rewrite, and the GitHub repository rename have not shipped yet.
+stage 5, a separate numbering from the commit list here) has not shipped
+yet; crates.io/PyPI publishing under the new names happens after this.
 
 ## Why
 
@@ -24,7 +26,7 @@ rewrite, and the GitHub repository rename have not shipped yet.
 
 | Area | Old | New |
 |---|---|---|
-| GitHub repository | `sds-converter` (git remote) / `sdsconv` (Cargo.toml metadata — these already disagree today) | `sdsforge` |
+| GitHub repository | `sds-converter` (an even older name) → `sdsconv` | `sdsforge` |
 | Core crate | `sdsconv-core` | `sdsforge-core` |
 | CLI/GUI crate + binary | `sdsconv` | `sdsforge` |
 | Server crate + binary | `sdsconv-server` | `sdsforge-server` |
@@ -38,6 +40,49 @@ rewrite, and the GitHub repository rename have not shipped yet.
 crates.io and PyPI have no rename primitive — these are **new package
 publishes**, not renames of the existing listings. The old listings stay live
 and become deprecated compat shims (see "Deprecated APIs" below).
+
+## GitHub repository rename
+
+**Status: landed** — 2026-07-18. The repository was renamed in place with
+GitHub's own rename operation (`kent-tokyo/sdsconv` → `kent-tokyo/sdsforge`);
+no history was copied and no second repository was created.
+
+- **Old URL:** `https://github.com/kent-tokyo/sdsconv`
+- **New URL:** `https://github.com/kent-tokyo/sdsforge`
+- This is actually the *second* rename this repository has been through —
+  it was `kent-tokyo/sds-converter` before it was `sdsconv`. GitHub chains
+  the redirects: `sds-converter` and `sdsconv` both still resolve to
+  `sdsforge` today (verified via `git ls-remote` against all three URLs).
+- **The `sdsconv` name will not be reused.** If a new `kent-tokyo/sdsconv`
+  repository is ever created, it breaks the redirect from the old URL —
+  GitHub can only redirect a name to the *current* location of the repo
+  that last held it.
+
+If you have a local clone, update your remote:
+```bash
+git remote set-url origin https://github.com/kent-tokyo/sdsforge.git
+```
+(Use `git@github.com:kent-tokyo/sdsforge.git` instead if your remote was
+already using SSH.) Existing clones keep working without this — GitHub
+redirects `git clone`/`fetch`/`push` transparently — but updating avoids
+depending on the redirect indefinitely.
+
+**Not covered by GitHub's automatic redirects** (verified, not assumed):
+- **GitHub Pages.** Not applicable here — this repository has no Pages site
+  configured (`has_pages: false`), so there is no project-site URL to
+  preserve or document.
+- **Reusable/Marketplace GitHub Actions**, i.e. anything referenced as
+  `uses: kent-tokyo/sdsconv@...`. Not applicable — this repository contains
+  no `action.yml`/`action.yaml` and publishes no reusable Action.
+
+Everything else — issues, pull requests, releases, tags, stars (2), open
+issue count (0), CI run history, and the default branch (`master`) — was
+confirmed intact under the new name after the rename.
+
+crates.io and PyPI publishing (`sdsforge`, `sdsforge-core`, `sdsforge` on
+PyPI) happens after this rename, so the first public releases carry the
+correct `kent-tokyo/sdsforge` repository/homepage metadata from the start
+rather than needing a follow-up correction.
 
 ## Terminology (authoritative — do not reintroduce old meanings)
 

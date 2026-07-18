@@ -7,8 +7,8 @@ license = "MIT OR Apache-2.0"
 keywords = ["sds", "safety-data-sheet", "ghs", "llm", "cli"]
 categories = ["command-line-utilities", "text-processing"]
 readme = "README.md"
-repository = "https://github.com/kent-tokyo/sdsconv"
-homepage = "https://github.com/kent-tokyo/sdsconv"
+repository = "https://github.com/kent-tokyo/sdsforge"
+homepage = "https://github.com/kent-tokyo/sdsforge"
 documentation = "https://docs.rs/sdsforge"
 
 [[bin]]

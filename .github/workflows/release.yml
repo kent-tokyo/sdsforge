@@ -33,24 +33,24 @@ jobs:
           restore-keys: macos-cargo-
 
       - name: Build arm64
-        run: cargo build --release --target aarch64-apple-darwin -p sdsconv
+        run: cargo build --release --target aarch64-apple-darwin -p sdsforge
 
       - name: Build x86_64
-        run: cargo build --release --target x86_64-apple-darwin -p sdsconv
+        run: cargo build --release --target x86_64-apple-darwin -p sdsforge
 
       - name: Create universal binary and app bundle
         run: |
           lipo -create \
-            target/aarch64-apple-darwin/release/sdsconv \
-            target/x86_64-apple-darwin/release/sdsconv \
-            -output target/sdsconv-universal
+            target/aarch64-apple-darwin/release/sdsforge \
+            target/x86_64-apple-darwin/release/sdsforge \
+            -output target/sdsforge-universal
 
-          APP="sdsconv.app"
+          APP="sdsforge.app"
           mkdir -p "$APP/Contents/MacOS"
-          cp target/sdsconv-universal "$APP/Contents/MacOS/sdsconv"
-          chmod +x "$APP/Contents/MacOS/sdsconv"
+          cp target/sdsforge-universal "$APP/Contents/MacOS/sdsforge"
+          chmod +x "$APP/Contents/MacOS/sdsforge"
 
-          VERSION=$(grep '^version' sdsconv/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          VERSION=$(grep '^version' sdsforge/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
 
           cat > "$APP/Contents/Info.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
@@ -58,13 +58,13 @@ jobs:
           <plist version="1.0">
           <dict>
               <key>CFBundleIdentifier</key>
-              <string>com.sdsconv.app</string>
+              <string>com.sdsforge.app</string>
               <key>CFBundleName</key>
-              <string>sdsconv</string>
+              <string>sdsforge</string>
               <key>CFBundleDisplayName</key>
-              <string>SDS Converter</string>
+              <string>sdsforge</string>
               <key>CFBundleExecutable</key>
-              <string>sdsconv</string>
+              <string>sdsforge</string>
               <key>CFBundleVersion</key>
               <string>${VERSION}</string>
               <key>CFBundleShortVersionString</key>
@@ -81,19 +81,19 @@ jobs:
           </plist>
           PLIST
 
-          zip -r sdsconv-macos.zip "$APP"
+          zip -r sdsforge-macos.zip "$APP"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sdsconv-macos
-          path: sdsconv-macos.zip
+          name: sdsforge-macos
+          path: sdsforge-macos.zip
 
       - name: Upload to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: sdsconv-macos.zip
+          files: sdsforge-macos.zip
 
       - name: Update Homebrew Cask
         if: startsWith(github.ref, 'refs/tags/')
@@ -107,23 +107,23 @@ jobs:
           fi
 
           VERSION="${GITHUB_REF_NAME#v}"
-          SHA256=$(shasum -a 256 sdsconv-macos.zip | awk '{print $1}')
+          SHA256=$(shasum -a 256 sdsforge-macos.zip | awk '{print $1}')
 
-          git clone https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/kent-tokyo/homebrew-sdsconv.git
-          cd homebrew-sdsconv
+          git clone https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/kent-tokyo/homebrew-sdsforge.git
+          cd homebrew-sdsforge
 
           python3 -c "
           import re
-          content = open('Casks/sdsconv.rb').read()
+          content = open('Casks/sdsforge.rb').read()
           content = re.sub(r'version \"[^\"]+\"', 'version \"${VERSION}\"', content)
           content = re.sub(r'sha256 \"[^\"]+\"', 'sha256 \"${SHA256}\"', content)
-          open('Casks/sdsconv.rb', 'w').write(content)
+          open('Casks/sdsforge.rb', 'w').write(content)
           "
 
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
-          git add Casks/sdsconv.rb
-          git commit -m "chore: bump sdsconv to v${VERSION}"
+          git add Casks/sdsforge.rb
+          git commit -m "chore: bump sdsforge to v${VERSION}"
           git push
 
   # Windows portable .exe
@@ -147,22 +147,22 @@ jobs:
           restore-keys: windows-cargo-
 
       - name: Build
-        run: cargo build --release -p sdsconv
+        run: cargo build --release -p sdsforge
 
       - name: Package portable zip
         shell: pwsh
         run: |
-          Compress-Archive -Path target\release\sdsconv.exe `
-            -DestinationPath sdsconv-windows-portable.zip
+          Compress-Archive -Path target\release\sdsforge.exe `
+            -DestinationPath sdsforge-windows-portable.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sdsconv-windows
-          path: sdsconv-windows-portable.zip
+          name: sdsforge-windows
+          path: sdsforge-windows-portable.zip
 
       - name: Upload to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: sdsconv-windows-portable.zip
+          files: sdsforge-windows-portable.zip

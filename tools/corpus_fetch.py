@@ -35,7 +35,7 @@ MANIFEST_PATH  = Path("corpus/manifest.jsonl")
 RAW_DIR        = Path("corpus/raw")
 MAX_BYTES      = 50 * 1024 * 1024  # 50 MB
 DEFAULT_DELAY  = 3.0
-USER_AGENT     = "sdsconv-corpus-collector/1.0 (research; +https://github.com/kent-tokyo/sdsconv)"
+USER_AGENT     = "sdsforge-corpus-collector/1.0 (research; +https://github.com/kent-tokyo/sdsforge)"
 
 ALLOWED_TYPES  = {
     "application/pdf": "pdf",

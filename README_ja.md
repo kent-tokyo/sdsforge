@@ -188,7 +188,7 @@ sdsforge
 
 5タブ構成: **変換** · **文書レンダリング** · **検証** · **テキスト抽出** · **設定**
 
-デスクトップアプリ: [macOS](https://github.com/kent-tokyo/sdsconv/releases/latest/download/sdsconv-macos.zip) · [Windows](https://github.com/kent-tokyo/sdsconv/releases/latest/download/sdsconv-windows-portable.zip) · `brew install --cask sdsconv`
+デスクトップアプリ: [macOS](https://github.com/kent-tokyo/sdsforge/releases/latest/download/sdsforge-macos.zip) · [Windows](https://github.com/kent-tokyo/sdsforge/releases/latest/download/sdsforge-windows-portable.zip) · `brew install --cask sdsforge`
 
 ---
 

@@ -11,5 +11,5 @@ deprecation warning to stderr, then forwards its arguments to the same CLI
 implementation as `sdsforge` (or launches the same GUI if run with no
 arguments). Behavior, exit codes, and stdout are otherwise identical to
 running `sdsforge` directly. See
-[`docs/migration-from-sdsconv.md`](https://github.com/kent-tokyo/sdsconv/blob/main/docs/migration-from-sdsconv.md)
+[`docs/migration-from-sdsconv.md`](https://github.com/kent-tokyo/sdsforge/blob/main/docs/migration-from-sdsconv.md)
 for the full migration guide (CLI, Rust, Python, and REST API changes).

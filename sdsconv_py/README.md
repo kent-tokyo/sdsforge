@@ -16,5 +16,5 @@ existing code and scripts keep running while you switch to `import sdsforge`.
 +import sdsforge
 ```
 
-See [`docs/migration-from-sdsconv.md`](https://github.com/kent-tokyo/sdsconv/blob/main/docs/migration-from-sdsconv.md)
+See [`docs/migration-from-sdsconv.md`](https://github.com/kent-tokyo/sdsforge/blob/main/docs/migration-from-sdsconv.md)
 for the full migration guide (CLI, Rust, Python, and REST API changes).

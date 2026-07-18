@@ -165,7 +165,7 @@ sdsforge
 
 五个标签页：**转换** · **渲染文档** · **验证** · **提取文本** · **设置**
 
-桌面应用下载：[macOS](https://github.com/kent-tokyo/sdsconv/releases/latest/download/sdsconv-macos.zip) · [Windows](https://github.com/kent-tokyo/sdsconv/releases/latest/download/sdsconv-windows-portable.zip) · `brew install --cask sdsconv`
+桌面应用下载：[macOS](https://github.com/kent-tokyo/sdsforge/releases/latest/download/sdsforge-macos.zip) · [Windows](https://github.com/kent-tokyo/sdsforge/releases/latest/download/sdsforge-windows-portable.zip) · `brew install --cask sdsforge`
 
 ---
 

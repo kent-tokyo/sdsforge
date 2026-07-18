@@ -16,11 +16,11 @@ Supports **Japanese**, **English**, **Simplified Chinese**, and **Traditional Ch
 
 | Platform | Download |
 |---|---|
-| **macOS** (Universal — Apple Silicon + Intel) | [sdsconv-macos.zip](https://github.com/kent-tokyo/sdsconv/releases/latest/download/sdsconv-macos.zip) |
-| **Windows** (Portable .exe — no install required) | [sdsconv-windows-portable.zip](https://github.com/kent-tokyo/sdsconv/releases/latest/download/sdsconv-windows-portable.zip) |
+| **macOS** (Universal — Apple Silicon + Intel) | [sdsforge-macos.zip](https://github.com/kent-tokyo/sdsforge/releases/latest/download/sdsforge-macos.zip) |
+| **Windows** (Portable .exe — no install required) | [sdsforge-windows-portable.zip](https://github.com/kent-tokyo/sdsforge/releases/latest/download/sdsforge-windows-portable.zip) |
 | **Rust / CLI** | `cargo install sdsforge` |
 
-→ [All releases & changelogs](https://github.com/kent-tokyo/sdsconv/releases)
+→ [All releases & changelogs](https://github.com/kent-tokyo/sdsforge/releases)
 
 ---
 

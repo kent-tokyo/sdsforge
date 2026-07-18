@@ -10,5 +10,5 @@ compiling. Update your `Cargo.toml`:
 +sdsforge-core = "0.4"
 ```
 
-See [`docs/migration-from-sdsconv.md`](https://github.com/kent-tokyo/sdsconv/blob/main/docs/migration-from-sdsconv.md)
+See [`docs/migration-from-sdsconv.md`](https://github.com/kent-tokyo/sdsforge/blob/main/docs/migration-from-sdsconv.md)
 for the full migration guide.

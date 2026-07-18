@@ -16,11 +16,11 @@
 
 | プラットフォーム | ダウンロード |
 |---|---|
-| **macOS**（ユニバーサル — Apple Silicon + Intel） | [sdsconv-macos.zip](https://github.com/kent-tokyo/sdsconv/releases/latest/download/sdsconv-macos.zip) |
-| **Windows**（ポータブル .exe — インストール不要） | [sdsconv-windows-portable.zip](https://github.com/kent-tokyo/sdsconv/releases/latest/download/sdsconv-windows-portable.zip) |
+| **macOS**（ユニバーサル — Apple Silicon + Intel） | [sdsforge-macos.zip](https://github.com/kent-tokyo/sdsforge/releases/latest/download/sdsforge-macos.zip) |
+| **Windows**（ポータブル .exe — インストール不要） | [sdsforge-windows-portable.zip](https://github.com/kent-tokyo/sdsforge/releases/latest/download/sdsforge-windows-portable.zip) |
 | **Rust / CLI** | `cargo install sdsforge` |
 
-→ [全リリース・更新履歴](https://github.com/kent-tokyo/sdsconv/releases)
+→ [全リリース・更新履歴](https://github.com/kent-tokyo/sdsforge/releases)
 
 ---
 
