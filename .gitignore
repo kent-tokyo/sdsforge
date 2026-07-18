@@ -17,3 +17,5 @@ runs/
 corpus/raw/
 corpus/output/
 examples/mhlw_allyl_chloride/source.pdf
+__pycache__/
+*.pyc
