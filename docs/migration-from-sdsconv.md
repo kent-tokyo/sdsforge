@@ -10,10 +10,11 @@ rename (commit #4) has also landed — see "Python API changes" below. The
 GUI/CLI config-directory migration (commit #5) has also landed — see
 "Config / environment variables" below. The README rewrite (commit #6) has
 also landed. The GitHub repository rename has also landed — see
-"GitHub repository rename" below. The new `generate` CLI command
-(CAS/composition → SDS draft — see the render-rollout stage table's
-stage 5, a separate numbering from the commit list here) has not shipped
-yet; crates.io/PyPI publishing under the new names happens after this.
+"GitHub repository rename" below. The renamed crates and Python package are
+now published under their canonical names — see "Package publishing" below.
+The new `generate` CLI command (CAS/composition → SDS draft — see the
+render-rollout stage table's stage 5, a separate numbering from the commit
+list here) has not shipped yet.
 
 ## Why
 
@@ -83,6 +84,41 @@ crates.io and PyPI publishing (`sdsforge`, `sdsforge-core`, `sdsforge` on
 PyPI) happens after this rename, so the first public releases carry the
 correct `kent-tokyo/sdsforge` repository/homepage metadata from the start
 rather than needing a follow-up correction.
+
+## Package publishing
+
+**Status: landed** — 2026-07-18. First publishes under the canonical
+`sdsforge` names, all carrying correct `kent-tokyo/sdsforge` repository
+metadata from the start:
+
+| Package | Registry | Version | Published |
+|---|---|---|---|
+| `sdsforge-core` | [crates.io](https://crates.io/crates/sdsforge-core) | 0.4.0 | 2026-07-18 |
+| `sdsforge` | [crates.io](https://crates.io/crates/sdsforge) | 0.3.0 | 2026-07-18 |
+| `sdsforge` | [PyPI](https://pypi.org/project/sdsforge/) | 0.2.0 | 2026-07-18 |
+
+`sdsconv` / `sdsconv-core` (the deprecated compat crates) and `sdsconv` (the
+deprecated PyPI shim, already live at 0.1.8 from before the rename) were
+**not** republished under this pass — no regressions to them, but no new
+release either. See "Deprecated APIs & removal timeline" below for when
+they're expected to go away entirely.
+
+PyPI publishing used Trusted Publishing (OIDC, no stored token) via the
+`python-wheels.yml` workflow. Note for anyone reusing this pattern after a
+repo rename: GitHub's rename does **not** propagate to PyPI's Pending
+Publisher configuration — that's a static `owner/repo/workflow/environment`
+match on PyPI's side. The first publish attempt failed with
+`invalid-publisher` until the Pending Publisher's repository field was
+manually updated from the pre-rename name.
+
+**Desktop app (GitHub Release binaries):** not yet re-cut under the new
+build config. `release.yml` was fixed in the URL-cleanup commit to build
+`sdsforge.app`/`sdsforge-macos.zip`/`sdsforge-windows-portable.zip` instead
+of the deprecated `sdsconv` binary, but that only takes effect on the next
+`v*.*.*` tag push — the latest actual GitHub Release (`py-v0.2.0`) only
+contains the Python wheels. Until a new version tag is pushed, the
+`sdsforge-macos.zip`/`sdsforge-windows-portable.zip` download links in the
+READMEs point at assets that don't exist yet.
 
 ## Terminology (authoritative — do not reintroduce old meanings)
 
