@@ -216,7 +216,7 @@ pub const PRODUCT_LEVEL_POLICIES: &[FieldPolicy] = &[
         blocks_release_if_missing: false,
     },
     FieldPolicy {
-        path: "PhysicalChemicalProperties.MetalCorrosivity",
+        path: "HazardIdentification.Classification.PhysicochemicalEffect.CorrosiveToMetals",
         allowed_evidence: &[
             EvidenceLevel::ProductTestReport,
             EvidenceLevel::EquivalentBatchTestReport,
@@ -262,7 +262,7 @@ pub fn build_product_level_unresolved() -> Vec<UnresolvedField> {
         .collect()
 }
 
-fn product_level_detail(path: &str) -> (String, Vec<RequiredInput>) {
+pub(super) fn product_level_detail(path: &str) -> (String, Vec<RequiredInput>) {
     match path {
         "PhysicalChemicalProperties.FlashPoint" => (
             "Flash point".into(),
@@ -323,7 +323,7 @@ fn product_level_detail(path: &str) -> (String, Vec<RequiredInput>) {
                  resolve this field",
             )],
         ),
-        "PhysicalChemicalProperties.MetalCorrosivity" => (
+        "HazardIdentification.Classification.PhysicochemicalEffect.CorrosiveToMetals" => (
             "Corrosive to metals".into(),
             vec![RequiredInput::new(
                 "corrosion_rate_test",
@@ -439,7 +439,10 @@ mod tests {
         let unresolved = build_product_level_unresolved();
         let corrosivity = unresolved
             .iter()
-            .find(|f| f.path == "PhysicalChemicalProperties.MetalCorrosivity")
+            .find(|f| {
+                f.path
+                    == "HazardIdentification.Classification.PhysicochemicalEffect.CorrosiveToMetals"
+            })
             .unwrap();
         assert!(corrosivity.required_inputs[0]
             .description

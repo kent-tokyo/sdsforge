@@ -9,9 +9,9 @@ use crate::schema::SdsRoot;
 use super::draft::{draft_sections_from_resolved_input, SectionDraftResult};
 use super::input::ProductInput;
 use super::provenance::{path, EvidenceLevel, FieldProvenance};
+use super::resolve;
 use super::unresolved::{
-    build_lookup_failure_unresolved, build_product_level_unresolved, FieldStatus,
-    NotApplicableReason, UnresolvedField,
+    build_lookup_failure_unresolved, FieldStatus, NotApplicableReason, UnresolvedField,
 };
 
 /// Generation must never mark its own output approved — approval is a
@@ -87,7 +87,8 @@ pub fn generate_from_resolved_input(
     input: &ProductInput,
     resolved: &HashMap<String, CasInfo>,
 ) -> GenerationResult {
-    let SectionDraftResult { sds, findings } = draft_sections_from_resolved_input(input, resolved);
+    let SectionDraftResult { mut sds, findings } =
+        draft_sections_from_resolved_input(input, resolved);
 
     let mut provenance = Vec::new();
     let mut unresolved = Vec::new();
@@ -180,7 +181,15 @@ pub fn generate_from_resolved_input(
         ));
     }
 
-    unresolved.extend(build_product_level_unresolved());
+    // Resolves the seven safety-sensitive properties against supplied
+    // measured-property evidence — writes into `sds` only on full policy
+    // satisfaction, otherwise adds a (more specific than commit #10 could
+    // give) UnresolvedField. See resolve.rs's module doc for the "no
+    // partial credit" rule this enforces.
+    let (property_unresolved, property_provenance) =
+        resolve::resolve_measured_properties(input, &mut sds);
+    unresolved.extend(property_unresolved);
+    provenance.extend(property_provenance);
 
     let evidence_summary = compute_evidence_summary(&provenance, &unresolved);
     let release_status = compute_release_status(&unresolved, &findings);
@@ -300,10 +309,43 @@ pub fn compute_release_status(
     ReleaseStatus::Draft
 }
 
+/// Aggregates a [`GenerationResult`] into the CRIT/HIGH findings and
+/// required actions that actually block release — deterministic, built
+/// from `result.unresolved`/`result.findings` only, never a second source
+/// of truth. `required_actions` is deduplicated by exact string match
+/// (sufficient for now — multiple unresolved fields commonly share the
+/// same recommended action, e.g. two properties both needing "a human
+/// must first determine whether this property applies").
+pub fn evaluate_release_gate(result: &GenerationResult) -> ReleaseGateResult {
+    let blocking_findings: Vec<Finding> = result
+        .findings
+        .iter()
+        .filter(|f| f.level == "CRIT" || f.level == "HIGH")
+        .cloned()
+        .collect();
+
+    let mut required_actions = Vec::new();
+    for field in result.unresolved.iter().filter(|f| f.blocks_release) {
+        if !required_actions.contains(&field.recommended_action) {
+            required_actions.push(field.recommended_action.clone());
+        }
+    }
+
+    ReleaseGateResult {
+        status: result.release_status,
+        blocking_findings,
+        required_actions,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::generation::input::{ComponentInput, ConcentrationRange, SupplierInput};
+    use crate::generation::unresolved::build_product_level_unresolved;
+    use crate::generation::{
+        EvidenceApplicability, EvidenceSource, MeasuredValueEvidence, MeasurementConditions,
+    };
 
     fn supplier() -> SupplierInput {
         SupplierInput {
@@ -637,5 +679,224 @@ mod tests {
         let json_a = serde_json::to_string(&a).unwrap();
         let json_b = serde_json::to_string(&b).unwrap();
         assert_eq!(json_a, json_b);
+    }
+
+    fn product_with_confirmed_flash_point() -> ProductInput {
+        let mut p = product();
+        p.evidence.push(EvidenceSource {
+            id: "ev1".into(),
+            level: EvidenceLevel::ProductTestReport,
+            reference: "Lab Report 2026-014".into(),
+            issuer: None,
+            document_date: None,
+            applies_to: EvidenceApplicability::FinishedProduct,
+        });
+        p.measured_properties
+            .flash_point
+            .push(MeasuredValueEvidence {
+                value: 61.0,
+                unit: "°C".into(),
+                method: Some("Closed Cup (ASTM D93)".into()),
+                conditions: MeasurementConditions {
+                    temperature_c: None,
+                    pressure_kpa: None,
+                    atmosphere: None,
+                },
+                sample_id: None,
+                batch_id: None,
+                evidence_id: "ev1".into(),
+            });
+        p
+    }
+
+    #[test]
+    fn evidence_summary_counts_update_when_a_property_resolves() {
+        let baseline = generate_from_resolved_input(&product(), &HashMap::new());
+        let resolved =
+            generate_from_resolved_input(&product_with_confirmed_flash_point(), &HashMap::new());
+
+        assert_eq!(baseline.evidence_summary.confirmed, 0);
+        assert_eq!(resolved.evidence_summary.confirmed, 1);
+        // One fewer unresolved entry (flash point moved out of the list).
+        assert_eq!(resolved.unresolved.len(), baseline.unresolved.len() - 1);
+        assert_eq!(
+            resolved.evidence_summary.unresolved,
+            resolved.unresolved.len()
+        );
+    }
+
+    #[test]
+    fn resolving_a_property_updates_release_status_deterministically() {
+        // Two disagreeing reports -> ConflictingSources -> Blocked.
+        let mut blocked = product();
+        blocked.evidence.push(EvidenceSource {
+            id: "ev1".into(),
+            level: EvidenceLevel::ProductTestReport,
+            reference: "Report A".into(),
+            issuer: None,
+            document_date: None,
+            applies_to: EvidenceApplicability::FinishedProduct,
+        });
+        blocked.evidence.push(EvidenceSource {
+            id: "ev2".into(),
+            level: EvidenceLevel::ProductTestReport,
+            reference: "Report B".into(),
+            issuer: None,
+            document_date: None,
+            applies_to: EvidenceApplicability::FinishedProduct,
+        });
+        let conds = MeasurementConditions {
+            temperature_c: None,
+            pressure_kpa: None,
+            atmosphere: None,
+        };
+        blocked
+            .measured_properties
+            .flash_point
+            .push(MeasuredValueEvidence {
+                value: 61.0,
+                unit: "°C".into(),
+                method: Some("Closed Cup".into()),
+                conditions: conds.clone(),
+                sample_id: None,
+                batch_id: None,
+                evidence_id: "ev1".into(),
+            });
+        blocked
+            .measured_properties
+            .flash_point
+            .push(MeasuredValueEvidence {
+                value: 65.0,
+                unit: "°C".into(),
+                method: Some("Closed Cup".into()),
+                conditions: conds,
+                sample_id: None,
+                batch_id: None,
+                evidence_id: "ev2".into(),
+            });
+        let blocked_result = generate_from_resolved_input(&blocked, &HashMap::new());
+        assert_eq!(blocked_result.release_status, ReleaseStatus::Blocked);
+
+        // Same product, single agreeing report -> resolves cleanly, no
+        // longer blocked by that property (still ReviewRequired overall —
+        // six other product-level properties remain unresolved).
+        let resolved_result =
+            generate_from_resolved_input(&product_with_confirmed_flash_point(), &HashMap::new());
+        assert_eq!(
+            resolved_result.release_status,
+            ReleaseStatus::ReviewRequired
+        );
+        assert!(!resolved_result
+            .unresolved
+            .iter()
+            .any(|f| f.path.contains("FlashPoint") && f.blocks_release));
+    }
+
+    #[test]
+    fn generation_with_resolved_evidence_still_never_approves() {
+        let result =
+            generate_from_resolved_input(&product_with_confirmed_flash_point(), &HashMap::new());
+        assert_ne!(result.release_status, ReleaseStatus::Approved);
+    }
+
+    #[test]
+    fn repeated_generation_with_evidence_is_byte_equivalent() {
+        let p = product_with_confirmed_flash_point();
+        let a = generate_from_resolved_input(&p, &HashMap::new());
+        let b = generate_from_resolved_input(&p, &HashMap::new());
+        assert_eq!(
+            serde_json::to_string(&a).unwrap(),
+            serde_json::to_string(&b).unwrap()
+        );
+    }
+
+    #[test]
+    fn evaluate_release_gate_aggregates_blocking_findings_and_dedupes_actions() {
+        let mut p = product();
+        // Two properties left unresolved with the same generic
+        // HumanReviewRequired recommended_action text should collapse to
+        // one deduplicated required_actions entry; a CRIT finding should
+        // land in blocking_findings.
+        let result = generate_from_resolved_input(&p, &HashMap::new());
+        let gate = evaluate_release_gate(&result);
+        assert_eq!(gate.status, result.release_status);
+        // All seven product-level HumanReviewRequired fields share
+        // identical recommended_action text, none blocks_release, so with
+        // no evidence supplied there should be zero required_actions here
+        // (nothing in this baseline is blocks_release: true).
+        assert!(gate.required_actions.is_empty());
+
+        // Force a duplicate blocking action via a conflicting-evidence
+        // scenario on two properties sharing the same conflict message.
+        p.evidence.push(EvidenceSource {
+            id: "ev1".into(),
+            level: EvidenceLevel::ProductTestReport,
+            reference: "A".into(),
+            issuer: None,
+            document_date: None,
+            applies_to: EvidenceApplicability::FinishedProduct,
+        });
+        p.evidence.push(EvidenceSource {
+            id: "ev2".into(),
+            level: EvidenceLevel::ProductTestReport,
+            reference: "B".into(),
+            issuer: None,
+            document_date: None,
+            applies_to: EvidenceApplicability::FinishedProduct,
+        });
+        let conds = MeasurementConditions {
+            temperature_c: None,
+            pressure_kpa: None,
+            atmosphere: None,
+        };
+        p.measured_properties
+            .flash_point
+            .push(MeasuredValueEvidence {
+                value: 61.0,
+                unit: "°C".into(),
+                method: Some("Closed Cup".into()),
+                conditions: conds.clone(),
+                sample_id: None,
+                batch_id: None,
+                evidence_id: "ev1".into(),
+            });
+        p.measured_properties
+            .flash_point
+            .push(MeasuredValueEvidence {
+                value: 65.0,
+                unit: "°C".into(),
+                method: Some("Closed Cup".into()),
+                conditions: conds.clone(),
+                sample_id: None,
+                batch_id: None,
+                evidence_id: "ev2".into(),
+            });
+        p.measured_properties
+            .boiling_point
+            .push(MeasuredValueEvidence {
+                value: 100.0,
+                unit: "°C".into(),
+                method: Some("ASTM D1120".into()),
+                conditions: conds.clone(),
+                sample_id: None,
+                batch_id: None,
+                evidence_id: "ev1".into(),
+            });
+        p.measured_properties
+            .boiling_point
+            .push(MeasuredValueEvidence {
+                value: 105.0,
+                unit: "°C".into(),
+                method: Some("ASTM D1120".into()),
+                conditions: conds,
+                sample_id: None,
+                batch_id: None,
+                evidence_id: "ev2".into(),
+            });
+        let result = generate_from_resolved_input(&p, &HashMap::new());
+        let gate = evaluate_release_gate(&result);
+        assert_eq!(gate.status, ReleaseStatus::Blocked);
+        // Both conflicts share identical recommended_action text -> deduplicated to one entry.
+        assert_eq!(gate.required_actions.len(), 1);
     }
 }

@@ -16,6 +16,7 @@ mod draft;
 mod evidence;
 mod input;
 mod provenance;
+mod resolve;
 mod result;
 mod unresolved;
 mod validate;
@@ -30,11 +31,13 @@ pub use provenance::{
     path as field_path, ConfidenceLevel, EvidenceLevel, FieldProvenance, MeasurementConditions,
 };
 pub use result::{
-    compute_evidence_summary, compute_release_status, generate_from_resolved_input,
-    generate_with_enrichment, EvidenceSummary, GenerationResult, ReleaseGateResult, ReleaseStatus,
+    compute_evidence_summary, compute_release_status, evaluate_release_gate,
+    generate_from_resolved_input, generate_with_enrichment, EvidenceSummary, GenerationResult,
+    ReleaseGateResult, ReleaseStatus,
 };
 pub use unresolved::{
-    FieldPolicy, FieldStatus, NotApplicableReason, RegulatoryImpact, RequiredInput, SafetyImpact,
-    UnresolvedField, UnresolvedReason, MOLECULAR_FORMULA_POLICY, PRODUCT_LEVEL_POLICIES,
+    build_product_level_unresolved, FieldPolicy, FieldStatus, NotApplicableReason,
+    RegulatoryImpact, RequiredInput, SafetyImpact, UnresolvedField, UnresolvedReason,
+    MOLECULAR_FORMULA_POLICY, PRODUCT_LEVEL_POLICIES,
 };
 pub use validate::validate_product_input;

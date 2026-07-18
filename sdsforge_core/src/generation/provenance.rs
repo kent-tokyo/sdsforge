@@ -119,6 +119,63 @@ impl FieldProvenance {
             warnings: Vec::new(),
         }
     }
+
+    /// A property resolved from caller-supplied measured-value evidence
+    /// (flash point, boiling point, vapor pressure, explosive limits) that
+    /// fully satisfied its `FieldPolicy` — see
+    /// `super::resolve::resolve_measured_properties`. `confidence: High`
+    /// and `source_type` taken directly from the [`super::EvidenceSource`]
+    /// that resolved it (`ProductTestReport`/`EquivalentBatchTestReport`/
+    /// `SupplierSpecification`, whichever this property's policy accepted)
+    /// — never upgraded to a status the evidence itself doesn't support.
+    pub fn from_measured_evidence(
+        path: impl Into<String>,
+        source: &super::EvidenceSource,
+        method: Option<&str>,
+        sample_id: Option<&str>,
+        batch_id: Option<&str>,
+        conditions: &MeasurementConditions,
+    ) -> Self {
+        FieldProvenance {
+            path: path.into(),
+            source_type: source.level,
+            source_reference: Some(source.reference.clone()),
+            source_value: None,
+            method: "resolved from supplied measured-property evidence".into(),
+            sample_id: sample_id.map(str::to_string),
+            batch_id: batch_id.map(str::to_string),
+            test_method: method.map(str::to_string),
+            conditions: Some(conditions.clone()),
+            retrieved_at: None,
+            confidence: ConfidenceLevel::High,
+            warnings: Vec::new(),
+        }
+    }
+
+    /// Same as [`Self::from_measured_evidence`] for the three free-text-only
+    /// properties (self-reactivity, oxidizing properties, metal
+    /// corrosivity), whose evidence is a [`super::TestResultEvidence`]
+    /// rather than a numeric value.
+    pub fn from_test_result_evidence(
+        path: impl Into<String>,
+        source: &super::EvidenceSource,
+        result: &super::TestResultEvidence,
+    ) -> Self {
+        FieldProvenance {
+            path: path.into(),
+            source_type: source.level,
+            source_reference: Some(source.reference.clone()),
+            source_value: Some(result.result.clone()),
+            method: "resolved from supplied measured-property evidence".into(),
+            sample_id: result.sample_id.clone(),
+            batch_id: result.batch_id.clone(),
+            test_method: result.method.clone(),
+            conditions: None,
+            retrieved_at: None,
+            confidence: ConfidenceLevel::High,
+            warnings: Vec::new(),
+        }
+    }
 }
 
 /// Canonical MHLW JSON path fragments, so every call site builds paths the
