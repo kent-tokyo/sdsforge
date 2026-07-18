@@ -12,6 +12,7 @@
 //!   from, what's still missing, and whether the draft is releasable.
 //! - #11+ chematic integration, CLI, GUI — not yet implemented.
 
+mod artifacts;
 mod draft;
 mod evidence;
 mod input;
@@ -21,6 +22,11 @@ mod result;
 mod unresolved;
 mod validate;
 
+pub use artifacts::{
+    build_generation_artifacts, build_generation_report, render_review_report,
+    serialize_generation_report, serialize_official_sds, GenerationArtifactError,
+    GenerationArtifacts, GenerationReport, REPORT_SCHEMA_VERSION,
+};
 pub use draft::{draft_sections_from_resolved_input, generate_section_1_and_3, SectionDraftResult};
 pub use evidence::{
     EvidenceApplicability, EvidenceSource, ExplosiveLimitsEvidence, MeasuredPropertiesInput,

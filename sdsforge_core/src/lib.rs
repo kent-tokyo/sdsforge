@@ -72,16 +72,19 @@ pub use enrichment::{
 };
 pub use error::SdsError;
 pub use generation::{
-    build_product_level_unresolved, compute_evidence_summary, compute_release_status,
-    draft_sections_from_resolved_input, evaluate_release_gate, generate_from_normalized_input,
+    build_generation_artifacts, build_generation_report, build_product_level_unresolved,
+    compute_evidence_summary, compute_release_status, draft_sections_from_resolved_input,
+    evaluate_release_gate, generate_from_normalized_input,
     generate_from_resolved_input, generate_section_1_and_3, generate_with_enrichment,
+    render_review_report, serialize_generation_report, serialize_official_sds,
     validate_product_input, ComponentInput,
     ConcentrationRange, ConfidenceLevel, EvidenceApplicability, EvidenceLevel, EvidenceSource,
     EvidenceSummary, ExplosiveLimitsEvidence, FieldPolicy, FieldProvenance, FieldStatus,
-    GenerationResult, MeasuredPropertiesInput, MeasuredValueEvidence, MeasurementConditions,
+    GenerationArtifactError, GenerationArtifacts, GenerationReport, GenerationResult,
+    MeasuredPropertiesInput, MeasuredValueEvidence, MeasurementConditions,
     NotApplicableReason, ProductInput, RegulatoryImpact, ReleaseGateResult, ReleaseStatus,
-    RequiredInput, SafetyImpact, SectionDraftResult, SupplierInput, TestResultEvidence,
-    UnresolvedField, UnresolvedReason,
+    REPORT_SCHEMA_VERSION, RequiredInput, SafetyImpact, SectionDraftResult, SupplierInput,
+    TestResultEvidence, UnresolvedField, UnresolvedReason,
 };
 pub use ghs_codes::{h_code_description, is_valid_h_code, is_valid_p_code, p_code_description};
 pub use country::SourceCountry;
