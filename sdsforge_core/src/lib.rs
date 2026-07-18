@@ -70,11 +70,12 @@ pub use error::SdsError;
 pub use generation::{
     compute_evidence_summary, compute_release_status, draft_sections_from_resolved_input,
     generate_from_resolved_input, generate_section_1_and_3, generate_with_enrichment,
-    validate_product_input, ComponentInput, ConcentrationRange, ConfidenceLevel, EvidenceLevel,
-    EvidenceSummary, FieldPolicy, FieldProvenance, FieldStatus, GenerationResult,
-    MeasurementConditions, NotApplicableReason, ProductInput, RegulatoryImpact, ReleaseGateResult,
-    ReleaseStatus, RequiredInput, SafetyImpact, SectionDraftResult, SupplierInput, UnresolvedField,
-    UnresolvedReason,
+    validate_product_input, ComponentInput, ConcentrationRange, ConfidenceLevel,
+    EvidenceApplicability, EvidenceLevel, EvidenceSource, EvidenceSummary, ExplosiveLimitsEvidence,
+    FieldPolicy, FieldProvenance, FieldStatus, GenerationResult, MeasuredPropertiesInput,
+    MeasuredValueEvidence, MeasurementConditions, NotApplicableReason, ProductInput,
+    RegulatoryImpact, ReleaseGateResult, ReleaseStatus, RequiredInput, SafetyImpact,
+    SectionDraftResult, SupplierInput, TestResultEvidence, UnresolvedField, UnresolvedReason,
 };
 pub use ghs_codes::{h_code_description, is_valid_h_code, is_valid_p_code, p_code_description};
 pub use country::SourceCountry;

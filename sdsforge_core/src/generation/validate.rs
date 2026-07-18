@@ -142,6 +142,8 @@ mod tests {
                 component("7732-18-5", "Water", 60.0),
                 component("64-17-5", "Ethanol", 40.0),
             ],
+            measured_properties: Default::default(),
+            evidence: vec![],
         };
         let findings = validate_product_input(&input);
         assert!(findings.is_empty(), "unexpected findings: {findings:?}");
@@ -154,6 +156,8 @@ mod tests {
             other_names: vec![],
             supplier: supplier(),
             components: vec![component("7732-18-4", "Water", 100.0)],
+            measured_properties: Default::default(),
+            evidence: vec![],
         };
         let findings = validate_product_input(&input);
         assert!(findings.iter().any(|f| f.rule == "GEN-CAS-CHECKDIGIT"));
@@ -166,6 +170,8 @@ mod tests {
             other_names: vec![],
             supplier: supplier(),
             components: vec![component("not-a-cas", "Mystery", 100.0)],
+            measured_properties: Default::default(),
+            evidence: vec![],
         };
         let findings = validate_product_input(&input);
         assert!(findings.iter().any(|f| f.rule == "GEN-CAS-FORMAT"));
@@ -181,6 +187,8 @@ mod tests {
                 component("7732-18-5", "Water", 50.0),
                 component("7732-18-5", "Water again", 50.0),
             ],
+            measured_properties: Default::default(),
+            evidence: vec![],
         };
         let findings = validate_product_input(&input);
         assert!(findings.iter().any(|f| f.rule == "GEN-CAS-DUPLICATE"));
@@ -200,6 +208,8 @@ mod tests {
             other_names: vec![],
             supplier: supplier(),
             components: vec![c],
+            measured_properties: Default::default(),
+            evidence: vec![],
         };
         let findings = validate_product_input(&input);
         assert!(findings.iter().any(|f| f.rule == "GEN-CONC-RANGE-INVALID"));
@@ -215,6 +225,8 @@ mod tests {
             other_names: vec![],
             supplier: supplier(),
             components: vec![c],
+            measured_properties: Default::default(),
+            evidence: vec![],
         };
         let findings = validate_product_input(&input);
         assert!(findings.iter().any(|f| f.rule == "GEN-CONC-AMBIGUOUS"));
@@ -230,6 +242,8 @@ mod tests {
                 component("7732-18-5", "Water", 60.0),
                 component("64-17-5", "Ethanol", 45.0),
             ],
+            measured_properties: Default::default(),
+            evidence: vec![],
         };
         let findings = validate_product_input(&input);
         assert!(findings
@@ -246,6 +260,8 @@ mod tests {
             other_names: vec![],
             supplier: supplier(),
             components: vec![c],
+            measured_properties: Default::default(),
+            evidence: vec![],
         };
         let findings = validate_product_input(&input);
         assert!(findings.iter().any(|f| f.rule == "GEN-CONC-NO-UNIT"));

@@ -308,6 +308,8 @@ mod tests {
             other_names: vec![],
             supplier: supplier(),
             components: vec![exact_component("7732-18-5", "Water", 100.0)],
+            measured_properties: Default::default(),
+            evidence: vec![],
         };
         let result = draft_sections_from_resolved_input(&input, &HashMap::new());
 
@@ -370,6 +372,8 @@ mod tests {
                 exact_component("7732-18-5", "Water", 60.0),
                 range_component("64-17-5", "Ethanol", 30.0, 40.0),
             ],
+            measured_properties: Default::default(),
+            evidence: vec![],
         };
         let result = draft_sections_from_resolved_input(&input, &HashMap::new());
         let rows = result
@@ -424,6 +428,8 @@ mod tests {
             other_names: vec![],
             supplier: supplier(),
             components: vec![exact_component("64-17-5", "Ethanol", 100.0)],
+            measured_properties: Default::default(),
+            evidence: vec![],
         };
         let result = draft_sections_from_resolved_input(&input, &HashMap::new());
         let trade_name = result
@@ -452,6 +458,8 @@ mod tests {
                 email: None,
             },
             components: vec![exact_component("7732-18-5", "Water", 100.0)],
+            measured_properties: Default::default(),
+            evidence: vec![],
         };
         let result = draft_sections_from_resolved_input(&input, &HashMap::new());
         let supplier_info = result
@@ -482,6 +490,8 @@ mod tests {
             other_names: vec![],
             supplier: supplier(),
             components: vec![exact_component("7732-18-5", "Water", 100.0)],
+            measured_properties: Default::default(),
+            evidence: vec![],
         };
         let mut resolved = HashMap::new();
         resolved.insert(
@@ -528,6 +538,8 @@ mod tests {
             other_names: vec![],
             supplier: supplier(),
             components: vec![exact_component("7732-18-5", "Water", 100.0)],
+            measured_properties: Default::default(),
+            evidence: vec![],
         };
         // Empty resolved map == lookup failed/unavailable for this CAS.
         let result = draft_sections_from_resolved_input(&input, &HashMap::new());
@@ -579,6 +591,8 @@ mod tests {
                 exact_component("7732-18-5", "Water", 50.0),
                 exact_component("7732-18-5", "Water again", 50.0),
             ],
+            measured_properties: Default::default(),
+            evidence: vec![],
         };
         // Commit #8's validator still flags the duplicate independently.
         let input_findings = validate_product_input(&input);
@@ -604,6 +618,8 @@ mod tests {
             other_names: vec![],
             supplier: supplier(),
             components: vec![range_component("7732-18-5", "Water", 90.0, 10.0)],
+            measured_properties: Default::default(),
+            evidence: vec![],
         };
         // Commit #8 flags this as invalid...
         let input_findings = validate_product_input(&input);
@@ -639,6 +655,8 @@ mod tests {
             other_names: vec![],
             supplier: supplier(),
             components: vec![exact_component("7732-18-5", "Water", 60.0)],
+            measured_properties: Default::default(),
+            evidence: vec![],
         };
         let result = draft_sections_from_resolved_input(&input, &HashMap::new());
         let rows = result
@@ -664,6 +682,8 @@ mod tests {
                 exact_component("7732-18-5", "Water", 60.0),
                 exact_component("64-17-5", "Ethanol", 50.0),
             ],
+            measured_properties: Default::default(),
+            evidence: vec![],
         };
         let input_findings = validate_product_input(&input);
         assert!(input_findings
@@ -683,6 +703,8 @@ mod tests {
                 email: None,
             },
             components: vec![exact_component("7732-18-5", "Water", 100.0)],
+            measured_properties: Default::default(),
+            evidence: vec![],
         };
         let result = draft_sections_from_resolved_input(&input, &HashMap::new());
 

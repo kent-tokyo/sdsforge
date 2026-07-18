@@ -333,6 +333,8 @@ mod tests {
             other_names: vec![],
             supplier: supplier(),
             components: vec![exact_component("7732-18-5", "Water", 100.0)],
+            measured_properties: Default::default(),
+            evidence: vec![],
         }
     }
 
