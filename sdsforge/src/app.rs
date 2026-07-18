@@ -7,7 +7,8 @@ use eframe::egui;
 
 use crate::config::AppConfig;
 use crate::tasks::{
-    ExtractTextParams, LogFn, Provider, Quality, ToDocxParams, ToHtmlParams, ToJsonParams, ToPdfParams,
+    ExtractTextParams, LogFn, Provider, Quality, RenderFormat,
+    ToDocxParams, ToHtmlParams, ToJsonParams, ToPdfParams,
 };
 
 // ---------------------------------------------------------------------------
@@ -22,7 +23,7 @@ struct Strings {
     menu_about: &'static str,
     // Tabs
     tab_convert: &'static str,
-    tab_generate: &'static str,
+    tab_render: &'static str,
     tab_validate: &'static str,
     tab_settings: &'static str,
     // Convert tab
@@ -42,13 +43,13 @@ struct Strings {
     btn_converting: &'static str,
     btn_switch_single: &'static str,
     lbl_output_dir: &'static str,
-    // Generate tab
-    heading_generate: &'static str,
+    // Render tab
+    heading_render: &'static str,
     lbl_input_json: &'static str,
     lbl_output_file: &'static str,
     lbl_format: &'static str,
-    btn_generate: &'static str,
-    btn_generating: &'static str,
+    btn_render: &'static str,
+    btn_rendering: &'static str,
     // Validate tab
     heading_validate: &'static str,
     btn_validate: &'static str,
@@ -91,7 +92,7 @@ struct Strings {
     // Settings — advanced LLM fields
     lbl_model: &'static str,
     lbl_base_url: &'static str,
-    // Generate tab — template
+    // Render tab — template
     lbl_template: &'static str,
     // Extract tab
     tab_extract: &'static str,
@@ -110,8 +111,8 @@ struct Strings {
     welcome_subtitle: &'static str,
     welcome_btn_convert_title: &'static str,
     welcome_btn_convert_desc: &'static str,
-    welcome_btn_generate_title: &'static str,
-    welcome_btn_generate_desc: &'static str,
+    welcome_btn_render_title: &'static str,
+    welcome_btn_render_desc: &'static str,
     welcome_btn_validate_title: &'static str,
     welcome_btn_validate_desc: &'static str,
     // Validation / status
@@ -142,7 +143,7 @@ fn get_strings(ui_lang: &str) -> Strings {
             menu_help:        "Help",
             menu_about:       "About",
             tab_convert:      "SDS → JSON",
-            tab_generate:     "Generate Document",
+            tab_render:     "Render Document",
             tab_validate:     "Validate",
             tab_settings:     "Settings",
             heading_convert:  "SDS Document → MHLW Standard JSON",
@@ -161,12 +162,12 @@ fn get_strings(ui_lang: &str) -> Strings {
             btn_converting:   "Converting...",
             btn_switch_single: "Switch to single file",
             lbl_output_dir:   "Output folder:",
-            heading_generate: "MHLW JSON → Document",
+            heading_render: "MHLW JSON → Document",
             lbl_input_json:   "Input JSON:",
             lbl_output_file:  "Output:",
             lbl_format:       "Format:",
-            btn_generate:     "Generate",
-            btn_generating:   "Generating...",
+            btn_render:     "Render",
+            btn_rendering:   "Rendering...",
             heading_validate: "JSON Validation",
             btn_validate:     "Validate",
             btn_validating:   "Validating...",
@@ -204,11 +205,11 @@ Convert SDS documents (PDF, Word, XLSX, HTML) to MHLW standard JSON.
 4. Click Convert
 For batch processing, use 'Select files...' or 'Select folder...'
 
-【Generate tab (docx/html)】
-Generate a Word/HTML/PDF document from MHLW standard JSON.
+【Render tab (docx/html)】
+Render a Word/HTML/PDF document from MHLW standard JSON.
 1. Select the input JSON file
 2. Specify the output path and format
-3. Click Generate
+3. Click Render
 
 【Validate tab】
 Check if a JSON file conforms to the MHLW SDS standard.
@@ -244,8 +245,8 @@ Multiple files can be selected at once.
             welcome_subtitle:          "Convert SDS documents to/from MHLW standard JSON",
             welcome_btn_convert_title: "SDS → JSON",
             welcome_btn_convert_desc:  "Convert PDF / Word / URL to standard JSON",
-            welcome_btn_generate_title: "Generate Document",
-            welcome_btn_generate_desc: "Export JSON as DOCX / HTML / PDF",
+            welcome_btn_render_title: "Render Document",
+            welcome_btn_render_desc: "Export JSON as DOCX / HTML / PDF",
             welcome_btn_validate_title: "Validate JSON",
             welcome_btn_validate_desc: "Check conformance to MHLW standard",
             no_issues: "No issues found",
@@ -267,7 +268,7 @@ Multiple files can be selected at once.
             menu_help:        "帮助",
             menu_about:       "关于",
             tab_convert:      "SDS → JSON 转换",
-            tab_generate:     "生成文档",
+            tab_render:     "渲染文档",
             tab_validate:     "验证",
             tab_settings:     "设置",
             heading_convert:  "SDS文档 → MHLW标准JSON",
@@ -286,12 +287,12 @@ Multiple files can be selected at once.
             btn_converting:   "转换中...",
             btn_switch_single: "切换单文件",
             lbl_output_dir:   "输出文件夹:",
-            heading_generate: "MHLW JSON → 文档生成",
+            heading_render: "MHLW JSON → 文档渲染",
             lbl_input_json:   "输入 JSON:",
             lbl_output_file:  "输出文件:",
             lbl_format:       "格式:",
-            btn_generate:     "开始生成",
-            btn_generating:   "生成中...",
+            btn_render:     "开始渲染",
+            btn_rendering:   "渲染中...",
             heading_validate: "JSON验证",
             btn_validate:     "验证",
             btn_validating:   "验证中...",
@@ -329,11 +330,11 @@ Multiple files can be selected at once.
 4. 点击「开始转换」
 批量处理：使用「选择文件...」或「选择文件夹...」
 
-【生成标签 (docx/html)】
-从MHLW标准JSON生成Word/HTML/PDF文档。
+【渲染标签 (docx/html)】
+从MHLW标准JSON渲染为Word/HTML/PDF文档。
 1. 选择输入JSON文件
 2. 指定输出路径和格式
-3. 点击「开始生成」
+3. 点击「开始渲染」
 
 【验证标签】
 检查JSON文件是否符合MHLW SDS标准。
@@ -367,8 +368,8 @@ Multiple files can be selected at once.
             welcome_subtitle:          "将SDS文档与MHLW标准JSON双向转换",
             welcome_btn_convert_title: "SDS → JSON",
             welcome_btn_convert_desc:  "将PDF / Word / URL转换为标准JSON",
-            welcome_btn_generate_title: "生成文档",
-            welcome_btn_generate_desc: "将JSON导出为DOCX / HTML / PDF",
+            welcome_btn_render_title: "渲染文档",
+            welcome_btn_render_desc: "将JSON导出为DOCX / HTML / PDF",
             welcome_btn_validate_title: "验证JSON",
             welcome_btn_validate_desc: "检验是否符合MHLW标准",
             no_issues: "无问题",
@@ -390,7 +391,7 @@ Multiple files can be selected at once.
             menu_help:        "ヘルプ",
             menu_about:       "バージョン情報",
             tab_convert:      "SDS → JSON 変換",
-            tab_generate:     "文書生成",
+            tab_render:     "文書レンダリング",
             tab_validate:     "検証",
             tab_settings:     "設定",
             heading_convert:  "SDS文書 → MHLW標準JSON",
@@ -409,12 +410,12 @@ Multiple files can be selected at once.
             btn_converting:   "変換中...",
             btn_switch_single: "単一ファイルに切替",
             lbl_output_dir:   "出力フォルダ:",
-            heading_generate: "MHLW JSON → 文書生成",
+            heading_render: "MHLW JSON → 文書レンダリング",
             lbl_input_json:   "入力 JSON:",
             lbl_output_file:  "出力ファイル:",
             lbl_format:       "形式:",
-            btn_generate:     "生成開始",
-            btn_generating:   "生成中...",
+            btn_render:     "レンダリング開始",
+            btn_rendering:   "レンダリング中...",
             heading_validate: "JSON バリデーション",
             btn_validate:     "検証実行",
             btn_validating:   "検証中...",
@@ -452,11 +453,11 @@ SDS文書（PDF・Word・XLSX・HTML）をMHLW標準JSONに変換します。
 4. 「変換開始」をクリック
 複数ファイルをまとめて変換する場合は「複数選択...」または「フォルダ選択...」を使用
 
-【生成タブ (docx/html)】
-MHLW標準JSONからWord・HTML・PDF文書を生成します。
+【レンダリングタブ (docx/html)】
+MHLW標準JSONからWord・HTML・PDF文書をレンダリングします。
 1. 入力JSONファイルを選択
 2. 出力先と形式（DOCX/HTML/PDF）を指定
-3. 「生成開始」をクリック
+3. 「レンダリング開始」をクリック
 
 【検証タブ】
 JSONファイルがMHLW SDS標準に準拠しているか確認します。
@@ -492,8 +493,8 @@ JSONファイルを選択して「検証実行」をクリックすると警告�
             welcome_subtitle:          "SDS文書とMHLW標準JSONを双方向に変換",
             welcome_btn_convert_title: "SDS → JSON 変換",
             welcome_btn_convert_desc:  "PDF・Word・URLを標準JSONに変換",
-            welcome_btn_generate_title: "文書生成",
-            welcome_btn_generate_desc: "JSONをDOCX / HTML / PDFで出力",
+            welcome_btn_render_title: "文書レンダリング",
+            welcome_btn_render_desc: "JSONをDOCX / HTML / PDFで出力",
             welcome_btn_validate_title: "JSON 検証",
             welcome_btn_validate_desc: "MHLW標準への適合を確認",
             no_issues: "問題なし",
@@ -519,17 +520,10 @@ JSONファイルを選択して「検証実行」をクリックすると警告�
 #[derive(PartialEq, Clone, Copy)]
 enum Tab {
     Convert,
-    Generate,
+    Render,
     Validate,
     Extract,
     Settings,
-}
-
-#[derive(PartialEq, Clone, Copy)]
-enum GenFormat {
-    Docx,
-    Html,
-    Pdf,
 }
 
 // ---------------------------------------------------------------------------
@@ -557,12 +551,12 @@ pub struct SdsApp {
     conv_lang_pending: Arc<Mutex<Option<String>>>,
     conv_enrich: bool,
 
-    // Generate tab
-    gen_input: String,
-    gen_output: String,
-    gen_format: GenFormat,
-    gen_lang: String,
-    gen_template: String,
+    // Render tab
+    render_input: String,
+    render_output: String,
+    render_format: RenderFormat,
+    render_lang: String,
+    render_template: String,
 
     // Extract tab
     extract_input: String,
@@ -599,7 +593,7 @@ impl SdsApp {
             conv_lang:     "auto".to_string(),
             conv_lang_pending: Arc::new(Mutex::new(None)),
             conv_enrich:   config.enrich,
-            gen_lang:      config.language.clone(),
+            render_lang:      config.language.clone(),
             config,
             rt: tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
@@ -615,10 +609,10 @@ impl SdsApp {
             conv_inputs:  Vec::new(),
             conv_output:  String::new(),
             conv_output_dir: String::new(),
-            gen_input:    String::new(),
-            gen_output:   String::new(),
-            gen_format:   GenFormat::Docx,
-            gen_template: String::new(),
+            render_input:    String::new(),
+            render_output:   String::new(),
+            render_format:   RenderFormat::Docx,
+            render_template: String::new(),
             extract_input:          String::new(),
             extract_output:         String::new(),
             extract_result:         Arc::new(Mutex::new(None)),
@@ -909,30 +903,30 @@ impl SdsApp {
     }
 
     // -----------------------------------------------------------------------
-    // Generate tab
+    // Render tab
     // -----------------------------------------------------------------------
 
-    fn ui_generate_tab(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+    fn ui_render_tab(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let s = self.s();
-        ui.heading(s.heading_generate);
+        ui.heading(s.heading_render);
         ui.add_space(10.0);
 
         ui.horizontal(|ui| {
             ui.label(s.lbl_input_json);
             let w = (ui.available_width() - 100.0).max(150.0);
-            ui.add(egui::TextEdit::singleline(&mut self.gen_input).desired_width(w)
+            ui.add(egui::TextEdit::singleline(&mut self.render_input).desired_width(w)
                 .hint_text("input.json"));
             if ui.button(s.btn_browse).clicked() {
                 if let Some(path) = rfd::FileDialog::new().add_filter(s.lbl_filter_json, &["json"]).pick_file() {
-                    self.gen_input = path.to_string_lossy().into_owned();
-                    if self.gen_output.is_empty() {
-                        let ext = match self.gen_format {
-                            GenFormat::Docx => "docx", GenFormat::Html => "html", GenFormat::Pdf => "pdf",
+                    self.render_input = path.to_string_lossy().into_owned();
+                    if self.render_output.is_empty() {
+                        let ext = match self.render_format {
+                            RenderFormat::Docx => "docx", RenderFormat::Html => "html", RenderFormat::Pdf => "pdf",
                         };
                         if let Some(stem) = path.file_stem() {
                             let mut out = path.clone();
                             out.set_file_name(format!("{}.{ext}", stem.to_string_lossy()));
-                            self.gen_output = out.to_string_lossy().into_owned();
+                            self.render_output = out.to_string_lossy().into_owned();
                         }
                     }
                 }
@@ -941,33 +935,33 @@ impl SdsApp {
         ui.horizontal(|ui| {
             ui.label(s.lbl_output_file);
             let w = (ui.available_width() - 110.0).max(150.0);
-            ui.add(egui::TextEdit::singleline(&mut self.gen_output).desired_width(w)
+            ui.add(egui::TextEdit::singleline(&mut self.render_output).desired_width(w)
                 .hint_text("result.docx"));
             if ui.button(s.btn_save_to).clicked() {
-                let (desc, exts): (&str, Vec<&str>) = match self.gen_format {
-                    GenFormat::Docx => (s.lbl_filter_word, vec!["docx"]),
-                    GenFormat::Html => ("HTML",             vec!["html"]),
-                    GenFormat::Pdf  => ("PDF",              vec!["pdf"]),
+                let (desc, exts): (&str, Vec<&str>) = match self.render_format {
+                    RenderFormat::Docx => (s.lbl_filter_word, vec!["docx"]),
+                    RenderFormat::Html => ("HTML",             vec!["html"]),
+                    RenderFormat::Pdf  => ("PDF",              vec!["pdf"]),
                 };
                 if let Some(p) = rfd::FileDialog::new().add_filter(desc, &exts).save_file() {
-                    self.gen_output = p.to_string_lossy().into_owned();
+                    self.render_output = p.to_string_lossy().into_owned();
                 }
             }
         });
 
         // Template picker — shown only when DOCX is selected
-        if self.gen_format == GenFormat::Docx {
+        if self.render_format == RenderFormat::Docx {
             ui.horizontal(|ui| {
                 ui.label(s.lbl_template);
                 let tw = (ui.available_width() - 120.0).max(120.0);
-                ui.add(egui::TextEdit::singleline(&mut self.gen_template).desired_width(tw));
+                ui.add(egui::TextEdit::singleline(&mut self.render_template).desired_width(tw));
                 if ui.button(s.btn_browse).clicked() {
                     if let Some(p) = rfd::FileDialog::new().add_filter(s.lbl_filter_word, &["docx"]).pick_file() {
-                        self.gen_template = p.to_string_lossy().into_owned();
+                        self.render_template = p.to_string_lossy().into_owned();
                     }
                 }
-                if !self.gen_template.is_empty() && ui.small_button("✕").clicked() {
-                    self.gen_template.clear();
+                if !self.render_template.is_empty() && ui.small_button("✕").clicked() {
+                    self.render_template.clear();
                 }
             });
         }
@@ -975,50 +969,50 @@ impl SdsApp {
         ui.add_space(10.0);
         ui.horizontal(|ui| {
             ui.label(s.lbl_format);
-            egui::ComboBox::from_id_salt("gen_format")
-                .selected_text(match self.gen_format {
-                    GenFormat::Docx => "DOCX",
-                    GenFormat::Html => "HTML",
-                    GenFormat::Pdf  => "PDF",
+            egui::ComboBox::from_id_salt("render_format")
+                .selected_text(match self.render_format {
+                    RenderFormat::Docx => "DOCX",
+                    RenderFormat::Html => "HTML",
+                    RenderFormat::Pdf  => "PDF",
                 })
                 .width(90.0)
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut self.gen_format, GenFormat::Docx, "DOCX");
-                    ui.selectable_value(&mut self.gen_format, GenFormat::Html, "HTML");
-                    ui.selectable_value(&mut self.gen_format, GenFormat::Pdf,  "PDF");
+                    ui.selectable_value(&mut self.render_format, RenderFormat::Docx, "DOCX");
+                    ui.selectable_value(&mut self.render_format, RenderFormat::Html, "HTML");
+                    ui.selectable_value(&mut self.render_format, RenderFormat::Pdf,  "PDF");
                 });
             ui.add_space(12.0);
             ui.label(s.lbl_lang);
-            lang_combo(ui, "gen_lang", &mut self.gen_lang, false);
+            lang_combo(ui, "render_lang", &mut self.render_lang, false);
         });
 
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            let label = if self.is_busy() { s.btn_generating } else { s.btn_generate };
+            let label = if self.is_busy() { s.btn_rendering } else { s.btn_render };
             if ui.add_enabled(!self.is_busy(), egui::Button::new(label)).clicked() {
-                self.start_generate(ctx);
+                self.start_render(ctx);
             }
             if self.is_busy() { ui.spinner(); }
         });
     }
 
-    fn start_generate(&mut self, ctx: &egui::Context) {
+    fn start_render(&mut self, ctx: &egui::Context) {
         let s = self.s();
-        if self.gen_input.is_empty() {
+        if self.render_input.is_empty() {
             self.error_modal = Some(s.err_no_input.to_string());
             return;
         }
-        let gen_output = PathBuf::from(self.gen_output.trim());
-        if gen_output.as_os_str().is_empty() {
+        let render_output = PathBuf::from(self.render_output.trim());
+        if render_output.as_os_str().is_empty() {
             self.error_modal = Some(s.no_output_path.to_string());
             return;
         }
-        let input    = PathBuf::from(self.gen_input.trim());
-        let output   = gen_output;
-        let lang     = lang_from_str(&self.gen_lang).unwrap_or(sdsforge_core::Language::Japanese);
-        let format   = self.gen_format;
-        let template = if self.gen_template.is_empty() { None }
-                       else { Some(PathBuf::from(self.gen_template.trim())) };
+        let input    = PathBuf::from(self.render_input.trim());
+        let output   = render_output;
+        let lang     = lang_from_str(&self.render_lang).unwrap_or(sdsforge_core::Language::Japanese);
+        let format   = self.render_format;
+        let template = if self.render_template.is_empty() { None }
+                       else { Some(PathBuf::from(self.render_template.trim())) };
 
         let log_fn  = self.make_log_fn();
         let log_err = Arc::clone(&self.log);
@@ -1030,11 +1024,11 @@ impl SdsApp {
 
         self.rt.spawn(async move {
             let result = match format {
-                GenFormat::Docx => crate::tasks::run_to_docx(
+                RenderFormat::Docx => crate::tasks::run_to_docx(
                     ToDocxParams { input, output, lang, template }, log_fn).await,
-                GenFormat::Html => crate::tasks::run_to_html(
+                RenderFormat::Html => crate::tasks::run_to_html(
                     ToHtmlParams { input, output, lang }, log_fn).await,
-                GenFormat::Pdf  => crate::tasks::run_to_pdf(
+                RenderFormat::Pdf  => crate::tasks::run_to_pdf(
                     ToPdfParams { input, output, lang }, log_fn).await,
             };
             if let Err(e) = result {
@@ -1488,7 +1482,7 @@ impl SdsApp {
                 let card_size = egui::vec2(card_w, card_h);
                 let entries: &[(Tab, &str, &str, &str)] = &[
                     (Tab::Convert,  "📄", s.welcome_btn_convert_title,  s.welcome_btn_convert_desc),
-                    (Tab::Generate, "📝", s.welcome_btn_generate_title, s.welcome_btn_generate_desc),
+                    (Tab::Render, "📝", s.welcome_btn_render_title, s.welcome_btn_render_desc),
                     (Tab::Validate, "✅", s.welcome_btn_validate_title, s.welcome_btn_validate_desc),
                 ];
 
@@ -1620,12 +1614,12 @@ impl eframe::App for SdsApp {
                         self.conv_input = path.to_string_lossy().into_owned();
                     }
                 }
-                Tab::Generate => {
+                Tab::Render => {
                     if let Some(path) = rfd::FileDialog::new()
                         .add_filter(s.lbl_filter_json, &["json"])
                         .pick_file()
                     {
-                        self.gen_input = path.to_string_lossy().into_owned();
+                        self.render_input = path.to_string_lossy().into_owned();
                     }
                 }
                 Tab::Validate => {
@@ -1669,7 +1663,7 @@ impl eframe::App for SdsApp {
         // D&D: define accepted extensions per tab (L2)
         let accepted_exts: &[&str] = match self.tab {
             Tab::Convert  => &["pdf", "docx", "xlsx", "txt", "html"],
-            Tab::Generate => &["json"],
+            Tab::Render => &["json"],
             Tab::Validate => &["json"],
             Tab::Extract  => &["pdf", "docx", "xlsx", "txt", "html"],
             Tab::Settings => &[],
@@ -1701,9 +1695,9 @@ impl eframe::App for SdsApp {
                             self.conv_inputs.extend(valid);
                         }
                     }
-                    Tab::Generate => {
+                    Tab::Render => {
                         if let Some(p) = valid.first() {
-                            self.gen_input = p.to_string_lossy().into_owned();
+                            self.render_input = p.to_string_lossy().into_owned();
                         }
                     }
                     Tab::Validate => {
@@ -1748,7 +1742,7 @@ impl eframe::App for SdsApp {
             egui::TopBottomPanel::top("tabs").show(&ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.selectable_value(&mut self.tab, Tab::Convert,  s.tab_convert);
-                    ui.selectable_value(&mut self.tab, Tab::Generate, s.tab_generate);
+                    ui.selectable_value(&mut self.tab, Tab::Render, s.tab_render);
                     ui.selectable_value(&mut self.tab, Tab::Validate, s.tab_validate);
                     ui.selectable_value(&mut self.tab, Tab::Extract,  s.tab_extract);
                     ui.selectable_value(&mut self.tab, Tab::Settings, s.tab_settings);
@@ -1791,7 +1785,7 @@ impl eframe::App for SdsApp {
                 let ctx2 = ctx.clone();
                 match self.tab {
                     Tab::Convert  => self.ui_convert_tab(ui, &ctx2),
-                    Tab::Generate => self.ui_generate_tab(ui, &ctx2),
+                    Tab::Render => self.ui_render_tab(ui, &ctx2),
                     Tab::Validate => self.ui_validate_tab(ui, &ctx2),
                     Tab::Extract  => self.ui_extract_tab(ui, &ctx2),
                     Tab::Settings => self.ui_settings_tab(ui),
@@ -1968,4 +1962,23 @@ pub fn run_gui() -> anyhow::Result<()> {
         }),
     )
     .map_err(|e| anyhow::anyhow!("GUI error: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `render` = structured SDS/JSON → DOCX/HTML/PDF; `generate` is reserved
+    /// for the future CAS/composition SDS-authoring workflow. The GUI must
+    /// not reintroduce "Generate" wording for this tab.
+    #[test]
+    fn render_tab_strings_do_not_use_stale_generate_wording() {
+        let s = get_strings("en");
+        for field in [s.tab_render, s.heading_render, s.btn_render, s.btn_rendering] {
+            assert!(
+                !field.to_lowercase().contains("generat"),
+                "render-tab string still says \"generate\": {field:?}"
+            );
+        }
+    }
 }

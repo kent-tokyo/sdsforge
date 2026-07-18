@@ -5,11 +5,17 @@ use crate::schema::SdsRoot;
 
 use super::generator::{lang_index, section_name, DOCUMENT_TITLE, SECTION_KEYS};
 
+/// Renamed to [`render_html`]; kept as a thin compat wrapper during the deprecation window.
+#[deprecated(note = "renamed to render_html — \"generate\" is now reserved for the CAS/composition SDS-authoring feature")]
+pub fn generate_html(sds: &SdsRoot, lang: Language) -> Result<String, SdsError> {
+    render_html(sds, lang)
+}
+
 /// Generate an HTML document from an [`SdsRoot`] in the given language.
 ///
 /// The output is a self-contained UTF-8 HTML5 document with inline CSS
 /// including `@media print` styles suitable for printing to PDF.
-pub fn generate_html(sds: &SdsRoot, lang: Language) -> Result<String, SdsError> {
+pub fn render_html(sds: &SdsRoot, lang: Language) -> Result<String, SdsError> {
     let json = serde_json::to_value(sds)
         .map_err(|e| SdsError::Extract(format!("SDS serialize error: {e}")))?;
 
@@ -239,20 +245,33 @@ mod tests {
     use crate::schema::SdsRoot;
 
     #[test]
-    fn generate_html_empty_sds_produces_valid_html() {
+    fn render_html_empty_sds_produces_valid_html() {
         let sds = SdsRoot::default();
-        let html = generate_html(&sds, Language::Japanese).unwrap();
+        let html = render_html(&sds, Language::Japanese).unwrap();
         assert!(html.starts_with("<!DOCTYPE html>"));
         assert!(html.contains("安全データシート"));
         assert!(html.contains("</html>"));
     }
 
     #[test]
-    fn generate_html_english() {
+    fn render_html_english() {
         let sds = SdsRoot::default();
-        let html = generate_html(&sds, Language::English).unwrap();
+        let html = render_html(&sds, Language::English).unwrap();
         assert!(html.contains("Safety Data Sheet"));
         assert!(html.contains("lang=\"en\""));
+    }
+
+    /// `generate` is reserved for the future CAS/composition SDS-authoring
+    /// workflow; the deprecated re-export here must still only ever mean
+    /// "render an existing SdsRoot", never build one from scratch.
+    #[test]
+    #[allow(deprecated)]
+    fn deprecated_generate_html_delegates_to_render_html() {
+        let sds = SdsRoot::default();
+        assert_eq!(
+            generate_html(&sds, Language::Japanese).unwrap(),
+            render_html(&sds, Language::Japanese).unwrap(),
+        );
     }
 
     #[test]

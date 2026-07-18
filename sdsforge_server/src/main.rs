@@ -34,7 +34,7 @@ use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
 use sdsforge_core::{
-    convert_bytes_to_json, convert_from_json, converter::html::generate_html,
+    convert_bytes_to_json, convert_from_json, converter::html::render_html,
     enrich_composition, openai_compat_url, prune_empty_fields, validate_typed, Finding,
     AnthropicBackend, ConvertConfig, Language, LlmBackend, LlmConfig,
     OpenAiCompatBackend, SdsError, SdsRoot,
@@ -364,7 +364,7 @@ async fn to_html(
 ) -> ApiResult<impl IntoResponse> {
     let lang = parse_lang(q.lang.as_deref()).unwrap_or(Language::Japanese);
 
-    let html = tokio::task::spawn_blocking(move || generate_html(&sds, lang))
+    let html = tokio::task::spawn_blocking(move || render_html(&sds, lang))
         .await
         .map_err(|e| anyhow::anyhow!("task panicked: {e}"))??;
 

@@ -178,8 +178,12 @@ impl ConversionReport {
 pub use compliance::{ComplianceDiffReport, ComplianceGap, generate_compliance_diff};
 pub use corrector::{CorrectionConfig, CorrectionResult};
 pub use extractor::InputFormat;
+#[allow(deprecated)]
 pub use generator::generate_docx;
+pub use generator::render_docx;
+#[allow(deprecated)]
 pub use pdf::generate_pdf;
+pub use pdf::render_pdf;
 pub use llm::{
     openai_compat_url, AnthropicBackend, AnyBackend, build_any_backend,
     extract_sds_from_pdf_vision, LlmBackend, LlmConfig, OpenAiCompatBackend,
@@ -436,7 +440,7 @@ pub fn convert_from_json(
     output_path: &Path,
     config: &ConvertConfig,
 ) -> Result<(), SdsError> {
-    generate_docx(sds, output_path, config.output_language)
+    render_docx(sds, output_path, config.output_language)
 }
 
 /// Fetch an HTML page from `url`, extract its text, and convert it to [`SdsRoot`] via LLM.

@@ -2,7 +2,7 @@
 name = "sdsconv"
 version = "0.3.0"
 edition = "2021"
-description = "DEPRECATED: renamed to sdsforge. This package now only prints a redirect notice; install sdsforge instead."
+description = "DEPRECATED: renamed to sdsforge. This binary forwards to sdsforge during the migration window; install sdsforge instead."
 license = "MIT OR Apache-2.0"
 keywords = ["sds", "safety-data-sheet", "ghs", "llm", "cli"]
 categories = ["command-line-utilities", "text-processing"]
@@ -14,3 +14,11 @@ documentation = "https://docs.rs/sdsforge"
 [[bin]]
 name = "sdsconv"
 path = "src/main.rs"
+
+[dependencies]
+sdsforge = { path = "../sdsforge", version = "0.3" }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

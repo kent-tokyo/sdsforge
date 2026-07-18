@@ -3,15 +3,21 @@ use crate::error::SdsError;
 use crate::language::Language;
 use crate::schema::SdsRoot;
 
-use super::html::generate_html;
+use super::html::render_html;
+
+/// Renamed to [`render_pdf`]; kept as a thin compat wrapper during the deprecation window.
+#[deprecated(note = "renamed to render_pdf — \"generate\" is now reserved for the CAS/composition SDS-authoring feature")]
+pub fn generate_pdf(sds: &SdsRoot, lang: Language) -> Result<Vec<u8>, SdsError> {
+    render_pdf(sds, lang)
+}
 
 /// Generate a PDF document from an [`SdsRoot`] in the given language.
 ///
-/// Converts the SDS to HTML via [`generate_html`] and renders it to PDF bytes
+/// Converts the SDS to HTML via [`render_html`] and renders it to PDF bytes
 /// using harumi. A system CJK font is loaded automatically; returns an error if
 /// none can be found.
-pub fn generate_pdf(sds: &SdsRoot, lang: Language) -> Result<Vec<u8>, SdsError> {
-    let html = generate_html(sds, lang)?;
+pub fn render_pdf(sds: &SdsRoot, lang: Language) -> Result<Vec<u8>, SdsError> {
+    let html = render_html(sds, lang)?;
     let font_bytes = load_cjk_font()?;
     let options = harumi::HtmlRenderOptions {
         font_bytes,
@@ -51,4 +57,27 @@ fn load_cjk_font() -> Result<Vec<u8>, SdsError> {
          Install Hiragino (macOS), Meiryo (Windows), or Noto Sans CJK (Linux)."
             .into(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `generate` is reserved for the future CAS/composition SDS-authoring
+    /// workflow; the deprecated re-export here must still only ever mean
+    /// "render an existing SdsRoot", never build one from scratch.
+    ///
+    /// This is a success/failure parity check rather than a byte comparison:
+    /// `render_pdf` depends on a system CJK font (`load_cjk_font` above) that
+    /// may be absent in CI, so both calls must agree on outcome regardless
+    /// of whether a font is installed on the machine running the test.
+    #[test]
+    #[allow(deprecated)]
+    fn deprecated_generate_pdf_delegates_to_render_pdf() {
+        let sds = SdsRoot::default();
+        assert_eq!(
+            generate_pdf(&sds, Language::Japanese).is_ok(),
+            render_pdf(&sds, Language::Japanese).is_ok(),
+        );
+    }
 }

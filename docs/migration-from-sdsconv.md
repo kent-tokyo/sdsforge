@@ -1,12 +1,12 @@
 # Migration: sdsconv → sdsforge
 
-**Status: planning only.** Nothing described below has been executed yet — no
-crate, package, CLI command, or file has been renamed. This document specifies
-the agreed target state so the rename can proceed in small, reviewable commits.
-It will be updated commit-by-commit as the rename actually lands, and the
-"planning only" line above will be removed once commit #1 of the rename (not
-this docs commit — see `docs/sdsforge-architecture.md` for the commit roadmap)
-starts.
+**Status: in progress.** Crates, packages, and the CLI have been renamed
+(commit #2). The `render` command, the deprecated `to-docx`/`to-html`/
+`to-pdf` aliases, the GUI's "Render" tab, the internal `render_docx`/
+`render_html`/`render_pdf` renames, and a working `sdsconv` compat binary
+that forwards instead of exiting 1 have all landed (commit #3 — see the
+CLI-command-mapping table below, stages 1–4). The new `generate` command
+(stage 5, CAS/composition → SDS draft) has not shipped yet.
 
 ## Why
 
@@ -52,13 +52,17 @@ CAS/composition-authoring capability.
 
 The rollout happens in stages so the CLI is never broken mid-migration:
 
-| Stage | Change |
-|---|---|
-| 1 | New `render` command ships, backed by the *existing* to-docx/to-html/to-pdf implementation (`--to docx\|html\|pdf`). |
-| 2 | `to-docx`, `to-html`, `to-pdf` become deprecated aliases for `render --to ...` — same implementation, a deprecation notice is printed to **stderr only** (stdout stays machine-readable JSON/output). |
-| 3 | GUI "Generate" tab is relabeled "Render" (no functional change). |
-| 4 | Internal Rust fn/module names (`generate_docx` → `render_docx`, etc.) are cleaned up where it aids clarity — kept out of the same commit as any public API change. |
-| 5 | The new `generate` command ships (CAS/composition → SDS draft), only once "render" is unambiguous everywhere else. |
+| Stage | Change | Status |
+|---|---|---|
+| 1 | New `render` command ships, backed by the *existing* to-docx/to-html/to-pdf implementation (`--to docx\|html\|pdf`). | Landed (commit #3) |
+| 2 | `to-docx`, `to-html`, `to-pdf` become deprecated aliases for `render --to ...` — same implementation, a deprecation notice is printed to **stderr only** (stdout stays machine-readable JSON/output). | Landed (commit #3) |
+| 3 | GUI "Generate" tab is relabeled "Render" (no functional change). | Landed (commit #3) |
+| 4 | Internal Rust fn/module names (`generate_docx` → `render_docx`, etc.) are cleaned up where it aids clarity — kept out of the same commit as any public API change. | Landed (commit #3) |
+| 5 | The new `generate` command ships (CAS/composition → SDS draft), only once "render" is unambiguous everywhere else. | Not started |
+
+The deprecated `sdsconv` binary (commit #3) forwards its argv into the same
+CLI implementation (`sdsforge::run_cli_from`) rather than exiting 1 — see the
+migration checklist below.
 
 Target CLI surface once all stages land:
 
@@ -161,6 +165,9 @@ decision).
   `import sdsforge`.
 - CLI: replace `sdsconv` invocations with `sdsforge`; replace `to-docx`/
   `to-html`/`to-pdf` with `render --to docx|html|pdf` at your own pace before
-  the deprecation window closes.
+  the deprecation window closes. Existing `sdsconv` scripts keep working
+  in the meantime — the binary prints a deprecation warning to stderr and
+  forwards its arguments into the same `sdsforge` CLI implementation (or
+  launches the same GUI on no args) rather than failing.
 - REST clients: only the base binary/service name changes; no request/response
   shape changes.

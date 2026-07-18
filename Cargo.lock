@@ -4805,6 +4805,12 @@ dependencies = [
 [[package]]
 name = "sdsconv"
 version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "sdsforge",
+ "tempfile",
+ "tokio",
+]
 
 [[package]]
 name = "sdsconv-core"

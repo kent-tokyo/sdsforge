@@ -378,8 +378,14 @@ const _: () = assert!(
     "SECTION_NAMES and SECTION_KEYS must have the same length"
 );
 
-/// Generates a JIS Z 7253-compliant 16-section .docx file from SDS data.
+/// Renamed to [`render_docx`]; kept as a thin compat wrapper during the deprecation window.
+#[deprecated(note = "renamed to render_docx — \"generate\" is now reserved for the CAS/composition SDS-authoring feature")]
 pub fn generate_docx(sds: &SdsRoot, output_path: &Path, lang: Language) -> Result<(), SdsError> {
+    render_docx(sds, output_path, lang)
+}
+
+/// Generates a JIS Z 7253-compliant 16-section .docx file from SDS data.
+pub fn render_docx(sds: &SdsRoot, output_path: &Path, lang: Language) -> Result<(), SdsError> {
     let title = DOCUMENT_TITLE[lang_index(lang)];
     let root_val = serde_json::to_value(sds)
         .map_err(|e| SdsError::Docx(format!("serialize error: {e}")))?;
@@ -871,5 +877,28 @@ fn extract_property_text(val: &Value) -> String {
             map.values().map(value_to_text).filter(|s| !s.is_empty()).collect::<Vec<_>>().join("; ")
         }
         _ => value_to_text(val),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `generate` is reserved for the future CAS/composition SDS-authoring
+    /// workflow; the deprecated re-export here must still only ever mean
+    /// "render an existing SdsRoot", never build one from scratch.
+    #[test]
+    #[allow(deprecated)]
+    fn deprecated_generate_docx_delegates_to_render_docx() {
+        let sds = SdsRoot::default();
+        let dir = tempfile::tempdir().unwrap();
+        let via_deprecated = dir.path().join("via_generate_docx.docx");
+        let via_render = dir.path().join("via_render_docx.docx");
+
+        generate_docx(&sds, &via_deprecated, Language::Japanese).unwrap();
+        render_docx(&sds, &via_render, Language::Japanese).unwrap();
+
+        assert!(via_deprecated.metadata().unwrap().len() > 0);
+        assert!(via_render.metadata().unwrap().len() > 0);
     }
 }

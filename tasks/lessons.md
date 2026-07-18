@@ -1,5 +1,20 @@
 # Lessons Learned
 
+## git ワークフロー
+
+### `git mv` は移動を自動 stage する
+`git mv old new` の直後に `new/` 配下のファイルを Edit で書き換えても、その変更は
+unstaged のまま。ここで `git add <docsなど一部のファイルだけ>; git commit` すると、
+「ディレクトリ名は新しいが中身は移動前のまま」という壊れた中間コミットができる
+（例: crate を rename したのに Cargo.toml の package name が旧名のまま commit される）。
+sdsforge リブランディング Commit 2 で実際に発生し、`git reset --soft HEAD~1` で
+直後に修正した（push 前だったので実害なし）。
+
+対策: `git mv` を含む一連の変更をコミットする前に、必ず `git status --porcelain`
+で `R`（rename, staged）と `M`（modify, unstaged）が同じファイルに混在していないか
+確認する。`git add -A` してから `git status` を見て "R" だけになっているか
+チェックしてから commit するのが安全。
+
 ## スキーマ設計
 
 ### struct命名戦略

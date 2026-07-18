@@ -239,6 +239,25 @@ pub struct ToPdfParams {
     pub lang: Language,
 }
 
+/// Output format for the `render` command — shared by the CLI, the deprecated
+/// `to-docx`/`to-html`/`to-pdf` aliases, and the GUI's Render tab, so all three
+/// dispatch through the exact same [`run_to_docx`]/[`run_to_html`]/[`run_to_pdf`].
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RenderFormat {
+    Docx,
+    Html,
+    Pdf,
+}
+
+pub struct RenderParams {
+    pub input: PathBuf,
+    pub output: PathBuf,
+    pub lang: Language,
+    pub format: RenderFormat,
+    /// Only meaningful when `format == RenderFormat::Docx`.
+    pub template: Option<PathBuf>,
+}
+
 pub struct ExtractTextParams {
     pub input: String,
     pub output: Option<PathBuf>,
@@ -460,7 +479,7 @@ pub async fn run_to_docx(params: ToDocxParams, log: LogFn) -> anyhow::Result<()>
 }
 
 pub async fn run_to_html(params: ToHtmlParams, log: LogFn) -> anyhow::Result<()> {
-    use sdsforge_core::converter::html::generate_html;
+    use sdsforge_core::converter::html::render_html;
 
     let input = params.input.clone();
     let output = params.output.clone();
@@ -471,7 +490,7 @@ pub async fn run_to_html(params: ToHtmlParams, log: LogFn) -> anyhow::Result<()>
         let json = std::fs::read_to_string(&input)
             .with_context(|| format!("reading {}", input.display()))?;
         let sds: SdsRoot = serde_json::from_str(&json)?;
-        let html = generate_html(&sds, lang)?;
+        let html = render_html(&sds, lang)?;
         std::fs::write(&output, html)
             .with_context(|| format!("writing {}", output.display()))?;
         Ok(())
@@ -514,7 +533,7 @@ pub async fn run_to_pdf(params: ToPdfParams, log: LogFn) -> anyhow::Result<()> {
         let json = std::fs::read_to_string(&input)
             .with_context(|| format!("reading {}", input.display()))?;
         let sds: SdsRoot = serde_json::from_str(&json)?;
-        let bytes = sdsforge_core::converter::generate_pdf(&sds, lang)
+        let bytes = sdsforge_core::converter::render_pdf(&sds, lang)
             .map_err(|e| anyhow::anyhow!("{e}"))?;
         std::fs::write(&output, bytes)
             .with_context(|| format!("writing {}", output.display()))
@@ -524,6 +543,42 @@ pub async fn run_to_pdf(params: ToPdfParams, log: LogFn) -> anyhow::Result<()> {
 
     log(format!("Saved PDF to {}", params.output.display()));
     Ok(())
+}
+
+/// Canonical entry point for `sdsforge render --to <format>`. The deprecated
+/// `to-docx`/`to-html`/`to-pdf` CLI aliases and the GUI's Render tab all call
+/// through here too (or directly through the same [`run_to_docx`] /
+/// [`run_to_html`] / [`run_to_pdf`] functions this dispatches to) — there is
+/// exactly one implementation per format, never a copy per entry point.
+pub async fn run_render(params: RenderParams, log: LogFn) -> anyhow::Result<()> {
+    match params.format {
+        RenderFormat::Docx => {
+            run_to_docx(
+                ToDocxParams {
+                    input: params.input,
+                    output: params.output,
+                    lang: params.lang,
+                    template: params.template,
+                },
+                log,
+            )
+            .await
+        }
+        RenderFormat::Html => {
+            run_to_html(
+                ToHtmlParams { input: params.input, output: params.output, lang: params.lang },
+                log,
+            )
+            .await
+        }
+        RenderFormat::Pdf => {
+            run_to_pdf(
+                ToPdfParams { input: params.input, output: params.output, lang: params.lang },
+                log,
+            )
+            .await
+        }
+    }
 }
 
 pub async fn run_extract_text(params: ExtractTextParams, log: LogFn) -> anyhow::Result<String> {
