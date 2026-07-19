@@ -911,10 +911,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_failed_cas_does_not_prevent_processing_a_later_component() {
+    async fn malformed_cas_is_rejected_by_the_format_guard_before_any_request() {
+        let server = MockServer::start().await;
+        let client = reqwest::Client::new();
+        // "bad-cas" isn't a valid CAS format, so validate_cas_format rejects
+        // it before lookup_cas_detailed_at ever issues a request -- no mock
+        // is registered, so a stray request would fail the test outright.
+        let result = lookup_cas_detailed_at("bad-cas", &client, &server.uri()).await;
+        assert!(result.is_err());
+        assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_pubchem_error_for_one_cas_does_not_prevent_a_later_component_from_resolving() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .and(path("/compound/name/bad-cas/cids/JSON"))
+            .and(path("/compound/name/50-78-2/cids/JSON"))
             .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
                 "Fault": {"Code": "PUGREST.BadRequest", "Message": "boom"}
             })))
@@ -936,11 +948,11 @@ mod tests {
             .await;
 
         let client = reqwest::Client::new();
-        // "bad-cas" isn't a valid CAS format, so this exercises the format
-        // guard rather than the mock -- the real point is that the second,
-        // independent call for a valid CAS still succeeds regardless of
-        // what happened to the first.
-        let first = lookup_cas_detailed_at("bad-cas", &client, &server.uri()).await;
+        // "50-78-2" is a well-formed CAS (aspirin's) that the mock server
+        // answers with a real HTTP 400 -- this exercises the network-error
+        // path, not the format guard, and proves it doesn't corrupt or
+        // block the independent lookup that follows.
+        let first = lookup_cas_detailed_at("50-78-2", &client, &server.uri()).await;
         assert!(first.is_err());
         let second = lookup_cas_detailed_at("64-17-5", &client, &server.uri()).await;
         assert!(matches!(second, Ok(CasResolution::Resolved(_))));

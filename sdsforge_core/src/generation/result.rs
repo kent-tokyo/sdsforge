@@ -1616,6 +1616,28 @@ mod tests {
         }
 
         #[test]
+        fn connectivity_smiles_fallback_reaches_provenance_as_a_warning() {
+            let mut candidate = identity_candidate("7732-18-5", 962, None, Some("H2O"));
+            candidate.connectivity_smiles = Some("O".into());
+            let mut resolved = HashMap::new();
+            resolved.insert("7732-18-5".to_string(), CasResolution::Resolved(candidate));
+            let result = generate_from_normalized_input(&product(), &resolved, &ChematicNormalizer);
+            let source = result
+                .provenance
+                .iter()
+                .find(|p| p.path == path::SOURCE_SMILES)
+                .unwrap();
+            assert_eq!(
+                source.method,
+                "PubChem CAS lookup (ConnectivitySMILES fallback)"
+            );
+            assert!(source
+                .warnings
+                .iter()
+                .any(|w| w.contains("stereochemistry/isotope")));
+        }
+
+        #[test]
         fn generation_never_approves_with_normalization() {
             let mut resolved = HashMap::new();
             resolved.insert(

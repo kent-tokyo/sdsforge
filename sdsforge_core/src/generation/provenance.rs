@@ -310,6 +310,23 @@ mod tests {
     }
 
     #[test]
+    fn source_smiles_full_form_has_no_fallback_warning() {
+        let p = FieldProvenance::source_smiles(Some(702), false);
+        assert_eq!(p.source_type, EvidenceLevel::ReferenceDatabase);
+        assert_eq!(p.method, "PubChem CAS lookup (SMILES)");
+        assert!(p.warnings.is_empty());
+    }
+
+    #[test]
+    fn source_smiles_connectivity_fallback_discloses_stereo_loss() {
+        let p = FieldProvenance::source_smiles(Some(702), true);
+        assert_eq!(p.source_type, EvidenceLevel::ReferenceDatabase);
+        assert_eq!(p.method, "PubChem CAS lookup (ConnectivitySMILES fallback)");
+        assert_eq!(p.warnings.len(), 1);
+        assert!(p.warnings[0].contains("stereochemistry/isotope"));
+    }
+
+    #[test]
     fn evidence_level_serializes_snake_case() {
         let json = serde_json::to_string(&EvidenceLevel::UnverifiedUserInput).unwrap();
         assert_eq!(json, "\"unverified_user_input\"");
