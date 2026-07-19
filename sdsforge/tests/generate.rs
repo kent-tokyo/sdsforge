@@ -791,3 +791,237 @@ components:
     assert!(!three_artifacts_exist(&out_dir));
     assert!(String::from_utf8_lossy(&output.stderr).contains("trade_name"));
 }
+
+// -- Cross-platform `--force` artifact replacement (CI gate) --
+
+const CROSS_PLATFORM_INPUT_A: &str = r#"
+trade_name: Cross Platform Product A
+supplier:
+  company_name: Acme A
+components:
+  - cas_number: "7732-18-5"
+    name: Water
+    concentration:
+      exact: 100.0
+      unit: "%"
+"#;
+
+const CROSS_PLATFORM_INPUT_B: &str = r#"
+trade_name: Cross Platform Product B
+supplier:
+  company_name: Acme B
+components:
+  - cas_number: "64-17-5"
+    name: Ethanol
+    concentration:
+      exact: 100.0
+      unit: "%"
+"#;
+
+const ARTIFACT_NAMES: [&str; 3] = [
+    "official_sds.json",
+    "generation_report.json",
+    "review_report.md",
+];
+
+fn exact_dir_entries(dir: &Path) -> std::collections::BTreeSet<String> {
+    std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect()
+}
+
+fn expected_artifact_entries() -> std::collections::BTreeSet<String> {
+    ARTIFACT_NAMES.iter().map(|s| s.to_string()).collect()
+}
+
+fn read_artifacts(dir: &Path) -> [Vec<u8>; 3] {
+    [
+        std::fs::read(dir.join(ARTIFACT_NAMES[0])).unwrap(),
+        std::fs::read(dir.join(ARTIFACT_NAMES[1])).unwrap(),
+        std::fs::read(dir.join(ARTIFACT_NAMES[2])).unwrap(),
+    ]
+}
+
+/// Uppercase-with-spaces equivalent of a `snake_case` `release_status`
+/// value, matching `describe_release_status`'s wording in
+/// `review_report.md` (e.g. `"review_required"` -> `"REVIEW REQUIRED"`).
+fn shout_case(snake_case: &str) -> String {
+    snake_case.replace('_', " ").to_uppercase()
+}
+
+/// Verifies, on the real compiled `sdsforge` binary (not a direct call to
+/// `write_generation_artifacts`), that `generate --force` replaces all
+/// three generation artifacts correctly on both Linux and Windows: a
+/// preflight refusal without `--force`, a full replacement with `--force`,
+/// byte-level (not just mtime) content verification, cross-artifact
+/// consistency, and no leftover temp files at any step. This is the CI gate
+/// referenced by `.github/workflows/ci.yml`.
+#[test]
+fn cross_platform_force_replaces_complete_artifact_set() {
+    let dir = tempfile::tempdir().unwrap();
+    let input_a = dir.path().join("input-a.yaml");
+    let input_b = dir.path().join("input-b.yaml");
+    std::fs::write(&input_a, CROSS_PLATFORM_INPUT_A).unwrap();
+    std::fs::write(&input_b, CROSS_PLATFORM_INPUT_B).unwrap();
+    let out_dir = dir.path().join("generated");
+
+    // -- 1. Initial generation with input A --
+    let first = run(&[
+        "generate",
+        "--input",
+        input_a.to_str().unwrap(),
+        "--output-dir",
+        out_dir.to_str().unwrap(),
+    ]);
+    assert!(
+        first.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    assert!(
+        first.stdout.is_empty(),
+        "stdout was not empty: {:?}",
+        String::from_utf8_lossy(&first.stdout)
+    );
+    assert!(three_artifacts_exist(&out_dir));
+    assert_eq!(exact_dir_entries(&out_dir), expected_artifact_entries());
+
+    let [official_a, report_a, review_a] = read_artifacts(&out_dir);
+    let official_a_json: serde_json::Value = serde_json::from_slice(&official_a)
+        .expect("official_sds.json (input A) must parse as JSON");
+    let _: serde_json::Value = serde_json::from_slice(&report_a)
+        .expect("generation_report.json (input A) must parse as JSON");
+    let review_a_text =
+        String::from_utf8(review_a.clone()).expect("review_report.md (input A) must be UTF-8");
+    assert!(!review_a_text.is_empty());
+    assert_eq!(
+        official_a_json["Identification"]["TradeProductIdentity"]["TradeNameJP"],
+        "Cross Platform Product A"
+    );
+
+    // -- 2. Refusal without --force, using a materially different input B --
+    let refused = run(&[
+        "generate",
+        "--input",
+        input_b.to_str().unwrap(),
+        "--output-dir",
+        out_dir.to_str().unwrap(),
+    ]);
+    assert!(!refused.status.success());
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("already exists"));
+    // The preflight check ran before any write: all three original files
+    // are byte-for-byte unchanged, and no temp/backup/fourth file appeared.
+    let [official_after_refusal, report_after_refusal, review_after_refusal] =
+        read_artifacts(&out_dir);
+    assert_eq!(official_after_refusal, official_a);
+    assert_eq!(report_after_refusal, report_a);
+    assert_eq!(review_after_refusal, review_a);
+    assert_eq!(exact_dir_entries(&out_dir), expected_artifact_entries());
+
+    // -- 3. Replacement with --force, using input B --
+    let forced = run(&[
+        "generate",
+        "--input",
+        input_b.to_str().unwrap(),
+        "--output-dir",
+        out_dir.to_str().unwrap(),
+        "--force",
+    ]);
+    assert!(
+        forced.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&forced.stderr)
+    );
+    assert!(three_artifacts_exist(&out_dir));
+    assert_eq!(exact_dir_entries(&out_dir), expected_artifact_entries());
+
+    let [official_b, report_b, review_b] = read_artifacts(&out_dir);
+    // Every file actually changed -- not just the one the CLI happened to
+    // touch first.
+    assert_ne!(official_b, official_a, "official_sds.json did not change");
+    assert_ne!(report_b, report_a, "generation_report.json did not change");
+    assert_ne!(review_b, review_a, "review_report.md did not change");
+
+    // Both JSON files still parse after the CLI process has fully exited.
+    let official_b_json: serde_json::Value = serde_json::from_slice(&official_b)
+        .expect("official_sds.json (input B) must parse as JSON");
+    let report_b_json: serde_json::Value = serde_json::from_slice(&report_b)
+        .expect("generation_report.json (input B) must parse as JSON");
+    let review_b_text =
+        String::from_utf8(review_b.clone()).expect("review_report.md (input B) must be UTF-8");
+
+    // -- 4. Cross-artifact consistency: every file reflects input B, and
+    // none retains input A's product identity. --
+    assert_eq!(
+        official_b_json["Identification"]["TradeProductIdentity"]["TradeNameJP"],
+        "Cross Platform Product B"
+    );
+    for (name, bytes) in ARTIFACT_NAMES
+        .iter()
+        .zip([&official_b, &report_b, &review_b])
+    {
+        let text = String::from_utf8_lossy(bytes);
+        assert!(
+            !text.contains("Cross Platform Product A"),
+            "{name} still references input A's product identity"
+        );
+        assert!(
+            !text.contains("Acme A"),
+            "{name} still references input A's supplier"
+        );
+    }
+
+    // release_status agrees between generation_report.json and
+    // review_report.md.
+    let release_status = report_b_json["release_status"].as_str().unwrap();
+    assert!(
+        review_b_text.contains(&shout_case(release_status)),
+        "review_report.md does not mention release status {release_status:?}"
+    );
+
+    // Unresolved-field counts agree between JSON and Markdown.
+    let unresolved_count = report_b_json["unresolved"].as_array().unwrap().len();
+    assert!(
+        review_b_text.contains(&format!("Unresolved fields: {unresolved_count}")),
+        "review_report.md's unresolved count does not match generation_report.json's {unresolved_count}"
+    );
+
+    // generation_report.json embeds no full SdsRoot -- exactly its own
+    // seven top-level fields, never a raw MHLW schema section key.
+    let report_keys: std::collections::BTreeSet<&str> = report_b_json
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    let expected_report_keys: std::collections::BTreeSet<&str> = [
+        "report_schema_version",
+        "release_status",
+        "findings",
+        "unresolved",
+        "provenance",
+        "evidence_summary",
+        "release_gate",
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(report_keys, expected_report_keys);
+
+    // official_sds.json carries no report-only keys.
+    let official_keys: std::collections::BTreeSet<&str> = official_b_json
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    for forbidden in [
+        "release_status",
+        "findings",
+        "unresolved",
+        "provenance",
+        "evidence_summary",
+    ] {
+        assert!(!official_keys.contains(forbidden));
+    }
+}

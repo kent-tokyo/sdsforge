@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  # Broader regression gate: full workspace build/test on Linux.
+  test-linux:
+    name: Build & Test (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ubuntu-cargo-ci-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ubuntu-cargo-ci-
+
+      - name: Build workspace
+        run: cargo build --workspace --all-features --exclude sdsforge-py
+
+      - name: Test workspace
+        run: cargo test --workspace --all-features --exclude sdsforge-py
+
+  # `sdsforge generate --force` must reliably replace all three generation
+  # artifacts (official_sds.json, generation_report.json, review_report.md)
+  # on every supported OS -- not just locally on macOS. This runs the real
+  # compiled CLI binary through subprocess-level tests, not a direct call to
+  # write_generation_artifacts(), on real GitHub-hosted runners (Windows
+  # here is windows-latest, not Wine).
+  cross-platform-artifact-replacement:
+    name: Artifact replacement (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ matrix.os }}-cargo-artifact-replacement-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ matrix.os }}-cargo-artifact-replacement-
+
+      - name: Run cross-platform generation artifact replacement test
+        run: cargo test -p sdsforge --test generate cross_platform_force_replaces_complete_artifact_set -- --nocapture

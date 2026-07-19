@@ -1414,3 +1414,71 @@ pub fn collect_files(dir: &Path, extensions: &[&str]) -> Vec<PathBuf> {
     files
 }
 
+// Unix-only: makes the output directory non-writable so
+// `NamedTempFile::new_in` inside `write_generation_artifacts` fails before
+// any of the three `persist()` calls -- no fault-injection abstraction
+// needed, this exercises the real function against a real adversarial
+// directory. Windows ACLs don't map onto a simple `chmod`-style
+// non-writable directory the same way, so this is skipped there rather
+// than faked.
+#[cfg(all(test, unix))]
+mod write_generation_artifacts_failure_tests {
+    use super::*;
+    use std::collections::BTreeSet;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn failure_before_first_persist_leaves_existing_artifacts_and_temp_files_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        let out_dir = dir.path().join("out");
+        std::fs::create_dir_all(&out_dir).unwrap();
+
+        std::fs::write(out_dir.join("official_sds.json"), b"OLD-SDS").unwrap();
+        std::fs::write(out_dir.join("generation_report.json"), b"OLD-REPORT").unwrap();
+        std::fs::write(out_dir.join("review_report.md"), b"OLD-REVIEW").unwrap();
+
+        let original_perms = std::fs::metadata(&out_dir).unwrap().permissions();
+        let mut readonly = original_perms.clone();
+        readonly.set_mode(0o500); // read+execute, not writable
+        std::fs::set_permissions(&out_dir, readonly).unwrap();
+
+        let artifacts = GenerationArtifacts {
+            official_sds_json: "NEW-SDS".into(),
+            generation_report_json: "NEW-REPORT".into(),
+            review_report_markdown: "NEW-REVIEW".into(),
+        };
+        let result = write_generation_artifacts(&out_dir, &artifacts, true);
+
+        // Restore permissions before any assertion so tempdir cleanup can't
+        // fail even if an assertion below panics.
+        std::fs::set_permissions(&out_dir, original_perms).unwrap();
+
+        assert!(result.is_err());
+        assert_eq!(
+            std::fs::read(out_dir.join("official_sds.json")).unwrap(),
+            b"OLD-SDS"
+        );
+        assert_eq!(
+            std::fs::read(out_dir.join("generation_report.json")).unwrap(),
+            b"OLD-REPORT"
+        );
+        assert_eq!(
+            std::fs::read(out_dir.join("review_report.md")).unwrap(),
+            b"OLD-REVIEW"
+        );
+
+        let entries: BTreeSet<String> = std::fs::read_dir(&out_dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        let expected: BTreeSet<String> = [
+            "official_sds.json",
+            "generation_report.json",
+            "review_report.md",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        assert_eq!(entries, expected);
+    }
+}
