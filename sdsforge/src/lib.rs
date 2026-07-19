@@ -148,8 +148,41 @@ struct Cli {
     command: Commands,
 }
 
+/// `--profile` value for `sdsforge generate`. Only `mhlw-v1` exists today —
+/// a typed enum (rather than a free-form string) so requesting an
+/// unsupported profile fails clearly through clap rather than silently
+/// falling back to MHLW.
+#[derive(Clone, Copy, ValueEnum, Default)]
+enum CliGenerationProfile {
+    #[default]
+    MhlwV1,
+}
+
 #[derive(Subcommand)]
 enum Commands {
+    /// Generate an SDS draft (official JSON + generation report + review report) from a product formulation
+    Generate {
+        /// Product formulation input (.json, .yaml, or .yml)
+        #[arg(short, long)]
+        input: PathBuf,
+        /// Directory to write official_sds.json / generation_report.json / review_report.md
+        #[arg(short, long)]
+        output_dir: PathBuf,
+        #[arg(long, value_enum, default_value = "mhlw-v1")]
+        profile: CliGenerationProfile,
+        /// Resolve CAS numbers through PubChem and normalize returned structures.
+        /// Only CAS numbers are sent -- product name, concentrations, supplier, and
+        /// evidence data never leave the machine.
+        #[arg(long)]
+        enrich: bool,
+        /// Exit with a non-zero status if the generated draft is Blocked (artifacts are still written).
+        #[arg(long)]
+        strict: bool,
+        /// Permit replacing existing generation artifacts in --output-dir.
+        #[arg(long)]
+        force: bool,
+    },
+
     /// Convert a PDF, Word document, HTML file, or URL to MHLW standard JSON
     ToJson {
         #[arg(short, long, conflicts_with = "input_dir")]
@@ -395,6 +428,26 @@ async fn run_cli(cli: Cli) -> anyhow::Result<()> {
     let log: LogFn = tasks::stdout_log();
 
     match cli.command {
+        Commands::Generate {
+            input, output_dir, profile: CliGenerationProfile::MhlwV1,
+            enrich, strict, force,
+        } => {
+            let outcome = tasks::run_generate(
+                tasks::GenerateParams { input, output_dir, enrich, force },
+                Arc::clone(&log),
+            ).await?;
+
+            if outcome.release_status == sdsforge_core::ReleaseStatus::Blocked {
+                eprintln!(
+                    "Release status: BLOCKED ({} blocking finding(s), {} unresolved field(s)) — see review_report.md",
+                    outcome.blocking_findings_count, outcome.unresolved_count
+                );
+            }
+            if strict && outcome.release_status == sdsforge_core::ReleaseStatus::Blocked {
+                std::process::exit(1);
+            }
+        }
+
         Commands::ToJson {
             input, input_dir, output, output_dir,
             api_key, lang, country, model, provider, base_url, quality, concurrency,

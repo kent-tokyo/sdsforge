@@ -346,19 +346,37 @@ before moving to the next.
    names.
 8. **feat: add formulation input domain model** — `ProductInput`,
    `ComponentInput`, `SupplierInput`, `ConcentrationRange` per the original
-   brief, in the new `sdsforge_core::generation` module.
+   brief, in the new `sdsforge_core::generation` module. ✅ implemented
+   (`9cec304`).
 9. **feat: generate Section 1 and Section 3 draft data** — wraps
    `enrichment::lookup_cas`/`enrich_composition`, produces `DomainSds`
    fragments for product identification + composition only (the sections
    derivable from CAS + composition + supplied data without product testing).
+   ✅ implemented (`1c231d9`).
 10. **feat: add unresolved fields and provenance** — the type system above
     (`FieldStatus`, `EvidenceLevel`, `FieldProvenance`, `UnresolvedField`,
     `FieldPolicy`, `GenerationResult`, `ReleaseStatus`/`ReleaseGateResult`),
     wired through commit 9's Section 1/3 generator as the first real caller.
+    ✅ implemented (`9fc75de`). Extended with measured-property + evidence
+    input (`ProductInput.measured_properties`/`.evidence`, the seven
+    product-level `FieldPolicy`s) so `FieldStatus::Confirmed` becomes
+    reachable — ✅ implemented (`2ac2758`, `d4dd15d`).
 11. **feat: integrate chematic chemical normalization** — SMILES
     canonicalization/consistency/ambiguity-flagging step between
     `lookup_cas` and the domain model, per the boundary diagram above.
-12. **test: add generation and migration regression tests** — the full test
+    ✅ implemented in two commits: detailed CAS resolution/`CasResolution`
+    (`b94e289`) and the chematic-backed normalizer + `generate_from_normalized_input`
+    (`2b58bba`).
+12. **feat: publish generate artifacts and the `sdsforge generate` CLI
+    command** (not in the original 13-item list — added once 8–11 settled).
+    Split into a pure serialization layer (`GenerationReport`,
+    `official_sds.json`/`generation_report.json`/`review_report.md`
+    projections, `sdsforge_core::generation::artifacts`) and the CLI/task
+    layer (`generate_with_detailed_enrichment`, best-effort-atomic file
+    output, `sdsforge generate --input --output-dir [--enrich] [--strict]
+    [--force]`). ✅ implemented in two commits: artifact serialization
+    (`ee9ee5a`) and the CLI command (this commit).
+13. **test: add generation and migration regression tests** — the full test
     list from the safety-design spec (no-fabrication tests, provenance tests,
     unresolved tests, release-gate tests) plus the rename regression suite
     (CLI name, `--help` has no old names, README install examples, Python

@@ -49,6 +49,47 @@ fn sdsconv_to_docx_forwards_and_succeeds() {
     assert!(!stdout.contains("warning"));
 }
 
+fn example_generate_yaml() -> &'static str {
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../examples/generate/example_cleaner.yaml"
+    )
+}
+
+/// `sdsforge generate` is new (not just an existing command), so this
+/// specifically proves it wasn't missed when the compat binary's forwarding
+/// was set up -- there is no second `generate` implementation in this crate.
+#[test]
+fn sdsconv_generate_forwards_and_succeeds() {
+    let out_dir = tempfile::tempdir().unwrap();
+    let output = Command::new(bin())
+        .args([
+            "generate",
+            "--input",
+            example_generate_yaml(),
+            "--output-dir",
+            out_dir.path().to_str().unwrap(),
+        ])
+        .output()
+        .expect("failed to run sdsconv binary");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(out_dir.path().join("official_sds.json").exists());
+    assert!(out_dir.path().join("generation_report.json").exists());
+    assert!(out_dir.path().join("review_report.md").exists());
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("warning: the `sdsconv` command has been renamed to `sdsforge`"));
+    assert!(stderr.contains("Generated SDS draft"));
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.is_empty());
+}
+
 /// The old binary shares clap's parser via `sdsforge::run_cli_from` rather
 /// than reimplementing it, so an invalid `--to` value must fail the same way
 /// through `sdsconv` as it does through `sdsforge` directly.

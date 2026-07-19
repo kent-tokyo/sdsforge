@@ -1,0 +1,61 @@
+# Example input for `sdsforge generate`.
+#
+# Fictional product, not real confidential formulation data. Demonstrates:
+# - a two-component formulation with both an exact and a ranged concentration
+# - one evidence-backed measured property (flash point, ProductTestReport)
+# - several properties left intentionally unresolved (no evidence supplied),
+#   so the generated draft stays truthfully incomplete rather than guessing
+#
+# Every field below must be present, even when empty/null -- ProductInput and
+# its nested types have no `#[serde(default)]`, so a missing key is a parse
+# error rather than an implicit default. This is deliberate: it forces the
+# input to state explicitly what was and wasn't provided.
+trade_name: "AllClean Multi-Surface Cleaner"
+other_names: []
+supplier:
+  company_name: "Example Chemical Co., Ltd."
+  address: "1-1 Example, Chiyoda-ku, Tokyo"
+  phone: "03-1234-5678"
+  email: "safety@example.com"
+components:
+  - cas_number: "7732-18-5"
+    name: "Water"
+    concentration:
+      exact: 85.0
+      lower: null
+      upper: null
+      unit: "%"
+  - cas_number: "151-21-3"
+    name: "Sodium Lauryl Sulfate"
+    concentration:
+      exact: null
+      lower: 5.0
+      upper: 15.0
+      unit: "%"
+measured_properties:
+  flash_point:
+    - value: 100.0
+      unit: "degC"
+      method: "Closed Cup (ASTM D93)"
+      conditions:
+        temperature_c: null
+        pressure_kpa: null
+        atmosphere: null
+      sample_id: "LOT-2026-0341"
+      batch_id: null
+      evidence_id: "ev-flash-point-1"
+  # Left empty: no evidence was supplied for these, so `generate` reports
+  # them as unresolved rather than inferring or estimating a value.
+  boiling_point: []
+  vapor_pressure: []
+  explosive_limits: []
+  self_reactivity: []
+  oxidizing_properties: []
+  metal_corrosivity: []
+evidence:
+  - id: "ev-flash-point-1"
+    level: "product_test_report"
+    reference: "Internal Lab Report FP-2026-0341"
+    issuer: "Example Chemical Co. QA Lab"
+    document_date: "2026-05-12"
+    applies_to: "finished_product"

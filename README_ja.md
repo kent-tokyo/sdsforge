@@ -74,6 +74,42 @@ python examples/mhlw_allyl_chloride/convert.py
 
 ---
 
+## 生成
+
+製品の配合（組成＋任意の物性測定エビデンス）からSDSドラフトを作成します。
+デフォルトはオフラインで、`--enrich` を指定しない限りネットワークアクセス
+は発生しません。
+
+```bash
+sdsforge generate \
+  --input examples/generate/example_cleaner.yaml \
+  --output-dir generated
+```
+
+`generated/` に3つのファイルを書き出します。
+
+- `official_sds.json` — MHLW形式のSDSドラフト本体
+- `generation_report.json` — findings・未解決項目・根拠(provenance)・リリースステータス（機械可読）
+- `review_report.md` — 同内容を人間可読なMarkdownでまとめたもの
+
+出力は常にドラフトです。`generate` がSDSを承認済みとしてマークすること
+はありません。`Blocked` は、必要なエビデンスまたは人によるレビューがまだ
+不足していることを意味します — 何が必要かは `review_report.md` を参照
+してください。混合物の物性（引火点・沸点など）は、供給された物性測定
+エビデンスからのみ得られ、成分値から推定されることはありません。
+
+```bash
+# PubChemでCAS番号を解決し、構造を正規化します。
+# 送信されるのはCAS番号のみです — 製品名・濃度・サプライヤー情報・
+# エビデンスデータは一切送信されません。
+sdsforge generate --input product.yaml --output-dir generated --enrich
+
+# ドラフトがBlockedの場合は非ゼロで終了します（成果物はいずれにせよ書き出されます）
+sdsforge generate --input product.yaml --output-dir generated --strict
+```
+
+---
+
 ## なぜ sdsforge か
 
 - **MHLW ネイティブ**: 厚生労働省 SDS データ交換フォーマット v1.0（`SDS_Schema_v1.0.json`）への直接変換とスキーマ検証に対応。

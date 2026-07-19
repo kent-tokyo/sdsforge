@@ -16,9 +16,13 @@ name = "sdsforge"
 path = "src/main.rs"
 
 [dependencies]
-sdsforge-core = { path = "../sdsforge_core", version = "0.4.0" }
+sdsforge-core = { path = "../sdsforge_core", version = "0.4.0", features = ["chematic-normalization"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
+# YAML input for `sdsforge generate`. `serde_yaml` is archived (deprecated
+# upstream since 2024); serde_norway is the actively maintained fork
+# (drop-in-compatible API) -- CLI-only, sdsforge-core has no YAML dependency.
+serde_norway = "0.9"
 tokio = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

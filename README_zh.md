@@ -76,6 +76,38 @@ python examples/mhlw_allyl_chloride/convert.py
 
 ---
 
+## 生成
+
+从产品配方（组成成分＋可选的物性测定证据）生成SDS草案 — 默认离线运行，
+除非指定 `--enrich`，否则不会进行任何网络访问。
+
+```bash
+sdsforge generate \
+  --input examples/generate/example_cleaner.yaml \
+  --output-dir generated
+```
+
+会向 `generated/` 写入三个文件：
+
+- `official_sds.json` — MHLW格式的SDS草案本身
+- `generation_report.json` — 发现项、未解决字段、来源依据(provenance)、发布状态（机器可读）
+- `review_report.md` — 同样内容的人类可读Markdown摘要
+
+输出始终是草案：`generate` 绝不会将SDS标记为已批准。`Blocked` 表示仍缺
+少必要的证据或人工审核 — 具体需要什么请查看 `review_report.md`。混合物
+性质（闪点、沸点等）仅来自提供的物性测定证据，绝不会从组分值推断。
+
+```bash
+# 通过PubChem解析CAS号并规范化结构。
+# 仅发送CAS号 — 产品名称、浓度、供应商信息和证据数据不会离开本机。
+sdsforge generate --input product.yaml --output-dir generated --enrich
+
+# 若草案为Blocked状态则以非零状态退出（无论如何都会写入产物文件）
+sdsforge generate --input product.yaml --output-dir generated --strict
+```
+
+---
+
 ## 为什么选择 sdsforge
 
 - **MHLW原生支持**: 直接转换为日本厚生劳动省SDS数据交换格式v1.0（`SDS_Schema_v1.0.json`），并进行官方模式验证。

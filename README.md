@@ -75,6 +75,42 @@ See [`examples/mhlw_allyl_chloride/`](examples/mhlw_allyl_chloride/) for
 
 ---
 
+## Generate
+
+Draft an SDS from a product formulation (composition + optional
+measured-property evidence) — offline by default, no network access unless
+`--enrich` is set:
+
+```bash
+sdsforge generate \
+  --input examples/generate/example_cleaner.yaml \
+  --output-dir generated
+```
+
+Writes three files to `generated/`:
+
+- `official_sds.json` — the MHLW-format SDS draft itself
+- `generation_report.json` — findings, unresolved fields, provenance, release status (machine-readable)
+- `review_report.md` — the same, as a human-readable summary
+
+The output is always a draft: `generate` never marks an SDS approved.
+`Blocked` means required evidence or human review is still missing — see
+`review_report.md` for what's needed. Mixture properties (flash point,
+boiling point, etc.) are only ever taken from supplied measured-property
+evidence, never inferred from component values.
+
+```bash
+# Resolve CAS numbers through PubChem and normalize structures.
+# Only CAS numbers are sent — product name, concentrations, supplier, and
+# evidence data never leave your machine.
+sdsforge generate --input product.yaml --output-dir generated --enrich
+
+# Exit non-zero if the draft is Blocked (artifacts are still written either way)
+sdsforge generate --input product.yaml --output-dir generated --strict
+```
+
+---
+
 ## Why sdsforge
 
 - **MHLW-native**: Converts directly to the Japanese Ministry of Health, Labour and Welfare SDS data exchange format v1.0 (`SDS_Schema_v1.0.json`), validated against the official schema.

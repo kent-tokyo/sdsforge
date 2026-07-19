@@ -16,6 +16,9 @@ use sdsforge_core::{
     enrich_composition, prune_empty_fields, validate_typed, Finding,
     extract_text, extract_text_from_url,
     ConversionReport, ConvertConfig, Language, SourceCountry, SdsError, SdsRoot,
+    build_generation_artifacts, build_generation_report, compute_evidence_summary,
+    compute_release_status, generate_from_resolved_input, generate_with_detailed_enrichment,
+    validate_product_input, ChematicNormalizer, GenerationArtifacts, ProductInput, ReleaseStatus,
 };
 
 // ---------------------------------------------------------------------------
@@ -599,6 +602,165 @@ pub async fn run_extract_text(params: ExtractTextParams, log: LogFn) -> anyhow::
         log(format!("[OK] Extracted {} chars", text.len()));
     }
     Ok(text)
+}
+
+// ---------------------------------------------------------------------------
+// generate
+// ---------------------------------------------------------------------------
+
+pub struct GenerateParams {
+    pub input: PathBuf,
+    pub output_dir: PathBuf,
+    /// Resolve CAS numbers through PubChem and normalize returned
+    /// structures. Only CAS numbers are ever sent -- see `run_generate`.
+    pub enrich: bool,
+    /// Permit replacing existing generation artifacts.
+    pub force: bool,
+}
+
+/// What `run_generate` produced, for the CLI boundary to decide exit
+/// behavior on. Never contains artifact bodies -- those are already on
+/// disk; stdout/exit-code decisions never need the JSON/Markdown content.
+pub struct GenerateOutcome {
+    pub release_status: ReleaseStatus,
+    pub blocking_findings_count: usize,
+    pub unresolved_count: usize,
+}
+
+pub struct GenerationOutputPaths {
+    pub official_sds: PathBuf,
+    pub generation_report: PathBuf,
+    pub review_report: PathBuf,
+}
+
+/// Writes the three generation artifacts to `output_dir`, best-effort
+/// atomically: all three strings are already serialized by the caller, so
+/// by the time this function runs the only thing that can fail *after* a
+/// partial write is the filesystem itself. Without `force`, fails before
+/// touching the filesystem at all if any target already exists. Temp files
+/// are created in `output_dir` itself (same filesystem as the final paths,
+/// required for an atomic rename) and are cleaned up automatically on any
+/// early return -- `NamedTempFile` deletes its underlying file on drop
+/// unless `persist()` succeeded.
+///
+/// True cross-file transactional atomicity isn't available on ordinary
+/// filesystems -- if the process is killed between two `persist()` calls,
+/// one or two of the three final files can end up written while the rest
+/// are not. What this function guarantees is that failure can only happen
+/// at that last, near-instantaneous rename step, never partway through
+/// serializing or writing content.
+pub fn write_generation_artifacts(
+    output_dir: &Path,
+    artifacts: &GenerationArtifacts,
+    force: bool,
+) -> anyhow::Result<GenerationOutputPaths> {
+    use std::io::Write as _;
+
+    let official_sds = output_dir.join("official_sds.json");
+    let generation_report = output_dir.join("generation_report.json");
+    let review_report = output_dir.join("review_report.md");
+
+    if !force {
+        for path in [&official_sds, &generation_report, &review_report] {
+            if path.exists() {
+                anyhow::bail!(
+                    "{} already exists; pass --force to overwrite generation artifacts",
+                    path.display()
+                );
+            }
+        }
+    }
+
+    std::fs::create_dir_all(output_dir)
+        .with_context(|| format!("creating output directory {}", output_dir.display()))?;
+
+    let write_temp = |contents: &str| -> anyhow::Result<tempfile::NamedTempFile> {
+        let mut tmp = tempfile::NamedTempFile::new_in(output_dir)
+            .with_context(|| format!("creating temp file in {}", output_dir.display()))?;
+        tmp.write_all(contents.as_bytes())?;
+        tmp.flush()?;
+        Ok(tmp)
+    };
+
+    let sds_tmp = write_temp(&artifacts.official_sds_json)?;
+    let report_tmp = write_temp(&artifacts.generation_report_json)?;
+    let review_tmp = write_temp(&artifacts.review_report_markdown)?;
+
+    sds_tmp
+        .persist(&official_sds)
+        .with_context(|| format!("writing {}", official_sds.display()))?;
+    report_tmp
+        .persist(&generation_report)
+        .with_context(|| format!("writing {}", generation_report.display()))?;
+    review_tmp
+        .persist(&review_report)
+        .with_context(|| format!("writing {}", review_report.display()))?;
+
+    Ok(GenerationOutputPaths { official_sds, generation_report, review_report })
+}
+
+/// Parses `input` (`.json`/`.yaml`/`.yml`), runs offline generation or
+/// (with `--enrich`) the detailed PubChem/chematic path, merges in
+/// `validate_product_input`'s findings (the caller's job per
+/// `generate_from_resolved_input`'s own doc comment -- generation never
+/// re-runs input validation itself), and writes all three artifacts.
+///
+/// Performs no network access unless `params.enrich` is set. When it is,
+/// only the CAS numbers found in `input.components` are ever sent to
+/// PubChem -- never the product name, concentrations, supplier, or
+/// evidence data, and a privacy notice documenting that is printed to
+/// stderr before any request is made.
+pub async fn run_generate(params: GenerateParams, log: LogFn) -> anyhow::Result<GenerateOutcome> {
+    let input_text = std::fs::read_to_string(&params.input)
+        .with_context(|| format!("reading {}", params.input.display()))?;
+    let extension = params.input.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+
+    let product_input: ProductInput = match extension.as_str() {
+        "json" => serde_json::from_str(&input_text)
+            .with_context(|| format!("parsing {} as JSON", params.input.display()))?,
+        "yaml" | "yml" => serde_norway::from_str(&input_text)
+            .with_context(|| format!("parsing {} as YAML", params.input.display()))?,
+        other => anyhow::bail!(
+            "unsupported input extension '.{other}' for {} -- use .json, .yaml, or .yml",
+            params.input.display()
+        ),
+    };
+
+    let input_findings = validate_product_input(&product_input);
+
+    let mut result = if params.enrich {
+        eprintln!(
+            "CAS enrichment enabled: CAS numbers will be queried against PubChem.\n\
+             Product name, concentration, supplier, and evidence data are not transmitted."
+        );
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()?;
+        generate_with_detailed_enrichment(&product_input, &client, &ChematicNormalizer).await
+    } else {
+        generate_from_resolved_input(&product_input, &std::collections::HashMap::new())
+    };
+
+    result.findings.splice(0..0, input_findings);
+    result.evidence_summary = compute_evidence_summary(&result.provenance, &result.unresolved);
+    result.release_status = compute_release_status(&result.unresolved, &result.findings);
+
+    let artifacts = build_generation_artifacts(&result)?;
+    let paths = write_generation_artifacts(&params.output_dir, &artifacts, params.force)?;
+    let report = build_generation_report(&result);
+
+    log(format!("Generated SDS draft: {}", paths.official_sds.display()));
+    log(format!("Generation report: {}", paths.generation_report.display()));
+    log(format!("Review report: {}", paths.review_report.display()));
+    log(format!("Release status: {:?}", result.release_status));
+    log(format!("Unresolved fields: {}", result.unresolved.len()));
+    log(format!("Blocking actions: {}", report.release_gate.required_actions.len()));
+
+    Ok(GenerateOutcome {
+        release_status: result.release_status,
+        blocking_findings_count: report.release_gate.blocking_findings.len(),
+        unresolved_count: result.unresolved.len(),
+    })
 }
 
 // ---------------------------------------------------------------------------

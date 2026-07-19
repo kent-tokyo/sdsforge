@@ -38,8 +38,9 @@ pub use provenance::{
 };
 pub use result::{
     compute_evidence_summary, compute_release_status, evaluate_release_gate,
-    generate_from_normalized_input, generate_from_resolved_input, generate_with_enrichment,
-    EvidenceSummary, GenerationResult, ReleaseGateResult, ReleaseStatus,
+    generate_from_detailed_lookups, generate_from_normalized_input, generate_from_resolved_input,
+    generate_with_detailed_enrichment, generate_with_enrichment, EvidenceSummary, GenerationResult,
+    ReleaseGateResult, ReleaseStatus,
 };
 pub use unresolved::{
     build_product_level_unresolved, FieldPolicy, FieldStatus, NotApplicableReason,

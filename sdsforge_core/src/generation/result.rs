@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::converter::validator::{validate_cas_format, Finding};
-use crate::enrichment::{lookup_cas, CasInfo, CasResolution};
+use crate::enrichment::{lookup_cas, lookup_cas_detailed, CasInfo, CasResolution};
 use crate::normalize::{ChemicalNormalizer, NormalizationIssue, NormalizationStatus};
 use crate::schema::SdsRoot;
 
@@ -282,6 +282,100 @@ pub fn generate_from_normalized_input<N: ChemicalNormalizer>(
             Some(CasResolution::NotFound) | None => {
                 // Already handled by the base pass (GEN-CAS-ENRICHMENT-MISSING /
                 // MissingInput) — nothing additional to do here.
+            }
+        }
+    }
+
+    result.evidence_summary = compute_evidence_summary(&result.provenance, &result.unresolved);
+    result.release_status = compute_release_status(&result.unresolved, &result.findings);
+    result
+}
+
+/// Orchestration for the `sdsforge generate --enrich` CLI path: resolves
+/// every distinct CAS number in `input` through [`lookup_cas_detailed`]
+/// (deduplicated — one request per distinct CAS, not per component), then
+/// delegates everything else to [`generate_from_detailed_lookups`]. A
+/// network/HTTP/parse failure for one CAS never aborts the whole draft —
+/// it's recorded as a `Result::Err` and surfaces as a
+/// `GEN-CAS-LOOKUP-ERROR` finding, while every other component's lookup
+/// still proceeds normally.
+pub async fn generate_with_detailed_enrichment<N: ChemicalNormalizer>(
+    input: &ProductInput,
+    client: &reqwest::Client,
+    normalizer: &N,
+) -> GenerationResult {
+    let mut cas_numbers: Vec<String> = input
+        .components
+        .iter()
+        .filter_map(|c| c.cas_number.clone())
+        .collect();
+    cas_numbers.sort();
+    cas_numbers.dedup();
+
+    let mut lookups: HashMap<String, Result<CasResolution, String>> = HashMap::new();
+    for cas in cas_numbers {
+        let outcome = lookup_cas_detailed(&cas, client)
+            .await
+            .map_err(|e| e.to_string());
+        lookups.insert(cas, outcome);
+    }
+
+    generate_from_detailed_lookups(input, &lookups, normalizer)
+}
+
+/// Pure core of [`generate_with_detailed_enrichment`] — no network access,
+/// so it's fully unit-testable with a fixture `lookups` map (see
+/// `tests::lookup_error_is_nonblocking_and_retains_supplied_data`).
+///
+/// Delegates Section 1/3 mapping, ambiguity handling, and normalization
+/// entirely to [`generate_from_normalized_input`] — every generation path
+/// converges on that one implementation, this function does not duplicate
+/// it. A CAS whose lookup failed (`Err`) is simply absent from the
+/// `CasResolution` map passed down, so the base pass already creates its
+/// usual "identity not resolved" [`UnresolvedField`] for it (same as a
+/// `NotFound`/never-looked-up CAS) — this function's only additional job
+/// is layering a `GEN-CAS-LOOKUP-ERROR` finding on top, which is the one
+/// thing that distinguishes "the request itself failed" from "nothing was
+/// ever tried" (see [`build_lookup_failure_unresolved`]'s doc comment).
+/// Never classified as `AmbiguousChemicalIdentity` — that reason is
+/// reserved for a genuine multi-candidate resolver response — and never
+/// promoted above MED severity, so a transient network failure alone
+/// cannot block a release the way ambiguity or a formula mismatch does.
+pub fn generate_from_detailed_lookups<N: ChemicalNormalizer>(
+    input: &ProductInput,
+    lookups: &HashMap<String, Result<CasResolution, String>>,
+    normalizer: &N,
+) -> GenerationResult {
+    let resolved: HashMap<String, CasResolution> = lookups
+        .iter()
+        .filter_map(|(cas, outcome)| match outcome {
+            Ok(resolution) => Some((cas.clone(), resolution.clone())),
+            Err(_) => None,
+        })
+        .collect();
+
+    let mut result = generate_from_normalized_input(input, &resolved, normalizer);
+
+    for (i, component) in input.components.iter().enumerate() {
+        let Some(cas) = &component.cas_number else {
+            continue;
+        };
+        // Mirrors generate_from_resolved_input's own guard: a malformed CAS
+        // already has its own GEN-CAS-FORMAT finding from input validation,
+        // so a lookup-error finding on top would be redundant noise about
+        // the same underlying problem.
+        if let Some(Err(message)) = lookups.get(cas) {
+            if validate_cas_format(cas) {
+                result.findings.push(Finding {
+                    level: "MED".into(),
+                    rule: "GEN-CAS-LOOKUP-ERROR".into(),
+                    message: format!(
+                        "CAS lookup failed for component {} (CAS {cas}): {message}. Supplied \
+                         identity and composition data was retained; provide an authoritative \
+                         identity source or retry enrichment.",
+                        i + 1
+                    ),
+                });
             }
         }
     }
@@ -1267,6 +1361,109 @@ mod tests {
                 "official SDS JSON must not contain '{leak}'"
             );
         }
+    }
+
+    #[test]
+    fn lookup_error_is_nonblocking_and_retains_supplied_data() {
+        let mut lookups = HashMap::new();
+        lookups.insert("7732-18-5".to_string(), Err("network timeout".to_string()));
+        let result = generate_from_detailed_lookups(&product(), &lookups, &UnavailableNormalizer);
+
+        let finding = result
+            .findings
+            .iter()
+            .find(|f| f.rule == "GEN-CAS-LOOKUP-ERROR")
+            .expect("expected a GEN-CAS-LOOKUP-ERROR finding");
+        assert_eq!(finding.level, "MED");
+        assert_ne!(result.release_status, ReleaseStatus::Blocked);
+
+        // Supplied name/CAS/concentration are untouched -- a lookup failure
+        // never causes fabricated or discarded composition data.
+        let row = &result
+            .sds
+            .composition
+            .as_ref()
+            .unwrap()
+            .composition_and_concentration
+            .as_ref()
+            .unwrap()[0];
+        assert_eq!(
+            row.substance_identifiers
+                .as_ref()
+                .unwrap()
+                .substance_identity
+                .as_ref()
+                .unwrap()
+                .ca_sno
+                .as_ref()
+                .unwrap()
+                .full_text
+                .as_deref(),
+            Some(["7732-18-5".to_string()].as_slice())
+        );
+    }
+
+    #[test]
+    fn lookup_error_is_distinct_from_ambiguous_identity() {
+        let mut lookups = HashMap::new();
+        lookups.insert("7732-18-5".to_string(), Err("HTTP 503".to_string()));
+        let result = generate_from_detailed_lookups(&product(), &lookups, &UnavailableNormalizer);
+
+        assert!(!result
+            .findings
+            .iter()
+            .any(|f| f.rule == "GEN-CAS-AMBIGUOUS"));
+        let unresolved = result
+            .unresolved
+            .iter()
+            .find(|f| f.path == path::composition_row(0, path::CAS_NO))
+            .unwrap();
+        assert_ne!(
+            unresolved.reason,
+            UnresolvedReason::AmbiguousChemicalIdentity
+        );
+    }
+
+    #[test]
+    fn malformed_cas_lookup_error_does_not_duplicate_format_finding() {
+        let mut input = product();
+        input.components = vec![exact_component("not-a-cas", "Mystery", 100.0)];
+        let mut lookups = HashMap::new();
+        lookups.insert("not-a-cas".to_string(), Err("invalid format".to_string()));
+        let result = generate_from_detailed_lookups(&input, &lookups, &UnavailableNormalizer);
+        assert!(!result
+            .findings
+            .iter()
+            .any(|f| f.rule == "GEN-CAS-LOOKUP-ERROR"));
+    }
+
+    #[test]
+    fn mixed_lookup_outcomes_are_handled_independently_per_component() {
+        let mut input = product();
+        input.components = vec![
+            exact_component("7732-18-5", "Water", 90.0),
+            exact_component("64-17-5", "Ethanol", 10.0),
+        ];
+        let mut lookups = HashMap::new();
+        lookups.insert(
+            "7732-18-5".to_string(),
+            Ok(CasResolution::Ambiguous(vec![
+                identity_candidate("7732-18-5", 1, None, None),
+                identity_candidate("7732-18-5", 2, None, None),
+            ])),
+        );
+        lookups.insert("64-17-5".to_string(), Err("connection reset".to_string()));
+
+        let result = generate_from_detailed_lookups(&input, &lookups, &UnavailableNormalizer);
+        assert!(result
+            .findings
+            .iter()
+            .any(|f| f.rule == "GEN-CAS-AMBIGUOUS"));
+        assert!(result
+            .findings
+            .iter()
+            .any(|f| f.rule == "GEN-CAS-LOOKUP-ERROR"));
+        assert_eq!(result.release_status, ReleaseStatus::Blocked); // ambiguity alone blocks
     }
 
     #[cfg(feature = "chematic-normalization")]

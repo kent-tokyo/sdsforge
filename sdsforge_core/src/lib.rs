@@ -74,8 +74,9 @@ pub use error::SdsError;
 pub use generation::{
     build_generation_artifacts, build_generation_report, build_product_level_unresolved,
     compute_evidence_summary, compute_release_status, draft_sections_from_resolved_input,
-    evaluate_release_gate, generate_from_normalized_input,
-    generate_from_resolved_input, generate_section_1_and_3, generate_with_enrichment,
+    evaluate_release_gate, generate_from_detailed_lookups, generate_from_normalized_input,
+    generate_from_resolved_input, generate_section_1_and_3, generate_with_detailed_enrichment,
+    generate_with_enrichment,
     render_review_report, serialize_generation_report, serialize_official_sds,
     validate_product_input, ComponentInput,
     ConcentrationRange, ConfidenceLevel, EvidenceApplicability, EvidenceLevel, EvidenceSource,
