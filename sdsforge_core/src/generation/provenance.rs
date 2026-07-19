@@ -38,6 +38,7 @@ pub enum EvidenceLevel {
 /// this only needs enough structure to say what evidence the user must
 /// provide, not to model a general laboratory information system.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MeasurementConditions {
     pub temperature_c: Option<f64>,
     pub pressure_kpa: Option<f64>,

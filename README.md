@@ -99,6 +99,15 @@ The output is always a draft: `generate` never marks an SDS approved.
 boiling point, etc.) are only ever taken from supplied measured-property
 evidence, never inferred from component values.
 
+Empty optional collections (`other_names`, `measured_properties` and any
+property inside it, `evidence`) may be omitted from the input file — an
+omitted key means the same thing as an empty one. Product name, supplier,
+components, concentration, units, and referenced evidence metadata remain
+required, and unknown keys are rejected, so a typo in the input file (e.g.
+`concentation:`) is a parse error rather than being silently ignored. See
+[`examples/generate/README.md`](examples/generate/README.md) for the exact
+rules.
+
 ```bash
 # Resolve CAS numbers through PubChem and normalize structures.
 # Only CAS numbers are sent — product name, concentrations, supplier, and

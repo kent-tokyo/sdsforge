@@ -97,6 +97,13 @@ sdsforge generate \
 少必要的证据或人工审核 — 具体需要什么请查看 `review_report.md`。混合物
 性质（闪点、沸点等）仅来自提供的物性测定证据，绝不会从组分值推断。
 
+诸如 `other_names`、`measured_properties`（及其内部各项性质）、
+`evidence` 等可为空的可选字段可以从输入文件中省略 — 省略某个键与显式
+提供空值含义相同。产品名称、供应商、组分、浓度、单位以及所引用的证据
+元数据仍为必填项，且未知键会被拒绝，因此输入文件中的拼写错误（例如
+`concentation:`）会导致解析错误，而不会被静默忽略。确切规则见
+[`examples/generate/README.md`](examples/generate/README.md)。
+
 ```bash
 # 通过PubChem解析CAS号并规范化结构。
 # 仅发送CAS号 — 产品名称、浓度、供应商信息和证据数据不会离开本机。

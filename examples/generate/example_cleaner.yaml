@@ -6,12 +6,11 @@
 # - several properties left intentionally unresolved (no evidence supplied),
 #   so the generated draft stays truthfully incomplete rather than guessing
 #
-# Every field below must be present, even when empty/null -- ProductInput and
-# its nested types have no `#[serde(default)]`, so a missing key is a parse
-# error rather than an implicit default. This is deliberate: it forces the
-# input to state explicitly what was and wasn't provided.
+# Empty optional collections (other_names, unsupplied measured_properties
+# entries, unused supplier contact fields) are omitted here rather than
+# spelled out as [] / null -- see this directory's README for exactly which
+# keys may be omitted and which remain required.
 trade_name: "AllClean Multi-Surface Cleaner"
-other_names: []
 supplier:
   company_name: "Example Chemical Co., Ltd."
   address: "1-1 Example, Chiyoda-ku, Tokyo"
@@ -22,36 +21,25 @@ components:
     name: "Water"
     concentration:
       exact: 85.0
-      lower: null
-      upper: null
       unit: "%"
   - cas_number: "151-21-3"
     name: "Sodium Lauryl Sulfate"
     concentration:
-      exact: null
       lower: 5.0
       upper: 15.0
       unit: "%"
 measured_properties:
+  # Left unsupplied: no evidence for these, so `generate` reports them as
+  # unresolved rather than inferring or estimating a value. Only the
+  # properties with actual evidence need to be listed.
   flash_point:
     - value: 100.0
       unit: "degC"
       method: "Closed Cup (ASTM D93)"
       conditions:
-        temperature_c: null
-        pressure_kpa: null
-        atmosphere: null
+        temperature_c: 20.0
       sample_id: "LOT-2026-0341"
-      batch_id: null
       evidence_id: "ev-flash-point-1"
-  # Left empty: no evidence was supplied for these, so `generate` reports
-  # them as unresolved rather than inferring or estimating a value.
-  boiling_point: []
-  vapor_pressure: []
-  explosive_limits: []
-  self_reactivity: []
-  oxidizing_properties: []
-  metal_corrosivity: []
 evidence:
   - id: "ev-flash-point-1"
     level: "product_test_report"

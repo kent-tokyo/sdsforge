@@ -465,3 +465,329 @@ fn invalid_profile_value_rejected_by_clap() {
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("possible values"));
 }
+
+// -- serde(default)/deny_unknown_fields input UX (concise inputs) --
+
+const MINIMAL_YAML: &str = r#"
+trade_name: Minimal Product
+supplier:
+  company_name: Acme
+components:
+  - concentration:
+      exact: 100.0
+      unit: "%"
+"#;
+
+const MINIMAL_JSON: &str = r#"{
+    "trade_name": "Minimal Product",
+    "supplier": {"company_name": "Acme"},
+    "components": [
+        {"concentration": {"exact": 100.0, "unit": "%"}}
+    ]
+}"#;
+
+/// Every field the concise fixtures above omit, spelled out explicitly.
+/// Must produce byte-identical artifacts to the concise form.
+const VERBOSE_EQUIVALENT_YAML: &str = r#"
+trade_name: Minimal Product
+other_names: []
+supplier:
+  company_name: Acme
+  address: null
+  phone: null
+  email: null
+components:
+  - cas_number: null
+    name: null
+    concentration:
+      exact: 100.0
+      lower: null
+      upper: null
+      unit: "%"
+measured_properties:
+  flash_point: []
+  boiling_point: []
+  vapor_pressure: []
+  explosive_limits: []
+  self_reactivity: []
+  oxidizing_properties: []
+  metal_corrosivity: []
+evidence: []
+"#;
+
+#[test]
+fn minimal_yaml_generates_successfully() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("input.yaml");
+    std::fs::write(&input, MINIMAL_YAML).unwrap();
+    let out_dir = dir.path().join("out");
+
+    let output = run(&[
+        "generate",
+        "--input",
+        input.to_str().unwrap(),
+        "--output-dir",
+        out_dir.to_str().unwrap(),
+    ]);
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(three_artifacts_exist(&out_dir));
+}
+
+#[test]
+fn minimal_json_generates_successfully() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("input.json");
+    std::fs::write(&input, MINIMAL_JSON).unwrap();
+    let out_dir = dir.path().join("out");
+
+    let output = run(&[
+        "generate",
+        "--input",
+        input.to_str().unwrap(),
+        "--output-dir",
+        out_dir.to_str().unwrap(),
+    ]);
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(three_artifacts_exist(&out_dir));
+}
+
+#[test]
+fn verbose_and_concise_inputs_generate_byte_equivalent_artifacts() {
+    let dir = tempfile::tempdir().unwrap();
+    let concise_input = dir.path().join("concise.yaml");
+    std::fs::write(&concise_input, MINIMAL_YAML).unwrap();
+    let verbose_input = dir.path().join("verbose.yaml");
+    std::fs::write(&verbose_input, VERBOSE_EQUIVALENT_YAML).unwrap();
+
+    let concise_out = dir.path().join("concise_out");
+    let verbose_out = dir.path().join("verbose_out");
+
+    for (input, out_dir) in [
+        (&concise_input, &concise_out),
+        (&verbose_input, &verbose_out),
+    ] {
+        let output = run(&[
+            "generate",
+            "--input",
+            input.to_str().unwrap(),
+            "--output-dir",
+            out_dir.to_str().unwrap(),
+        ]);
+        assert!(
+            output.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    for name in [
+        "official_sds.json",
+        "generation_report.json",
+        "review_report.md",
+    ] {
+        assert_eq!(
+            std::fs::read(concise_out.join(name)).unwrap(),
+            std::fs::read(verbose_out.join(name)).unwrap(),
+            "{name} differs between concise and verbose input"
+        );
+    }
+}
+
+#[test]
+fn example_cleaner_concise_form_matches_fully_expanded_equivalent() {
+    // The committed example was simplified to the concise form as part of
+    // this change. Re-expand every now-implicit default by hand and prove
+    // it still produces byte-identical artifacts to the committed file.
+    const FULLY_EXPANDED: &str = r#"
+trade_name: "AllClean Multi-Surface Cleaner"
+other_names: []
+supplier:
+  company_name: "Example Chemical Co., Ltd."
+  address: "1-1 Example, Chiyoda-ku, Tokyo"
+  phone: "03-1234-5678"
+  email: "safety@example.com"
+components:
+  - cas_number: "7732-18-5"
+    name: "Water"
+    concentration:
+      exact: 85.0
+      lower: null
+      upper: null
+      unit: "%"
+  - cas_number: "151-21-3"
+    name: "Sodium Lauryl Sulfate"
+    concentration:
+      exact: null
+      lower: 5.0
+      upper: 15.0
+      unit: "%"
+measured_properties:
+  flash_point:
+    - value: 100.0
+      unit: "degC"
+      method: "Closed Cup (ASTM D93)"
+      conditions:
+        temperature_c: 20.0
+        pressure_kpa: null
+        atmosphere: null
+      sample_id: "LOT-2026-0341"
+      batch_id: null
+      evidence_id: "ev-flash-point-1"
+  boiling_point: []
+  vapor_pressure: []
+  explosive_limits: []
+  self_reactivity: []
+  oxidizing_properties: []
+  metal_corrosivity: []
+evidence:
+  - id: "ev-flash-point-1"
+    level: "product_test_report"
+    reference: "Internal Lab Report FP-2026-0341"
+    issuer: "Example Chemical Co. QA Lab"
+    document_date: "2026-05-12"
+    applies_to: "finished_product"
+"#;
+    let dir = tempfile::tempdir().unwrap();
+    let expanded_input = dir.path().join("expanded.yaml");
+    std::fs::write(&expanded_input, FULLY_EXPANDED).unwrap();
+
+    let concise_out = dir.path().join("concise_out");
+    let expanded_out = dir.path().join("expanded_out");
+
+    for (input, out_dir) in [
+        (example_yaml().to_string(), &concise_out),
+        (expanded_input.to_str().unwrap().to_string(), &expanded_out),
+    ] {
+        let output = run(&[
+            "generate",
+            "--input",
+            &input,
+            "--output-dir",
+            out_dir.to_str().unwrap(),
+        ]);
+        assert!(
+            output.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    for name in [
+        "official_sds.json",
+        "generation_report.json",
+        "review_report.md",
+    ] {
+        assert_eq!(
+            std::fs::read(concise_out.join(name)).unwrap(),
+            std::fs::read(expanded_out.join(name)).unwrap(),
+            "{name} differs between the committed example and its fully-expanded equivalent"
+        );
+    }
+}
+
+#[test]
+fn unknown_top_level_field_fails_with_actionable_error_and_writes_no_artifacts() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("input.yaml");
+    std::fs::write(
+        &input,
+        r#"
+trade_name: Typo Product
+supplier:
+  company_name: Acme
+components:
+  - concentration:
+      exact: 100.0
+      unit: "%"
+bogus_field: true
+"#,
+    )
+    .unwrap();
+    let out_dir = dir.path().join("out");
+
+    let output = run(&[
+        "generate",
+        "--input",
+        input.to_str().unwrap(),
+        "--output-dir",
+        out_dir.to_str().unwrap(),
+    ]);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("bogus_field"));
+    assert!(!three_artifacts_exist(&out_dir));
+}
+
+#[test]
+fn misspelled_concentration_field_fails_with_actionable_error_and_writes_no_artifacts() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("input.yaml");
+    std::fs::write(
+        &input,
+        r#"
+trade_name: Typo Product
+supplier:
+  company_name: Acme
+components:
+  - cas_number: "7732-18-5"
+    name: Water
+    concentation:
+      exact: 100.0
+      unit: "%"
+"#,
+    )
+    .unwrap();
+    let out_dir = dir.path().join("out");
+
+    let output = run(&[
+        "generate",
+        "--input",
+        input.to_str().unwrap(),
+        "--output-dir",
+        out_dir.to_str().unwrap(),
+    ]);
+    assert!(!output.status.success());
+    assert!(!three_artifacts_exist(&out_dir));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // The typo ("concentation") is an unknown field, and the real required
+    // key ("concentration") is then missing -- either name being present in
+    // the error is actionable; assert on the fields, not the exact wording.
+    assert!(stderr.contains("concentation") || stderr.contains("concentration"));
+}
+
+#[test]
+fn missing_trade_name_fails_via_cli() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("input.yaml");
+    std::fs::write(
+        &input,
+        r#"
+supplier:
+  company_name: Acme
+components:
+  - concentration:
+      exact: 100.0
+      unit: "%"
+"#,
+    )
+    .unwrap();
+    let out_dir = dir.path().join("out");
+
+    let output = run(&[
+        "generate",
+        "--input",
+        input.to_str().unwrap(),
+        "--output-dir",
+        out_dir.to_str().unwrap(),
+    ]);
+    assert!(!output.status.success());
+    assert!(!three_artifacts_exist(&out_dir));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("trade_name"));
+}
