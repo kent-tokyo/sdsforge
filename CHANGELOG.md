@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-19
+
+> Package versions: `sdsforge 0.4.1`, `sdsforge-core 0.5.1`
+
+Documentation and test-only patch release. No library API or runtime
+behavior changes — `sdsforge-core 0.5.1` differs from `0.5.0` only in its
+`tests/` contents, which are not compiled into consumers' builds.
+
+### Added
+
+- Whole-document golden generation acceptance tests for `sdsforge
+  generate`, covering a single substance, an evidence-backed mixture, a
+  blocked invalid-CAS input, and a salt/multi-fragment structure. Each
+  scenario verifies the generated official SDS output against a
+  human-reviewed fixture, findings, unresolved fields, release status,
+  field-level provenance (evidence level and confidence), and
+  non-fabrication of unsupported sections.
+
+### Fixed
+
+- **README wording**: corrected `README.md`/`README_ja.md`/`README_zh.md`
+  to stop implying validation against an official MHLW JSON Schema file —
+  no such file has been published by MHLW; only an item-definition
+  document and a system-developer data manual exist. Replaced with
+  accurate wording: deserialization into Rust types generated from the
+  item-definition document, checked for conformance by the rule-based
+  `validate_typed()` validator.
+
 ## [0.4.0] - 2026-07-19
 
 > Package versions: `sdsforge 0.4.0`, `sdsforge-core 0.5.0`
@@ -61,11 +89,6 @@ formulation, rather than only converting existing unstructured documents.
 - Official SDS data (`official_sds.json`) stays fully separate from
   generation diagnostics (findings, provenance, evidence summary) — the
   report is never embedded in the schema output, and vice versa.
-- Added whole-document golden generation acceptance tests covering a
-  single substance, an evidence-backed mixture, a blocked invalid-CAS
-  input, and a salt/multi-fragment structure. The tests verify expected
-  official SDS output, findings, unresolved fields, release status,
-  provenance levels, and non-fabrication.
 
 ### Fixed
 

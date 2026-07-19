@@ -1,6 +1,6 @@
 [package]
 name = "sdsforge-core"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2021"
 description = "Generate, convert, validate, and render chemical safety data sheets using MHLW/JIS Z 7253 structured JSON, with evidence and provenance tracking."
 license = "MIT OR Apache-2.0"

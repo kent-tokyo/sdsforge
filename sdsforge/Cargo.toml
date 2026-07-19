@@ -1,6 +1,6 @@
 [package]
 name = "sdsforge"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 description = "CLI and desktop app for generating, converting, validating, and rendering chemical safety data sheets in MHLW/JIS Z 7253 structured formats."
 license = "MIT OR Apache-2.0"
