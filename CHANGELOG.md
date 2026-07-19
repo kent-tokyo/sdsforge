@@ -61,6 +61,11 @@ formulation, rather than only converting existing unstructured documents.
 - Official SDS data (`official_sds.json`) stays fully separate from
   generation diagnostics (findings, provenance, evidence summary) — the
   report is never embedded in the schema output, and vice versa.
+- Added whole-document golden generation acceptance tests covering a
+  single substance, an evidence-backed mixture, a blocked invalid-CAS
+  input, and a salt/multi-fragment structure. The tests verify expected
+  official SDS output, findings, unresolved fields, release status,
+  provenance levels, and non-fabrication.
 
 ### Fixed
 
