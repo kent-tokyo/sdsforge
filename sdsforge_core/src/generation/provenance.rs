@@ -179,21 +179,41 @@ impl FieldProvenance {
 
     /// The candidate's own structure as PubChem returned it, before any
     /// normalization — `ReferenceDatabase`, same evidence level as
-    /// [`Self::from_cas_resolver`], never `Confirmed`.
-    pub fn source_smiles(pubchem_cid: Option<u64>) -> Self {
+    /// [`Self::from_cas_resolver`], never `Confirmed`. Applies equally to
+    /// either PubChem representation actually used as the normalization
+    /// input: the full `SMILES` property (stereochemistry/isotopes where
+    /// represented) or, only as a fallback, `ConnectivitySMILES`
+    /// (connectivity only) — neither is chematic's separately-provenanced,
+    /// `DeterministicCalculation`-level canonical form (see
+    /// [`Self::canonical_smiles`]). `used_connectivity_fallback` records
+    /// which one so the report can disclose when stereochemistry/isotope
+    /// information may not be represented.
+    pub fn source_smiles(pubchem_cid: Option<u64>, used_connectivity_fallback: bool) -> Self {
         FieldProvenance {
             path: path::SOURCE_SMILES.to_string(),
             source_type: EvidenceLevel::ReferenceDatabase,
             source_reference: pubchem_cid.map(|cid| format!("PubChem CID {cid}")),
             source_value: None,
-            method: "PubChem CAS lookup".into(),
+            method: if used_connectivity_fallback {
+                "PubChem CAS lookup (ConnectivitySMILES fallback)".into()
+            } else {
+                "PubChem CAS lookup (SMILES)".into()
+            },
             sample_id: None,
             batch_id: None,
             test_method: None,
             conditions: None,
             retrieved_at: None,
             confidence: ConfidenceLevel::Medium,
-            warnings: Vec::new(),
+            warnings: if used_connectivity_fallback {
+                vec![
+                    "connectivity-only SMILES used as fallback -- stereochemistry/isotope \
+                     information may not be represented"
+                        .to_string(),
+                ]
+            } else {
+                Vec::new()
+            },
         }
     }
 

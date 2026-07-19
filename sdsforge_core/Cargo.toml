@@ -50,3 +50,4 @@ chematic = { version = "0.4.30", default-features = false, features = ["chem"], 
 chematic-normalization = ["dep:chematic"]
 
 [dev-dependencies]
+wiremock = "0.6"

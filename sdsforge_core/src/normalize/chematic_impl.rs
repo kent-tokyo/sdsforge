@@ -20,15 +20,18 @@ use chematic::smiles;
 use crate::enrichment::ChemicalIdentityCandidate;
 
 use super::{
-    CalculatedIdentityProperties, ChemicalNormalizationResult, ChemicalNormalizer,
-    NormalizationIssue, NormalizationStatus,
+    preferred_smiles, CalculatedIdentityProperties, ChemicalNormalizationResult,
+    ChemicalNormalizer, NormalizationIssue, NormalizationStatus,
 };
 
 pub struct ChematicNormalizer;
 
 impl ChemicalNormalizer for ChematicNormalizer {
     fn normalize(&self, candidate: &ChemicalIdentityCandidate) -> ChemicalNormalizationResult {
-        let Some(source_smiles) = &candidate.source_smiles else {
+        // PubChem's full `smiles` (stereochemistry/isotopes where
+        // represented) is always preferred; `connectivity_smiles` is used
+        // only when the full form is unavailable -- see `preferred_smiles`.
+        let Some(source_smiles) = preferred_smiles(candidate) else {
             return ChemicalNormalizationResult {
                 original_smiles: None,
                 canonical_smiles: None,
@@ -47,7 +50,7 @@ impl ChemicalNormalizer for ChematicNormalizer {
                 // string is a data-quality issue with this one field, not
                 // proof the whole candidate is wrong.
                 return ChemicalNormalizationResult {
-                    original_smiles: Some(source_smiles.clone()),
+                    original_smiles: Some(source_smiles.to_string()),
                     canonical_smiles: None,
                     status: NormalizationStatus::InvalidStructure,
                     issues: vec![NormalizationIssue::InvalidSmiles],
@@ -99,7 +102,7 @@ impl ChemicalNormalizer for ChematicNormalizer {
         };
 
         ChemicalNormalizationResult {
-            original_smiles: Some(source_smiles.clone()),
+            original_smiles: Some(source_smiles.to_string()),
             canonical_smiles: Some(canonical),
             status,
             issues,
@@ -135,8 +138,8 @@ mod tests {
             pubchem_cid: Some(1),
             iupac_name: None,
             molecular_formula: formula.map(str::to_string),
-            source_smiles: smiles.map(str::to_string),
-            isomeric_smiles: None,
+            smiles: smiles.map(str::to_string),
+            connectivity_smiles: None,
             inchi_key: None,
         }
     }
@@ -172,6 +175,23 @@ mod tests {
         assert_eq!(result.status, NormalizationStatus::MissingStructure);
         assert!(result.canonical_smiles.is_none());
         assert!(result.calculated.molecular_formula.is_none());
+    }
+
+    #[test]
+    fn full_smiles_is_preferred_for_normalization() {
+        let mut c = candidate(Some("CCO"), None);
+        c.connectivity_smiles = Some("CO".into()); // deliberately different/wrong
+        let result = ChematicNormalizer.normalize(&c);
+        assert_eq!(result.original_smiles.as_deref(), Some("CCO"));
+    }
+
+    #[test]
+    fn connectivity_smiles_is_used_only_as_fallback() {
+        let mut c = candidate(None, None);
+        c.connectivity_smiles = Some("CCO".into());
+        let result = ChematicNormalizer.normalize(&c);
+        assert_ne!(result.status, NormalizationStatus::MissingStructure);
+        assert_eq!(result.original_smiles.as_deref(), Some("CCO"));
     }
 
     #[test]

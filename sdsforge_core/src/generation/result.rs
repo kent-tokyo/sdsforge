@@ -526,9 +526,16 @@ fn apply_normalization(
             // of what was parsed.
             if let Some(canonical) = &normalization.canonical_smiles {
                 set_smiles(result, component_index, canonical);
-                result
-                    .provenance
-                    .push(FieldProvenance::source_smiles(candidate.pubchem_cid));
+                // PubChem's full `smiles` is preferred as the normalization
+                // input; `connectivity_smiles` (no stereochemistry/isotopes)
+                // is used only as a fallback -- flag it here so the report
+                // discloses when that weaker representation was the source.
+                let used_connectivity_fallback =
+                    candidate.smiles.is_none() && candidate.connectivity_smiles.is_some();
+                result.provenance.push(FieldProvenance::source_smiles(
+                    candidate.pubchem_cid,
+                    used_connectivity_fallback,
+                ));
                 result.provenance.push(FieldProvenance::canonical_smiles(
                     candidate.pubchem_cid,
                     normalization
@@ -1256,8 +1263,8 @@ mod tests {
             pubchem_cid: Some(cid),
             iupac_name: Some("test compound".into()),
             molecular_formula: formula.map(str::to_string),
-            source_smiles: smiles.map(str::to_string),
-            isomeric_smiles: None,
+            smiles: smiles.map(str::to_string),
+            connectivity_smiles: None,
             inchi_key: None,
         }
     }

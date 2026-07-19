@@ -24,6 +24,19 @@ pub use chematic_impl::ChematicNormalizer;
 
 use crate::enrichment::ChemicalIdentityCandidate;
 
+/// The normalization-input SMILES to use for a candidate: PubChem's full
+/// `smiles` (stereochemistry/isotopes included where represented) is always
+/// preferred; `connectivity_smiles` (connectivity only) is used only as a
+/// fallback when the full form is unavailable, since it represents strictly
+/// less of the actual structure. Shared by every [`ChemicalNormalizer`]
+/// implementation so they agree on what counts as "structure present".
+pub(crate) fn preferred_smiles(candidate: &ChemicalIdentityCandidate) -> Option<&str> {
+    candidate
+        .smiles
+        .as_deref()
+        .or(candidate.connectivity_smiles.as_deref())
+}
+
 /// A local, deterministic parse/canonicalize/consistency-check step over one
 /// already-resolved [`ChemicalIdentityCandidate`]. Implementations must not
 /// perform network I/O (normalization is local by design) and must not
@@ -40,7 +53,7 @@ pub struct UnavailableNormalizer;
 
 impl ChemicalNormalizer for UnavailableNormalizer {
     fn normalize(&self, candidate: &ChemicalIdentityCandidate) -> ChemicalNormalizationResult {
-        match &candidate.source_smiles {
+        match preferred_smiles(candidate) {
             None => ChemicalNormalizationResult {
                 original_smiles: None,
                 canonical_smiles: None,
@@ -50,7 +63,7 @@ impl ChemicalNormalizer for UnavailableNormalizer {
                 screening_alerts: vec![],
             },
             Some(smiles) => ChemicalNormalizationResult {
-                original_smiles: Some(smiles.clone()),
+                original_smiles: Some(smiles.to_string()),
                 canonical_smiles: None,
                 status: NormalizationStatus::ReviewRequired,
                 issues: vec![],
@@ -136,8 +149,8 @@ mod tests {
             pubchem_cid: Some(962),
             iupac_name: Some("oxidane".into()),
             molecular_formula: Some("H2O".into()),
-            source_smiles: smiles.map(str::to_string),
-            isomeric_smiles: None,
+            smiles: smiles.map(str::to_string),
+            connectivity_smiles: None,
             inchi_key: None,
         }
     }
@@ -154,6 +167,24 @@ mod tests {
         let result = UnavailableNormalizer.normalize(&candidate(Some("O")));
         assert_eq!(result.status, NormalizationStatus::ReviewRequired);
         assert!(result.canonical_smiles.is_none());
+    }
+
+    #[test]
+    fn full_smiles_is_preferred_over_connectivity_smiles() {
+        let mut c = candidate(Some("CCO"));
+        c.connectivity_smiles = Some("CO".into());
+        assert_eq!(preferred_smiles(&c), Some("CCO"));
+    }
+
+    #[test]
+    fn connectivity_smiles_is_used_only_as_fallback() {
+        let mut c = candidate(None);
+        c.connectivity_smiles = Some("CCO".into());
+        assert_eq!(preferred_smiles(&c), Some("CCO"));
+
+        let result = UnavailableNormalizer.normalize(&c);
+        assert_eq!(result.status, NormalizationStatus::ReviewRequired);
+        assert_eq!(result.original_smiles.as_deref(), Some("CCO"));
     }
 
     /// Feature-disabled sanity check: this whole crate, including this
