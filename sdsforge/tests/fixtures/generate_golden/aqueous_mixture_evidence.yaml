@@ -1,0 +1,38 @@
+# Golden fixture: two-component aqueous mixture with one evidence-backed
+# measured property. Confirms input component order preserved, exact vs.
+# range concentration shape preserved, evidence resolution end-to-end, and
+# that evidence-tracking metadata (sample/batch IDs) reaches
+# generation_report.json but never official_sds.json. See
+# sdsforge/tests/generate_golden.rs.
+trade_name: "Golden Fixture Degreaser"
+supplier:
+  company_name: "Golden Fixture Chemical Co., Ltd."
+components:
+  - cas_number: "7732-18-5"
+    name: "Water"
+    concentration:
+      exact: 90
+      unit: "%"
+  - cas_number: "67-63-0"
+    name: "Isopropyl Alcohol"
+    concentration:
+      lower: 5
+      upper: 10
+      unit: "%"
+measured_properties:
+  flash_point:
+    - value: 12.0
+      unit: "degC"
+      method: "Closed Cup (ASTM D93)"
+      conditions:
+        temperature_c: 20.0
+      sample_id: "GOLDEN-LOT-0002"
+      batch_id: "GOLDEN-BATCH-0002"
+      evidence_id: "ev-flash-point-golden-2"
+evidence:
+  - id: "ev-flash-point-golden-2"
+    level: "product_test_report"
+    reference: "Golden Fixture Lab Report FP-GOLDEN-0002"
+    issuer: "Golden Fixture Chemical Co. QA Lab"
+    document_date: "2026-06-01"
+    applies_to: "finished_product"

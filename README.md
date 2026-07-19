@@ -122,7 +122,7 @@ sdsforge generate --input product.yaml --output-dir generated --strict
 
 ## Why sdsforge
 
-- **MHLW-native**: Converts directly to the Japanese Ministry of Health, Labour and Welfare SDS data exchange format v1.0 (`SDS_Schema_v1.0.json`), validated against the official schema.
+- **MHLW-native**: Converts directly to the Japanese Ministry of Health, Labour and Welfare SDS data exchange format v1.0, using Rust types generated from MHLW's item-definition document and checked for conformance by a rule-based validator.
 - **Evidence-based extraction**: Uses LLM to map free-form SDS text to ~200 nested schema fields. Source-text cross-checks detect hallucinations at the field level.
 - **Corpus-scale quality evaluation**: `eval_corpus` processes hundreds of SDS documents and outputs per-rule failure counts, section scores, and `causasv_features.csv` for root-cause analysis — without any human review.
 - **No lock-in**: Supports Anthropic Claude, OpenAI GPT, Google Gemini, Mistral, Groq, Cohere, and any OpenAI-compatible local endpoint. Bring your own model.
@@ -136,7 +136,7 @@ sdsforge targets the MHLW SDS data exchange format v1.0 published 2025-03-31.
 
 | Rule | Behaviour |
 |---|---|
-| Schema validation | Validates against `SDS_Schema_v1.0.json` |
+| Format conformance | Deserializes into Rust types generated from MHLW's item-definition document, checked by a rule-based validator (`validate_typed`) |
 | Empty-field removal | Removes `""`, `null`, `[]`, `{}` per §3.3 |
 | AdditionalInfo | Content outside the official schema is written to `AdditionalInfo.FullText` |
 | `--strict-mhlw` | Exits 1 (CLI) / raises `ValueError` (Python) if any HIGH or CRIT finding |

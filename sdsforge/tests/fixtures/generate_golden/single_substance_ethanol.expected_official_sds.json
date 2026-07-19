@@ -1,0 +1,39 @@
+{
+  "Composition": {
+    "CompositionAndConcentration": [
+      {
+        "Concentration": {
+          "NumericRangeWithUnitAndQualifier": {
+            "ExactValue": {
+              "Value": 100.0
+            },
+            "Unit": "%"
+          }
+        },
+        "SubstanceIdentifiers": {
+          "SubstanceIdentity": {
+            "CASno": {
+              "FullText": [
+                "64-17-5"
+              ]
+            }
+          },
+          "SubstanceNames": {
+            "GenericName": "Ethanol"
+          }
+        }
+      }
+    ]
+  },
+  "Identification": {
+    "SupplierInformation": {
+      "Address": "2-2 Fixture, Minato-ku, Tokyo",
+      "CompanyName": "Golden Fixture Chemical Co., Ltd.",
+      "Email": "safety@example-fixture.com",
+      "Phone": "03-9876-5432"
+    },
+    "TradeProductIdentity": {
+      "TradeNameJP": "Pure Ethanol Reagent"
+    }
+  }
+}

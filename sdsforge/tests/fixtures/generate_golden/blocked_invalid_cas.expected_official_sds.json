@@ -1,0 +1,36 @@
+{
+  "Composition": {
+    "CompositionAndConcentration": [
+      {
+        "Concentration": {
+          "NumericRangeWithUnitAndQualifier": {
+            "ExactValue": {
+              "Value": 100.0
+            },
+            "Unit": "%"
+          }
+        },
+        "SubstanceIdentifiers": {
+          "SubstanceIdentity": {
+            "CASno": {
+              "FullText": [
+                "7732-18-6"
+              ]
+            }
+          },
+          "SubstanceNames": {
+            "GenericName": "Water"
+          }
+        }
+      }
+    ]
+  },
+  "Identification": {
+    "SupplierInformation": {
+      "CompanyName": "Golden Fixture Chemical Co., Ltd."
+    },
+    "TradeProductIdentity": {
+      "TradeNameJP": "Blocked Fixture Product"
+    }
+  }
+}

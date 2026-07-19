@@ -1,0 +1,16 @@
+# Golden fixture: pure single-substance product, no measured-property
+# evidence. Confirms minimal-input Section 1/3 placement and that omitted
+# measured properties correctly stay Unresolved. See
+# sdsforge/tests/generate_golden.rs.
+trade_name: "Pure Ethanol Reagent"
+supplier:
+  company_name: "Golden Fixture Chemical Co., Ltd."
+  address: "2-2 Fixture, Minato-ku, Tokyo"
+  phone: "03-9876-5432"
+  email: "safety@example-fixture.com"
+components:
+  - cas_number: "64-17-5"
+    name: "Ethanol"
+    concentration:
+      exact: 100
+      unit: "%"

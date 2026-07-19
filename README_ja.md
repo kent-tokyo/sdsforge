@@ -121,7 +121,7 @@ sdsforge generate --input product.yaml --output-dir generated --strict
 
 ## なぜ sdsforge か
 
-- **MHLW ネイティブ**: 厚生労働省 SDS データ交換フォーマット v1.0（`SDS_Schema_v1.0.json`）への直接変換とスキーマ検証に対応。
+- **MHLW ネイティブ**: 厚生労働省 SDS データ交換フォーマット v1.0への直接変換に対応。項目定義書から生成したRust型へのデシリアライズと、ルールベースの適合性検証を実行。
 - **根拠付き抽出**: LLM が SDS 自由記述文を約200の深いネストフィールドへマッピング。フィールド単位の原文照合によりハルシネーションを検出。
 - **コーパス規模品質評価**: `eval_corpus` は数百件の SDS を処理し、ルール別失敗件数・セクションスコア・`causasv_features.csv` を出力。人手レビュー不要。
 - **ロックインなし**: Anthropic Claude・OpenAI GPT・Google Gemini・Mistral・Groq・Cohere・任意の OpenAI 互換ローカルエンドポイントに対応。
@@ -135,7 +135,7 @@ sdsforge generate --input product.yaml --output-dir generated --strict
 
 | ルール | 動作 |
 |---|---|
-| スキーマ検証 | `SDS_Schema_v1.0.json` に対して検証 |
+| フォーマット適合性検証 | 項目定義書から生成したRust型へデシリアライズし、ルールベースの検証（`validate_typed`）を実行 |
 | 空フィールド除去 | §3.3 準拠で `""`・`null`・`[]`・`{}` を除去 |
 | AdditionalInfo | 公式スキーマ外の情報は `AdditionalInfo.FullText` に格納 |
 | `--strict-mhlw` | HIGH/CRIT が存在する場合は終了コード1（CLI）または `ValueError`（Python） |

@@ -1,0 +1,75 @@
+{
+  "Composition": {
+    "CompositionAndConcentration": [
+      {
+        "Concentration": {
+          "NumericRangeWithUnitAndQualifier": {
+            "ExactValue": {
+              "Value": 90.0
+            },
+            "Unit": "%"
+          }
+        },
+        "SubstanceIdentifiers": {
+          "SubstanceIdentity": {
+            "CASno": {
+              "FullText": [
+                "7732-18-5"
+              ]
+            }
+          },
+          "SubstanceNames": {
+            "GenericName": "Water"
+          }
+        }
+      },
+      {
+        "Concentration": {
+          "NumericRangeWithUnitAndQualifier": {
+            "LowerValue": {
+              "Value": 5.0
+            },
+            "Unit": "%",
+            "UpperValue": {
+              "Value": 10.0
+            }
+          }
+        },
+        "SubstanceIdentifiers": {
+          "SubstanceIdentity": {
+            "CASno": {
+              "FullText": [
+                "67-63-0"
+              ]
+            }
+          },
+          "SubstanceNames": {
+            "GenericName": "Isopropyl Alcohol"
+          }
+        }
+      }
+    ]
+  },
+  "Identification": {
+    "SupplierInformation": {
+      "CompanyName": "Golden Fixture Chemical Co., Ltd."
+    },
+    "TradeProductIdentity": {
+      "TradeNameJP": "Golden Fixture Degreaser"
+    }
+  },
+  "PhysicalChemicalProperties": {
+    "FlashPoint": [
+      {
+        "Condition": "20°C",
+        "Method": "Closed Cup (ASTM D93)",
+        "NumericRangeWithUnitAndQualifier": {
+          "ExactValue": {
+            "Value": 12.0
+          },
+          "Unit": "degC"
+        }
+      }
+    ]
+  }
+}

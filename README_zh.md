@@ -117,7 +117,7 @@ sdsforge generate --input product.yaml --output-dir generated --strict
 
 ## 为什么选择 sdsforge
 
-- **MHLW原生支持**: 直接转换为日本厚生劳动省SDS数据交换格式v1.0（`SDS_Schema_v1.0.json`），并进行官方模式验证。
+- **MHLW原生支持**: 直接转换为日本厚生劳动省SDS数据交换格式v1.0。反序列化为根据项目定义书生成的Rust类型，并通过基于规则的验证器检查合规性。
 - **基于证据的提取**: 使用LLM将自由格式SDS文本映射到约200个深层嵌套字段，字段级原文交叉验证可检测幻觉。
 - **语料库规模质量评估**: `eval_corpus`处理数百份SDS文档，输出规则失败计数、章节分数和`causasv_features.csv`，无需人工审核。
 - **无供应商锁定**: 支持Anthropic Claude、OpenAI GPT、Google Gemini、Mistral、Groq、Cohere及任何OpenAI兼容本地端点。
@@ -131,7 +131,7 @@ sdsforge generate --input product.yaml --output-dir generated --strict
 
 | 规则 | 行为 |
 |---|---|
-| 模式验证 | 根据`SDS_Schema_v1.0.json`进行验证 |
+| 格式合规性验证 | 反序列化为根据项目定义书生成的Rust类型，并通过基于规则的验证器（`validate_typed`）检查 |
 | 空字段删除 | 按§3.3规定删除`""`、`null`、`[]`、`{}` |
 | AdditionalInfo | 官方模式外的内容写入`AdditionalInfo.FullText` |
 | `--strict-mhlw` | 存在HIGH/CRIT时退出代码1（CLI）或抛出`ValueError`（Python） |

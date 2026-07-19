@@ -1,0 +1,39 @@
+{
+  "Composition": {
+    "CompositionAndConcentration": [
+      {
+        "Concentration": {
+          "NumericRangeWithUnitAndQualifier": {
+            "ExactValue": {
+              "Value": 100.0
+            },
+            "Unit": "%"
+          }
+        },
+        "MolecularFormula": "ClNa",
+        "SMILES": "[Na+].[Cl-]",
+        "SubstanceIdentifiers": {
+          "SubstanceIdentity": {
+            "CASno": {
+              "FullText": [
+                "7647-14-5"
+              ]
+            }
+          },
+          "SubstanceNames": {
+            "GenericName": "Sodium Chloride",
+            "IupacName": "sodium chloride"
+          }
+        }
+      }
+    ]
+  },
+  "Identification": {
+    "SupplierInformation": {
+      "CompanyName": "Golden Fixture Chemical Co., Ltd."
+    },
+    "TradeProductIdentity": {
+      "TradeNameJP": "Golden Fixture Salt"
+    }
+  }
+}

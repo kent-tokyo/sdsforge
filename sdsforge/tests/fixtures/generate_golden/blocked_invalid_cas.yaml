@@ -1,0 +1,13 @@
+# Golden fixture: deliberately invalid CAS check digit. Proves a real
+# blocking condition (GEN-CAS-CHECKDIGIT, HIGH) is never silently
+# swallowed -- release_status must be Blocked, --strict must exit
+# non-zero. See sdsforge/tests/generate_golden.rs.
+trade_name: "Blocked Fixture Product"
+supplier:
+  company_name: "Golden Fixture Chemical Co., Ltd."
+components:
+  - cas_number: "7732-18-6"
+    name: "Water"
+    concentration:
+      exact: 100
+      unit: "%"
