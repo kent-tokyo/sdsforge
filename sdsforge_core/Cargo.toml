@@ -1,8 +1,8 @@
 [package]
 name = "sdsforge-core"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
-description = "Convert chemical safety SDS documents (PDF/DOCX) ↔ MHLW/JIS Z 7253 standard JSON via LLM. Supports Claude, GPT, Gemini. Multilingual (ja/en/zh)."
+description = "Generate, convert, validate, and render chemical safety data sheets using MHLW/JIS Z 7253 structured JSON, with evidence and provenance tracking."
 license = "MIT OR Apache-2.0"
 keywords = ["sds", "safety-data-sheet", "ghs", "llm", "docx"]
 categories = ["encoding", "parser-implementations", "text-processing", "api-bindings"]

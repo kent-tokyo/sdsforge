@@ -1,8 +1,8 @@
 [package]
 name = "sdsforge"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
-description = "CLI for converting chemical safety SDS documents (PDF/DOCX) ↔ MHLW/JIS Z 7253 standard JSON via LLM (Claude/GPT/Gemini). Batch mode, multilingual."
+description = "CLI and desktop app for generating, converting, validating, and rendering chemical safety data sheets in MHLW/JIS Z 7253 structured formats."
 license = "MIT OR Apache-2.0"
 keywords = ["sds", "safety-data-sheet", "ghs", "llm", "cli"]
 categories = ["command-line-utilities", "text-processing"]
@@ -10,13 +10,16 @@ readme = "README.md"
 repository = "https://github.com/kent-tokyo/sdsforge"
 homepage = "https://github.com/kent-tokyo/sdsforge"
 documentation = "https://docs.rs/sdsforge"
+# sdsforge-core/chematic-normalization is always enabled (see below), and its
+# effective dependency graph requires Rust 1.85 (chematic's own MSRV).
+rust-version = "1.85"
 
 [[bin]]
 name = "sdsforge"
 path = "src/main.rs"
 
 [dependencies]
-sdsforge-core = { path = "../sdsforge_core", version = "0.4.0", features = ["chematic-normalization"] }
+sdsforge-core = { path = "../sdsforge_core", version = "0.5.0", features = ["chematic-normalization"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 # YAML input for `sdsforge generate`. `serde_yaml` is archived (deprecated

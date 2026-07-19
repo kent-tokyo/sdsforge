@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-19
+
+> Package versions: `sdsforge 0.4.0`, `sdsforge-core 0.5.0`
+
+`sdsforge generate` — the SDS document generation feature — is the headline
+addition in this release: drafting a structured SDS from a product
+formulation, rather than only converting existing unstructured documents.
+
+### Added
+
+- **`sdsforge generate`**: new CLI command that drafts an SDS from a product
+  formulation (`ProductInput`) instead of unstructured document text.
+  - JSON/YAML `ProductInput` with unknown-field rejection
+    (`#[serde(deny_unknown_fields)]`), so a typo in the input file is a parse
+    error, not silently ignored; genuinely-optional collections
+    (`other_names`, `measured_properties`, `evidence`) may be omitted.
+  - Section 1 and Section 3 draft generation from resolved
+    component/supplier data.
+  - Measured-property and evidence input for the seven properties Section
+    1/3 can never resolve on its own (flash point, boiling point, vapor
+    pressure, explosive limits, self-reactivity, oxidizing properties, metal
+    corrosivity).
+  - Provenance, unresolved fields, evidence summary, and release status
+    tracked per field and surfaced in the generation report.
+  - Three output artifacts: `official_sds.json` (MHLW-format draft),
+    `generation_report.json` (machine-readable findings/provenance/release
+    status), `review_report.md` (human-readable summary).
+  - Optional PubChem enrichment (`--enrich`) for CAS-based chemical identity
+    resolution.
+  - Optional chematic-backed chemical structure normalization (SMILES
+    canonicalization, formula/charge/fragment consistency checks).
+  - `--strict` (exit non-zero when the draft is `Blocked`) and `--force`
+    (replace existing output artifacts).
+  - Offline-by-default operation — no network access unless `--enrich` is
+    passed.
+
+### Safety
+
+- `generate` never returns `Approved` — its output is always an unapproved
+  draft requiring human review.
+- Missing product-level evidence remains `Unresolved` rather than being
+  inferred or estimated.
+- Mixture properties (flash point, boiling point, vapor pressure, etc.) are
+  never inferred by averaging or otherwise deriving them from
+  component-level values.
+- Ambiguous CAS resolution (multiple PubChem candidates) and
+  chematic-detected formula conflicts block release (`Blocked`) rather than
+  silently picking a candidate.
+- With `--enrich`, only CAS numbers are ever transmitted to PubChem —
+  product name, concentrations, supplier, and evidence data never leave the
+  machine.
+- Official SDS data (`official_sds.json`) stays fully separate from
+  generation diagnostics (findings, provenance, evidence summary) — the
+  report is never embedded in the schema output, and vice versa.
+
+### Fixed
+
+- **PubChem PUG REST property contract restored**: the enrichment lookup
+  requested obsolete property names (`CanonicalSMILES`, `IsomericSMILES`)
+  that PubChem's current API rejects with HTTP 400. Corrected to
+  `SMILES`/`ConnectivitySMILES`:
+  - `CanonicalSMILES` → `ConnectivitySMILES`
+  - `IsomericSMILES` → `SMILES`
+  - replaced the single-step name lookup with two-step CAS → CID → property
+    resolution, so a name matching multiple compounds is correctly reported
+    as ambiguous rather than silently taking the first result
+  - bounded retry/rate-limit handling (HTTP 429/503 retried with backoff,
+    400 never retried, PubChem's ~5 req/sec limit respected)
+- **Windows/Linux generation-artifact replacement verification**:
+  `sdsforge generate --force` reliably replaces all three generation
+  artifacts on both Linux and Windows GitHub-hosted runners, confirmed via
+  a dedicated CI matrix job exercising the real compiled CLI.
+
 ### Fixed (QC r33 + roundtrip test tooling — seed=555 findings)
 
 - **S9-FLASH-POINT-NOT-NUMERIC FP** (`tools/quality_check.py`): Added EN suppression phrases
