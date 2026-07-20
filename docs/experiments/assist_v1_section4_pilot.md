@@ -254,3 +254,62 @@ they were real first-aid content. Recommend a deterministic
 semantic-filtering pass for these specific placeholder patterns next, in
 its own single commit, per the established one-change-at-a-time rule —
 not fuzzy matching, not a prompt change, not Section 5.
+
+## Follow-up: content-free placeholder filter
+
+Implemented a deterministic, exact-match (not substring) filter:
+`validate_candidate` now rejects any candidate whose entire
+`proposed_value` normalizes (trim, strip one trailing `.`/`。`,
+lowercase) to one of two forms actually observed in this pilot's captured
+responses:
+
+- `"none"`
+- `"no data available"`
+
+Nothing else is in the list -- no `"n/a"`, `"not applicable"`,
+`"unknown"`, `"unavailable"`, or a Japanese equivalent, since none of
+those appeared in a real captured response. A real sentence that merely
+contains "none" or starts with "no" (`"None known at this time"`, `"No
+data available for chronic effects; seek medical advice"`, `"No special
+measures are required"`) is unaffected -- confirmed by test, not just by
+the exact-match design. Excerpt verification is unchanged: a placeholder
+that's quoted correctly from the source is still rejected, because
+correct citation and usable content are different questions.
+
+### Replay of already-captured responses (no new live call)
+
+Per plan, this was evaluated by replaying the CJK-fix round's already-
+captured proposals through the new filter logic offline, not with a new
+model call:
+
+| document | retained before filter | retained after filter | rejected as placeholder |
+|---|---|---|---|
+| doc-a | 5 | 5 | 0 |
+| doc-b | 6 | 5 | 1 (`MedicalAttentionAndSpecialTreatmentNeeded` = `"No data available"`) |
+| doc-c | 6 | 5 | 1 (`MedicalAttentionAndSpecialTreatmentNeeded` = `"none"`) |
+| **total** | **17** | **15** | **2** |
+
+doc-a's count doesn't change: its one false positive
+(`InformationToHealthProfessionals` ← "個人用保護具を着用すること。", a
+real sentence about protective equipment, misfiled under the wrong
+field) is not a placeholder and correctly survives this filter --
+exactly the expected, reported-rather-than-forced result, not the
+originally-hoped-for "all three documents drop one false positive each."
+
+### Updated aggregate
+
+- correct: 14 (unchanged)
+- false positives: 3 → **1** (doc-a's misfiled protective-equipment note
+  only)
+- missed: 0 (unchanged)
+- **precision** = 14 / 15 ≈ **93%** (was 82%)
+- **recall** = 14 / 14 = **100%** (unchanged)
+
+### Remaining false positive
+
+`doc-a`, path `FirstAidMeasures.InformationToHealthProfessionals.FullText`,
+value `"個人用保護具を着用すること。"` -- real content, correctly cited,
+but belongs under first-aider protective equipment guidance, not
+"information to health professionals." Out of scope for this commit by
+design (it's a path-assignment/semantic problem, not a content-free
+placeholder); left for a separate, future change.

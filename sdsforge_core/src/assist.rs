@@ -252,6 +252,44 @@ pub fn excerpt_verifies(source_text: &str, excerpt: &str) -> bool {
     haystack.contains(&needle)
 }
 
+/// Exact (not substring) values that carry no usable SDS content, observed
+/// in the Section 4 pilot -- boilerplate the model quotes correctly from
+/// the source but which asserts nothing about first aid. Compared after
+/// [`normalize_content_free_candidate`], so this list itself stays
+/// lowercase with no trailing punctuation.
+///
+/// Deliberately only the two forms actually seen in the pilot's captured
+/// responses -- not `"n/a"`, `"not applicable"`, `"unknown"`,
+/// `"unavailable"`, a Japanese equivalent, or any other placeholder that
+/// hasn't been observed yet. Add one only once it shows up in a real
+/// response, the same evidence bar every other fix in this module used.
+const CONTENT_FREE_PLACEHOLDERS: &[&str] = &["none", "no data available"];
+
+/// Case-insensitive, trailing-period/full-stop-tolerant normalization used
+/// only to detect [`CONTENT_FREE_PLACEHOLDERS`] -- a separate, narrower
+/// normalization from [`normalize_for_verification`], which exists for a
+/// different purpose (matching an excerpt against source text) and must
+/// not be reused here.
+fn normalize_content_free_candidate(text: &str) -> String {
+    let trimmed = text.trim();
+    let trimmed = trimmed
+        .strip_suffix('.')
+        .or_else(|| trimmed.strip_suffix('。'))
+        .unwrap_or(trimmed)
+        .trim();
+    trimmed.to_lowercase()
+}
+
+/// Whether `text`'s entire content, after normalization, is exactly one of
+/// [`CONTENT_FREE_PLACEHOLDERS`] -- never a substring match, so a real
+/// sentence that merely contains "none" or starts with "no" (`"None known
+/// at this time"`, `"No data available for chronic effects; seek medical
+/// advice"`, `"No special measures are required"`) is real content and
+/// stays accepted.
+fn is_content_free_text(text: &str) -> bool {
+    CONTENT_FREE_PLACEHOLDERS.contains(&normalize_content_free_candidate(text).as_str())
+}
+
 /// Validates one raw model candidate against the Section 4 allowlist and
 /// the extracted source text, returning the finished proposal or a
 /// human-readable rejection reason.
@@ -276,6 +314,13 @@ pub fn validate_candidate(
         return Err(format!(
             "path '{}': proposed_value is empty",
             candidate.path
+        ));
+    }
+    if is_content_free_text(value_str) {
+        return Err(format!(
+            "path '{}': content_free_placeholder (normalized value: {:?})",
+            candidate.path,
+            normalize_content_free_candidate(value_str)
         ));
     }
     if candidate.source_excerpt.trim().is_empty() {
@@ -622,6 +667,130 @@ mod tests {
         assert!(validate_candidate(&c, SOURCE_SHA, SOURCE_TEXT).is_err());
     }
 
+    // -- content-free placeholder filtering --
+
+    #[test]
+    fn is_content_free_text_matches_exact_none() {
+        assert!(is_content_free_text("none"));
+    }
+
+    #[test]
+    fn is_content_free_text_matches_uppercase_and_mixed_case() {
+        assert!(is_content_free_text("None"));
+        assert!(is_content_free_text("NONE"));
+    }
+
+    #[test]
+    fn is_content_free_text_matches_with_leading_trailing_whitespace() {
+        assert!(is_content_free_text(" none "));
+    }
+
+    #[test]
+    fn is_content_free_text_matches_with_trailing_period() {
+        assert!(is_content_free_text("NONE."));
+        assert!(is_content_free_text("None."));
+    }
+
+    #[test]
+    fn is_content_free_text_matches_with_trailing_japanese_full_stop() {
+        assert!(is_content_free_text("No data available。"));
+    }
+
+    #[test]
+    fn is_content_free_text_matches_exact_no_data_available() {
+        assert!(is_content_free_text("No data available"));
+        assert!(is_content_free_text("No data available."));
+    }
+
+    #[test]
+    fn is_content_free_text_does_not_match_substrings_of_real_content() {
+        // Real content that happens to contain "none" or start with "no" --
+        // must never be treated as the placeholder (no substring matching).
+        assert!(!is_content_free_text("None known at this time"));
+        assert!(!is_content_free_text(
+            "No data available for chronic effects; seek medical advice"
+        ));
+        assert!(!is_content_free_text("No special measures are required"));
+        assert!(!is_content_free_text(
+            "If symptoms persist, consult a physician"
+        ));
+    }
+
+    #[test]
+    fn validate_candidate_rejects_exact_placeholder_even_when_excerpt_verifies() {
+        // The placeholder is quoted correctly from the source -- excerpt
+        // verification alone would accept it. The content-free check must
+        // reject it anyway.
+        let source = "Section 4.3: Indication of immediate medical attention\nNone.";
+        let c = candidate(
+            "FirstAidMeasures.MedicalAttentionAndSpecialTreatmentNeeded.FullText",
+            "None.",
+            "None.",
+            None,
+        );
+        let err = validate_candidate(&c, SOURCE_SHA, source).unwrap_err();
+        assert!(err.contains("content_free_placeholder"));
+        assert!(err.contains(&c.path));
+    }
+
+    #[test]
+    fn validate_candidate_accepts_a_real_sentence_beginning_with_no() {
+        let source = "Section 4.3: Indication of immediate medical attention\nNo special measures are required.";
+        let c = candidate(
+            "FirstAidMeasures.MedicalAttentionAndSpecialTreatmentNeeded.FullText",
+            "No special measures are required.",
+            "No special measures are required.",
+            None,
+        );
+        assert!(validate_candidate(&c, SOURCE_SHA, source).is_ok());
+    }
+
+    #[test]
+    fn build_proposals_rejects_placeholder_candidate_without_affecting_a_valid_one() {
+        let raw_candidates = vec![
+            serde_json::json!({
+                "path": "FirstAidMeasures.ExposureRoute.FirstAidInhalation.FullText",
+                "proposed_value": "Remove to fresh air. Keep at rest.",
+                "source_page": null,
+                "source_excerpt": "Remove to fresh air. Keep at rest.",
+                "rationale": null,
+            }),
+            serde_json::json!({
+                "path": "FirstAidMeasures.MedicalAttentionAndSpecialTreatmentNeeded.FullText",
+                "proposed_value": "None.",
+                "source_page": null,
+                "source_excerpt": "None.",
+                "rationale": null,
+            }),
+        ];
+        let (proposals, warnings) = build_proposals(raw_candidates, SOURCE_SHA, SOURCE_TEXT);
+        assert_eq!(proposals.len(), 1);
+        assert_eq!(
+            proposals[0].path,
+            "FirstAidMeasures.ExposureRoute.FirstAidInhalation.FullText"
+        );
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("content_free_placeholder"));
+        assert!(warnings[0].contains("MedicalAttentionAndSpecialTreatmentNeeded"));
+    }
+
+    #[test]
+    fn retained_proposal_fields_are_unaffected_by_the_placeholder_filter() {
+        // A retained (non-placeholder) proposal's confidence, evidence
+        // handling, source_page, and deterministic id must be exactly what
+        // they were before this filter existed.
+        let c = candidate(
+            "FirstAidMeasures.ExposureRoute.FirstAidInhalation.FullText",
+            "Remove to fresh air. Keep at rest.",
+            "Remove to fresh air. Keep at rest.",
+            Some(1),
+        );
+        let p = validate_candidate(&c, SOURCE_SHA, SOURCE_TEXT).unwrap();
+        assert_eq!(p.confidence, ConfidenceLevel::Medium);
+        assert_eq!(p.source_page, None);
+        assert!(p.id.starts_with("assist-"));
+    }
+
     #[test]
     fn rejects_empty_excerpt() {
         let c = candidate(
@@ -934,6 +1103,78 @@ mod tests {
             assert_eq!(p.confidence, ConfidenceLevel::Medium);
             assert_ne!(p.confidence, ConfidenceLevel::High);
         }
+    }
+
+    #[tokio::test]
+    async fn six_raw_candidates_with_one_placeholder_retains_exactly_five() {
+        let source = "Section 4: First-Aid Measures\n\
+            Inhalation: Remove to fresh air. Keep at rest.\n\
+            Skin contact: Wash with plenty of soap and water.\n\
+            Eye contact: Rinse cautiously with water for several minutes.\n\
+            Ingestion: Do not induce vomiting.\n\
+            General advice: Show this safety data sheet to the doctor in attendance.\n\
+            Indication of immediate medical attention: None.";
+        let response = serde_json::json!([
+            {
+                "path": "FirstAidMeasures.ExposureRoute.FirstAidInhalation.FullText",
+                "proposed_value": "Remove to fresh air. Keep at rest.",
+                "source_page": null,
+                "source_excerpt": "Remove to fresh air. Keep at rest.",
+                "rationale": null
+            },
+            {
+                "path": "FirstAidMeasures.ExposureRoute.FirstAidSkin.FullText",
+                "proposed_value": "Wash with plenty of soap and water.",
+                "source_page": null,
+                "source_excerpt": "Wash with plenty of soap and water.",
+                "rationale": null
+            },
+            {
+                "path": "FirstAidMeasures.ExposureRoute.FirstAidEye.FullText",
+                "proposed_value": "Rinse cautiously with water for several minutes.",
+                "source_page": null,
+                "source_excerpt": "Rinse cautiously with water for several minutes.",
+                "rationale": null
+            },
+            {
+                "path": "FirstAidMeasures.ExposureRoute.FirstAidIngestion.FullText",
+                "proposed_value": "Do not induce vomiting.",
+                "source_page": null,
+                "source_excerpt": "Do not induce vomiting.",
+                "rationale": null
+            },
+            {
+                "path": "FirstAidMeasures.DescriptionOfFirstAidMeasures.FullText",
+                "proposed_value": "Show this safety data sheet to the doctor in attendance.",
+                "source_page": null,
+                "source_excerpt": "Show this safety data sheet to the doctor in attendance.",
+                "rationale": null
+            },
+            {
+                "path": "FirstAidMeasures.MedicalAttentionAndSpecialTreatmentNeeded.FullText",
+                "proposed_value": "None.",
+                "source_page": null,
+                "source_excerpt": "None.",
+                "rationale": null
+            }
+        ])
+        .to_string();
+        let backend = FakeBackend::new(&response);
+
+        let run = run_section4_assist(&backend, "doc.pdf", SOURCE_SHA, source, "anthropic", "m")
+            .await
+            .unwrap();
+
+        assert_eq!(
+            run.proposals.len(),
+            5,
+            "6 raw candidates, 1 placeholder -> 5 retained"
+        );
+        assert_eq!(run.warnings.len(), 1);
+        assert!(run.warnings[0].contains("content_free_placeholder"));
+        assert!(!run.proposals.iter().any(
+            |p| p.path == "FirstAidMeasures.MedicalAttentionAndSpecialTreatmentNeeded.FullText"
+        ));
     }
 
     #[tokio::test]
