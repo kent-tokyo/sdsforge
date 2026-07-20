@@ -2,7 +2,7 @@
 
 ## Open-source tools
 
-| | **sdsconv** (this) | [sds_parser](https://github.com/astepe/sds_parser) | [tungsten](https://github.com/CrucibleSDS/tungsten) |
+| | **sdsforge** (this) | [sds_parser](https://github.com/astepe/sds_parser) | [tungsten](https://github.com/CrucibleSDS/tungsten) |
 |---|---|---|---|
 | Language | Rust + Python | Python | Python |
 | AI/LLM | Yes (pluggable) | No (regex) | No (rule-based) |
@@ -12,10 +12,12 @@
 | GHS/CAS validation | Yes | No | No |
 | Multilingual | ja / en / zh-CN / zh-TW | Limited | English only |
 | Corpus evaluation | Yes (`eval_corpus`) | No | No |
+| Generate from formulation | Yes (`generate`, offline by default) | No | No |
+| Grounded proposal assist | Yes (`assist`, citation-verified, Section 4 v1) | No | No |
 
 ## Commercial products (Japan)
 
-| | **sdsconv** (this) | [SDS Meister](https://www.kcs.co.jp/ja/service/ind/general/chemical/sds.html) | [SmartSDS](https://smartsds.jp/) | [Dr.EHS Chemical](https://www.iad.co.jp/drehs/chemical2/) |
+| | **sdsforge** (this) | [SDS Meister](https://www.kcs.co.jp/ja/service/ind/general/chemical/sds.html) | [SmartSDS](https://smartsds.jp/) | [Dr.EHS Chemical](https://www.iad.co.jp/drehs/chemical2/) |
 |---|---|---|---|---|
 | Provider | — | さくらケーシーエス | テクノヒル | アイアンドディー |
 | AI | Yes (your API key) | No | Yes (translation) | AI-OCR |
@@ -25,7 +27,7 @@
 
 ## Commercial products (Global)
 
-| | **sdsconv** (this) | [Affinda](https://www.affinda.com/documents/material-safety-data-sheet) | [SDS Manager API](https://sdsmanager.com/) | [safetydatasheetapi.com](https://safetydatasheetapi.com/) | [EcoOnline](https://www.ecoonline.com/) |
+| | **sdsforge** (this) | [Affinda](https://www.affinda.com/documents/material-safety-data-sheet) | [SDS Manager API](https://sdsmanager.com/) | [safetydatasheetapi.com](https://safetydatasheetapi.com/) | [EcoOnline](https://www.ecoonline.com/) |
 |---|---|---|---|---|---|
 | AI/LLM | Pluggable LLM | LLM (adaptive) | NLP/ML | ML + OCR | AI/NLP |
 | Input | PDF / DOCX | PDF / Word | PDF | PDF (incl. scanned) | PDF |

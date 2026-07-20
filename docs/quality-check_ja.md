@@ -1,6 +1,6 @@
 # SDS JSON 品質チェック（QC）スクリプト 詳細マニュアル
 
-> このページでは、sdsconv が生成した SDS JSON の品質を自動検証する QC スクリプトの仕組みと各チェック項目を詳しく解説します。
+> このページでは、sdsforge が生成した SDS JSON の品質を自動検証する QC スクリプトの仕組みと各チェック項目を詳しく解説します。
 
 [English](quality-check.md) | [中文](quality-check_zh.md)
 
