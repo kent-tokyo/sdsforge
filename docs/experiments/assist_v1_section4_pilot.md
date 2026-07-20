@@ -313,3 +313,73 @@ but belongs under first-aider protective equipment guidance, not
 "information to health professionals." Out of scope for this commit by
 design (it's a path-assignment/semantic problem, not a content-free
 placeholder); left for a separate, future change.
+
+## Follow-up: Section 4 prompt semantic correction (prompt `section4-v2`)
+
+Per-path semantic definitions added to the prompt for all seven Section 4
+paths (English + Japanese), with explicit definitions for
+`InformationToHealthProfessionals` (physician/medical-personnel-directed
+content only, explicitly excluding PPE and general first-aid/responder
+instructions) and instructions to omit an excerpt entirely rather than
+force it into the closest-sounding path. No deterministic filter, no
+allowlist change, no schema change -- see
+`SECTION4_PATH_DEFINITIONS`/`section4_system_prompt` in
+`sdsforge_core/src/assist.rs`. Considered and rejected a keyword filter
+for the specific "個人用保護具を着用すること" phrase: it would only ever
+catch this exact wording, and risks dropping genuinely-correct
+responder-PPE guidance the same way in the future if it's ever legitimately
+supported. The pilot's own defect was in the model's understanding of the
+field, not in the deterministic validator, so the fix belongs in the
+prompt.
+
+### Live rerun (prompt `section4-v2`, same 3 documents, same model)
+
+| document | raw | retained | correct | false positives | misses |
+|---|---|---|---|---|---|
+| doc-a | 5 | 5 | 4 | 1 | 0 |
+| doc-b | 6 | 5 (1 placeholder-filtered) | 5 | 0 | 0 |
+| doc-c | 6 | 5 (1 placeholder-filtered) | 5 | 0 | 0 |
+| **total** | **17** | **15** | **14** | **1** | **0** |
+
+- **precision** = 14 / 15 ≈ **93%** (unchanged from the prior round)
+- **recall** = 14 / 14 = **100%** (unchanged)
+
+**Honest result, not the 100%/100% target:** the specific defect this
+round targeted -- the PPE note misfiled under
+`InformationToHealthProfessionals` -- is confirmed gone; that exact
+candidate no longer appears for doc-a. But a *different* false positive
+took its place in the same document: the model now also proposes
+`FirstAidMeasures.MedicalAttentionAndSpecialTreatmentNeeded.FullText` =
+`"直ちに医師の手当てを受ける必要がある。"` ("must receive immediate
+medical attention"). This sentence is real, correctly cited, and
+arguably does fit that path's definition on its own terms -- but it's
+the closing clause of the Eye-contact route's own instructions
+(`"...その後も洗浄を続ける。直ちに医師の手当てを受ける必要がある。"`),
+already fully captured under `FirstAidEye`. So this is a duplicate-content
+extraction, not a wrong-field misfiling like before -- a milder problem,
+but still not something the pre-recorded expected-value table
+anticipated as a valid doc-a proposal, so it's counted as a false
+positive under the same reference used for every prior round in this
+report. (Not classified as a "same misplacement remains" case, since it's
+a different failure -- flagged as its own, new observation instead of
+forced into either bucket.)
+
+Side observation, not evaluated further: doc-b's `DescriptionOfFirstAidMeasures`
+proposal this round is exactly the general-advice preamble again (not the
+whole 4.1 subsection duplicated across fields, as in the CJK-fix round's
+run) -- consistent with the per-path definitions helping, though this
+wasn't a targeted fix and isn't claimed as one.
+
+### Decision
+
+Per the acceptance rule: this round's rerun did not reach 100%/100%, and
+the specific residual is a new, different, milder duplication case, not
+the original misfiling repeating. Per instruction, this is not chased
+with another filter now. **Recorded as a known v1 limitation**: assist
+can occasionally propose a real, correctly-cited sentence under more
+than one Section 4 path when that sentence sits at a route boundary and
+also independently satisfies another path's definition (here: an
+eye-contact instruction's closing clause also reads as a general
+"medical attention needed" statement). Left for a human judgment call on
+whether/when to pursue further -- not proceeding automatically to another
+fix in this branch.

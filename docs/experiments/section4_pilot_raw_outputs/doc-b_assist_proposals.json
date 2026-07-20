@@ -6,16 +6,16 @@
   "extraction_method": "llm_extraction",
   "model_provider": "anthropic",
   "model_name": "claude-sonnet-4-6",
-  "prompt_version": "section4-v1",
+  "prompt_version": "section4-v2",
   "proposals": [
     {
-      "id": "assist-110559a5d32f",
+      "id": "assist-ce2ea8579c5c",
       "path": "FirstAidMeasures.DescriptionOfFirstAidMeasures.FullText",
-      "proposed_value": "General advice\nConsult a physician. Show this safety data sheet to the doctor in attendance.Move out of dangerous area.\nIf inhaled\nIf breathed in, move person into fresh air. If not breathing, give artificial respiration. Consult a physician.\nIn case of skin contact\nWash off with soap and plenty of water. Consult a physician.\nIn case of eye contact\nRinse thoroughly with plenty of water for at least 15 minutes and consult a physician.\nIf swallowed\nDo NOT induce vomiting. Never give anything by mouth to an unconscious person. Rinse mouth with water. Consult a physician.",
+      "proposed_value": "Consult a physician. Show this safety data sheet to the doctor in attendance.Move out of dangerous area.",
       "source_page": null,
-      "source_excerpt": "General advice\nConsult a physician. Show this safety data sheet to the doctor in attendance.Move out of dangerous area.\nIf inhaled\nIf breathed in, move person into fresh air. If not breathing, give artificial respiration. Consult a physician.\nIn case of skin contact\nWash off with soap and plenty of water. Consult a physician.\nIn case of eye contact\nRinse thoroughly with plenty of water for at least 15 minutes and consult a physician.\nIf swallowed\nDo NOT induce vomiting. Never give anything by mouth to an unconscious person. Rinse mouth with water. Consult a physician.",
+      "source_excerpt": "General advice\nConsult a physician. Show this safety data sheet to the doctor in attendance.Move out of dangerous area.",
       "confidence": "medium",
-      "rationale": "Section 4.1 full description of first aid measures covering all exposure routes and general advice."
+      "rationale": "General first-aid advice applicable across all exposure routes, not specific to one route."
     },
     {
       "id": "assist-a42f0a0ec890",
@@ -24,7 +24,7 @@
       "source_page": null,
       "source_excerpt": "If inhaled\nIf breathed in, move person into fresh air. If not breathing, give artificial respiration. Consult a physician.",
       "confidence": "medium",
-      "rationale": "Section 4.1 inhalation first aid instructions."
+      "rationale": "First-aid instructions specific to inhalation exposure."
     },
     {
       "id": "assist-e1c434800a5c",
@@ -33,7 +33,7 @@
       "source_page": null,
       "source_excerpt": "In case of skin contact\nWash off with soap and plenty of water. Consult a physician.",
       "confidence": "medium",
-      "rationale": "Section 4.1 skin contact first aid instructions."
+      "rationale": "First-aid instructions specific to skin contact exposure."
     },
     {
       "id": "assist-712147cf8ae3",
@@ -42,7 +42,7 @@
       "source_page": null,
       "source_excerpt": "In case of eye contact\nRinse thoroughly with plenty of water for at least 15 minutes and consult a physician.",
       "confidence": "medium",
-      "rationale": "Section 4.1 eye contact first aid instructions."
+      "rationale": "First-aid instructions specific to eye contact exposure."
     },
     {
       "id": "assist-4c74af60dd64",
@@ -51,17 +51,10 @@
       "source_page": null,
       "source_excerpt": "If swallowed\nDo NOT induce vomiting. Never give anything by mouth to an unconscious person. Rinse mouth with water. Consult a physician.",
       "confidence": "medium",
-      "rationale": "Section 4.1 ingestion first aid instructions."
-    },
-    {
-      "id": "assist-f040655ad5bf",
-      "path": "FirstAidMeasures.MedicalAttentionAndSpecialTreatmentNeeded.FullText",
-      "proposed_value": "No data available",
-      "source_page": null,
-      "source_excerpt": "Indication of any immediate medical attention and special treatment needed\nNo data available",
-      "confidence": "medium",
-      "rationale": "Section 4.3 states no data available for immediate medical attention and special treatment needed."
+      "rationale": "First-aid instructions specific to ingestion exposure."
     }
   ],
-  "warnings": []
+  "warnings": [
+    "candidate 5 rejected: path 'FirstAidMeasures.MedicalAttentionAndSpecialTreatmentNeeded.FullText': content_free_placeholder (normalized value: \"no data available\")"
+  ]
 }

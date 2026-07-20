@@ -6,7 +6,7 @@
   "extraction_method": "llm_extraction",
   "model_provider": "anthropic",
   "model_name": "claude-sonnet-4-6",
-  "prompt_version": "section4-v1",
+  "prompt_version": "section4-v2",
   "proposals": [
     {
       "id": "assist-78d95965e46d",
@@ -15,7 +15,7 @@
       "source_page": null,
       "source_excerpt": "Do not leave affected person unattended. Remove victim out of the danger area. Keep affected person warm, still and covered. Take off immediately all contaminated clothing. In all cases of doubt, or when symptoms persist, seek medical advice. In case of unconsciousness place person in the recovery position. Never give anything by mouth.",
       "confidence": "medium",
-      "rationale": "General first aid notes from Section 4.1 describing overall first aid measures applicable to all exposure routes."
+      "rationale": "General first-aid guidance applicable across all exposure routes, not specific to one route."
     },
     {
       "id": "assist-24275774f366",
@@ -24,7 +24,7 @@
       "source_page": null,
       "source_excerpt": "If breathing is irregular or stopped, immediately seek medical assistance and start first aid actions. In case of respiratory tract irritation, consult a physician. Provide fresh air.",
       "confidence": "medium",
-      "rationale": "Section 4.1 'Following inhalation' first aid instructions."
+      "rationale": "First-aid instructions specifically for inhalation exposure."
     },
     {
       "id": "assist-1d362cfec2f6",
@@ -33,7 +33,7 @@
       "source_page": null,
       "source_excerpt": "Wash with plenty of soap and water.",
       "confidence": "medium",
-      "rationale": "Section 4.1 'Following skin contact' first aid instructions."
+      "rationale": "First-aid instruction specifically for skin contact exposure."
     },
     {
       "id": "assist-048c6acfed0d",
@@ -42,7 +42,7 @@
       "source_page": null,
       "source_excerpt": "Remove contact lenses, if present and easy to do. Continue rinsing. Irrigate copiously with clean, fresh water for at least 10 minutes, holding the eyelids apart.",
       "confidence": "medium",
-      "rationale": "Section 4.1 'Following eye contact' first aid instructions."
+      "rationale": "First-aid instructions specifically for eye contact exposure."
     },
     {
       "id": "assist-95f9e9956594",
@@ -51,17 +51,10 @@
       "source_page": null,
       "source_excerpt": "Rinse mouth with water (only if the person is conscious). Do NOT induce vomiting.",
       "confidence": "medium",
-      "rationale": "Section 4.1 'Following ingestion' first aid instructions."
-    },
-    {
-      "id": "assist-73d156b95a37",
-      "path": "FirstAidMeasures.MedicalAttentionAndSpecialTreatmentNeeded.FullText",
-      "proposed_value": "none",
-      "source_page": null,
-      "source_excerpt": "Indication of any immediate medical attention and special treatment needed\nnone",
-      "confidence": "medium",
-      "rationale": "Section 4.3 states 'none' for immediate medical attention and special treatment needed."
+      "rationale": "First-aid instructions specifically for ingestion exposure."
     }
   ],
-  "warnings": []
+  "warnings": [
+    "candidate 5 rejected: path 'FirstAidMeasures.MedicalAttentionAndSpecialTreatmentNeeded.FullText': content_free_placeholder (normalized value: \"none\")"
+  ]
 }

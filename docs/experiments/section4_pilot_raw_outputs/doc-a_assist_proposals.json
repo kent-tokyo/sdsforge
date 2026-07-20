@@ -6,7 +6,7 @@
   "extraction_method": "llm_extraction",
   "model_provider": "anthropic",
   "model_name": "claude-sonnet-4-6",
-  "prompt_version": "section4-v1",
+  "prompt_version": "section4-v2",
   "proposals": [
     {
       "id": "assist-9164f54e93d5",
@@ -15,7 +15,7 @@
       "source_page": null,
       "source_excerpt": "吸入した場合\n新鮮な空気のある場所に移すこと。症状が続く場合には、医師に連絡すること。",
       "confidence": "medium",
-      "rationale": "Section 4 inhalation first aid: move to fresh air, contact doctor if symptoms persist."
+      "rationale": "Section 4の吸入した場合の応急措置。"
     },
     {
       "id": "assist-9d51bd6fd77b",
@@ -24,7 +24,7 @@
       "source_page": null,
       "source_excerpt": "皮膚に付着した場合\nすぐに石鹸と大量の水で洗浄すること。症状が続く場合には、医師に連絡すること。",
       "confidence": "medium",
-      "rationale": "Section 4 skin first aid: wash immediately with soap and water, contact doctor if symptoms persist."
+      "rationale": "Section 4の皮膚に付着した場合の応急措置。"
     },
     {
       "id": "assist-1dcdddcd693d",
@@ -33,7 +33,7 @@
       "source_page": null,
       "source_excerpt": "眼に入った場合\n眼に入った場合、数分間気を付けて洗浄する。もしコンタクトを装着していて、容易に取り外せるなら、取り外す。その後も洗浄を続ける。直ちに医師の手当てを受ける必要がある。",
       "confidence": "medium",
-      "rationale": "Section 4 eye first aid: rinse carefully for several minutes, remove contacts if possible, continue rinsing, seek immediate medical attention."
+      "rationale": "Section 4の眼に入った場合の応急措置。"
     },
     {
       "id": "assist-c2b420ef6b1b",
@@ -42,16 +42,16 @@
       "source_page": null,
       "source_excerpt": "飲み込んだ場合\n口をすすぐ。意識のない人の口には何も与えないこと。ただちに医師もしくは毒物管理センターに連絡すること。医師の指示がない場合には、無理に吐かせないこと。",
       "confidence": "medium",
-      "rationale": "Section 4 ingestion first aid: rinse mouth, do not give anything to unconscious person, contact doctor/poison center, do not induce vomiting without medical advice."
+      "rationale": "Section 4の飲み込んだ場合の応急措置。"
     },
     {
-      "id": "assist-d5f736149111",
-      "path": "FirstAidMeasures.InformationToHealthProfessionals.FullText",
-      "proposed_value": "個人用保護具を着用すること。",
+      "id": "assist-05d08a4191af",
+      "path": "FirstAidMeasures.MedicalAttentionAndSpecialTreatmentNeeded.FullText",
+      "proposed_value": "直ちに医師の手当てを受ける必要がある。",
       "source_page": null,
-      "source_excerpt": "応急処置をする者の保護に必要な注意事項\n個人用保護具を着用すること。",
+      "source_excerpt": "直ちに医師の手当てを受ける必要がある。",
       "confidence": "medium",
-      "rationale": "Section 4 notes for first aiders: wear personal protective equipment."
+      "rationale": "眼への接触時に直ちに医師の手当てが必要と明示されている。"
     }
   ],
   "warnings": []

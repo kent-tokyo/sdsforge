@@ -29,6 +29,17 @@ pub const ASSIST_SCHEMA_VERSION: &str = "1";
 /// The only extraction method assist v1 has.
 pub const EXTRACTION_METHOD_LLM: &str = "llm_extraction";
 
+/// Bumped when the Section 4 prompt text changes, so an `AssistRun`
+/// records which prompt wording produced it. `v2` adds per-path semantic
+/// definitions (see [`SECTION4_PATH_DEFINITIONS`]) after the pilot found a
+/// real-but-misfiled candidate (personal protective equipment guidance
+/// placed under `InformationToHealthProfessionals`) that no deterministic
+/// filter should paper over -- see that path's definition for why.
+/// Deliberately not part of `proposal_id`'s hash input: a proposal's id is
+/// derived from its own content, not from which prompt wording produced
+/// it.
+const ASSIST_PROMPT_VERSION: &str = "section4-v2";
+
 /// Confidence assist v1 ever assigns to an emitted proposal. A candidate
 /// that fails any deterministic check in [`validate_candidate`] is
 /// rejected outright, never downgraded to `Low` -- see that function.
@@ -409,15 +420,83 @@ pub fn build_proposals(
     (proposals, warnings)
 }
 
-/// System prompt for the Section 4 assist LLM call. Lists the exact
-/// allowlisted paths (from [`SECTION4_ALLOWED_PATHS`], not duplicated as a
-/// separate literal) so the model doesn't have to guess the dot-path
-/// naming convention, and states the anti-injection / no-inference rules
-/// every candidate must follow.
+/// `(path, english definition, japanese definition)` for every entry in
+/// [`SECTION4_ALLOWED_PATHS`], used only to build the assist prompt's
+/// per-path guidance. Kept as its own table rather than folded into
+/// `SECTION4_ALLOWED_PATHS` itself, so adding/editing a definition can
+/// never accidentally touch the allowlist; test
+/// `section4_path_definitions_cover_exactly_the_allowlist` keeps the two
+/// from silently drifting apart.
+///
+/// Added in prompt `v2` after the Section 4 pilot's Japanese document
+/// produced a real, correctly-cited, but *misfiled* candidate --
+/// "個人用保護具を着用すること。" (wear personal protective equipment)
+/// placed under `InformationToHealthProfessionals`. The excerpt was true
+/// and the citation verified; the model had simply not been told what
+/// that field means, so it fell back to "closest-sounding field for
+/// leftover Section 4 text." A keyword-based deterministic filter for
+/// that one phrase was considered and rejected: it would only ever catch
+/// this exact wording, and would risk dropping genuinely-correct
+/// responder-PPE guidance if it's ever phrased differently or belongs
+/// under a path this fix doesn't anticipate. The actual defect is
+/// semantic, in the model's understanding of the field -- so the fix
+/// belongs in the prompt, not in another validator rule.
+const SECTION4_PATH_DEFINITIONS: &[(&str, &str, &str)] = &[
+    (
+        "FirstAidMeasures.ExposureRoute.FirstAidInhalation.FullText",
+        "First-aid action for inhalation/breathing-in exposure specifically.",
+        "吸入ばく露に特有の応急処置。",
+    ),
+    (
+        "FirstAidMeasures.ExposureRoute.FirstAidSkin.FullText",
+        "First-aid action for skin contact exposure specifically.",
+        "皮膚への接触ばく露に特有の応急処置。",
+    ),
+    (
+        "FirstAidMeasures.ExposureRoute.FirstAidEye.FullText",
+        "First-aid action for eye contact exposure specifically.",
+        "眼への接触ばく露に特有の応急処置。",
+    ),
+    (
+        "FirstAidMeasures.ExposureRoute.FirstAidIngestion.FullText",
+        "First-aid action for ingestion/swallowing exposure specifically.",
+        "経口摂取ばく露に特有の応急処置。",
+    ),
+    (
+        "FirstAidMeasures.DescriptionOfFirstAidMeasures.FullText",
+        "General first-aid guidance that applies across exposure routes \
+         (a general-advice preamble), not specific to one route.",
+        "特定のばく露経路に限らない、応急措置全般に関する一般的な注意。",
+    ),
+    (
+        "FirstAidMeasures.InformationToHealthProfessionals.FullText",
+        "Only instructions specifically directed to a physician, doctor, \
+         healthcare professional, or medical personnel, such as treatment \
+         notes, special medical procedures, antidotes, or delayed-effect \
+         monitoring. Do not place general first-aid instructions, responder \
+         precautions, or personal protective equipment instructions in this \
+         field.",
+        "医師、医療従事者、医療機関に明示的に向けられた治療上の注意、特別な\
+         処置、解毒剤、遅発影響の観察などに限る。一般的な応急措置、救助者へ\
+         の注意、個人用保護具の指示は含めない。",
+    ),
+    (
+        "FirstAidMeasures.MedicalAttentionAndSpecialTreatmentNeeded.FullText",
+        "Whether immediate medical attention or special treatment is \
+         needed, and what that treatment is, if the source states one.",
+        "直ちに医師の手当てや特別な処置が必要かどうか、必要な場合はその内容。",
+    ),
+];
+
+/// System prompt for the Section 4 assist LLM call. Defines the meaning
+/// of every allowlisted path (from [`SECTION4_PATH_DEFINITIONS`], not
+/// duplicated as bare strings) so the model chooses a path by what it
+/// means, not by which field name sounds closest, and states the
+/// anti-injection / no-inference rules every candidate must follow.
 fn section4_system_prompt() -> String {
-    let paths = SECTION4_ALLOWED_PATHS
+    let path_guidance = SECTION4_PATH_DEFINITIONS
         .iter()
-        .map(|p| format!("- {p}"))
+        .map(|(path, en, ja)| format!("- {path}\n  EN: {en}\n  JA: {ja}"))
         .collect::<Vec<_>>()
         .join("\n");
     format!(
@@ -434,9 +513,22 @@ fn section4_system_prompt() -> String {
          product's name, or from a CAS number -- if the source document does \
          not state it, do not propose it. If no Section 4 content is present \
          or the content is ambiguous, return an empty array.\n\n\
+         Each candidate's path must be one of the following exact strings, \
+         each with its own specific meaning -- read the definition, not just \
+         the field name, before choosing a path:\n{path_guidance}\n\n\
+         If a Section 4 excerpt is meaningful but does not fit the specific \
+         meaning of any path above, omit it entirely rather than forcing it \
+         into the closest-sounding one -- not every sentence in Section 4 \
+         needs a proposal. In particular, personal protective equipment \
+         (PPE) instructions for first-aid responders are not \
+         \"information to health professionals\" and usually belong outside \
+         these seven paths altogether; only propose PPE guidance under \
+         InformationToHealthProfessionals if the source explicitly frames it \
+         as directed to a physician or medical professional, not to a \
+         first-aid responder.\n\n\
          Respond with a JSON array only (no prose, no markdown fences). Each \
          element must have exactly these keys and no others:\n\
-         - path: one of the following exact strings:\n{paths}\n\
+         - path: one of the exact strings listed above\n\
          - proposed_value: the extracted text, as a JSON string\n\
          - source_page: the 1-based page number the excerpt appears on, or null if unknown\n\
          - source_excerpt: the verbatim source text supporting proposed_value\n\
@@ -486,7 +578,7 @@ pub async fn run_section4_assist(
         extraction_method: EXTRACTION_METHOD_LLM.to_string(),
         model_provider: model_provider.to_string(),
         model_name: model_name.to_string(),
-        prompt_version: "section4-v1".to_string(),
+        prompt_version: ASSIST_PROMPT_VERSION.to_string(),
         proposals,
         warnings,
     })
@@ -547,6 +639,42 @@ mod tests {
         for path in SECTION4_ALLOWED_PATHS {
             assert!(is_allowed_path(path), "{path} should be allowed");
         }
+    }
+
+    #[test]
+    fn section4_path_definitions_cover_exactly_the_allowlist() {
+        // Keeps SECTION4_PATH_DEFINITIONS (prompt-only) and
+        // SECTION4_ALLOWED_PATHS (the actual allowlist) from silently
+        // drifting apart -- adding a path to one without the other would
+        // otherwise go unnoticed.
+        assert_eq!(
+            SECTION4_PATH_DEFINITIONS.len(),
+            SECTION4_ALLOWED_PATHS.len()
+        );
+        for path in SECTION4_ALLOWED_PATHS {
+            assert!(
+                SECTION4_PATH_DEFINITIONS.iter().any(|(p, _, _)| p == path),
+                "{path} has no prompt definition"
+            );
+        }
+    }
+
+    #[test]
+    fn section4_prompt_defines_information_to_health_professionals_narrowly() {
+        // The actual fix: the model must be told this field means
+        // physician-directed content, not "leftover Section 4 text" --
+        // and told explicitly that PPE instructions don't belong here.
+        let prompt = section4_system_prompt();
+        assert!(prompt.contains("physician"));
+        assert!(prompt.contains("personal protective equipment") || prompt.contains("PPE"));
+        assert!(prompt.contains("医師"));
+        assert!(prompt.contains("個人用保護具"));
+    }
+
+    #[test]
+    fn section4_prompt_tells_the_model_to_omit_rather_than_force_a_path() {
+        let prompt = section4_system_prompt();
+        assert!(prompt.contains("omit it entirely"));
     }
 
     #[test]
@@ -743,6 +871,28 @@ mod tests {
             None,
         );
         assert!(validate_candidate(&c, SOURCE_SHA, source).is_ok());
+    }
+
+    #[test]
+    fn validator_still_structurally_accepts_a_ppe_candidate_misfiled_under_health_professionals() {
+        // Intentional: the deterministic validator checks path allowlist
+        // membership, grounding (excerpt verification), and schema shape --
+        // not medical semantics. The real pilot misfiling (PPE guidance
+        // placed under InformationToHealthProfessionals) is a defect in
+        // *what path the model chose*, fixed in the prompt
+        // (SECTION4_PATH_DEFINITIONS), not by teaching the validator to
+        // second-guess path semantics. If this ever starts failing, that's
+        // a sign a semantic filter crept into validate_candidate, not that
+        // this test is stale.
+        let source = "個人用保護具を着用すること。";
+        let c = candidate(
+            "FirstAidMeasures.InformationToHealthProfessionals.FullText",
+            "個人用保護具を着用すること。",
+            "個人用保護具を着用すること。",
+            None,
+        );
+        let p = validate_candidate(&c, SOURCE_SHA, source).unwrap();
+        assert_eq!(p.confidence, ConfidenceLevel::Medium);
     }
 
     #[test]
