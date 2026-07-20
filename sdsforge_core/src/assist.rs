@@ -196,8 +196,12 @@ pub fn validate_candidate(
         return Err(format!("path '{}': source_excerpt is empty", candidate.path));
     }
     if !excerpt_verifies(source_text, &candidate.source_excerpt) {
+        let mut shown = candidate.source_excerpt.chars().take(80).collect::<String>();
+        if candidate.source_excerpt.chars().count() > 80 {
+            shown.push('…');
+        }
         return Err(format!(
-            "path '{}': source_excerpt not found in extracted source text",
+            "path '{}': source_excerpt not found in extracted source text (excerpt: {shown:?})",
             candidate.path
         ));
     }
@@ -225,9 +229,18 @@ pub fn validate_candidate(
 /// Failure here means the response is malformed as a whole -- callers
 /// should surface this as a hard error and write no output file, unlike a
 /// single invalid candidate (see [`build_proposals`]).
+///
+/// Strips a ```/```json code fence first, if present -- models routinely
+/// wrap JSON output in one despite an explicit "no markdown fences"
+/// instruction in the prompt (observed with real Anthropic responses
+/// during the Section 4 pilot). This is the same
+/// [`crate::converter::llm::strip_code_fences`] every other JSON-producing
+/// LLM call site in this crate already applies; assist just hadn't been
+/// wired up to it yet.
 pub fn parse_candidates_json(raw: &str) -> Result<Vec<serde_json::Value>, String> {
+    let raw = crate::converter::llm::strip_code_fences(raw);
     let value: serde_json::Value =
-        serde_json::from_str(raw).map_err(|e| format!("assist response is not valid JSON: {e}"))?;
+        serde_json::from_str(&raw).map_err(|e| format!("assist response is not valid JSON: {e}"))?;
     match value {
         serde_json::Value::Array(items) => Ok(items),
         _ => Err("assist response must be a JSON array of candidate objects".to_string()),
@@ -603,6 +616,15 @@ mod tests {
         assert!(parse_candidates_json("{}").is_err());
         assert!(parse_candidates_json("not json").is_err());
         assert!(parse_candidates_json("[]").unwrap().is_empty());
+    }
+
+    #[test]
+    fn parse_candidates_json_strips_a_markdown_code_fence() {
+        // Observed with real Anthropic responses: the model wraps the JSON
+        // array in a ```json fence despite the prompt saying not to.
+        let fenced = "```json\n[{\"a\": 1}]\n```";
+        let items = parse_candidates_json(fenced).unwrap();
+        assert_eq!(items.len(), 1);
     }
 
     #[test]

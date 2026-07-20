@@ -272,7 +272,7 @@ async fn send_with_retry(
     Ok(response)
 }
 
-fn strip_code_fences(text: &str) -> String {
+pub(crate) fn strip_code_fences(text: &str) -> String {
     let text = text.trim();
     let text = if let Some(rest) = text.strip_prefix("```json") {
         rest.trim_start_matches(['\n', '\r', ' '])
