@@ -144,10 +144,20 @@ Writes one file, `assist_proposals.json`, containing the source document's
 evidence level (always `supplier_sds` — the LLM only *locates* the value,
 it doesn't change what kind of evidence the source document is), the
 model/prompt metadata for the run, and each accepted proposal with its
-page, verbatim excerpt, and a deterministic id. v1 supports exactly one
-`--source` document, `--section 4` only, and no review/apply/approval
-workflow yet — accepting a proposal into an authoring input file is
-currently a manual step.
+verbatim excerpt and a deterministic id (`source_page` is always `null` —
+text extraction has no page boundaries to verify a claimed page number
+against). v1 supports exactly one `--source` document, `--section 4`
+only, and no review/apply/approval workflow yet — accepting a proposal
+into an authoring input file is currently a manual step.
+
+Validated against 3 real public supplier SDS documents (precision 93%,
+recall 100%) — see
+[`docs/experiments/assist_v1_section4_pilot.md`](docs/experiments/assist_v1_section4_pilot.md).
+**Known limitation:** a sentence at an exposure-route boundary that also
+independently fits another Section 4 path's definition can occasionally
+be proposed under both paths — real, correctly-cited content in each
+place, just redundant. Not corrected automatically in v1; a human
+reviewer may see the same instruction proposed twice.
 
 ---
 

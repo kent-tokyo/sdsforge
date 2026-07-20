@@ -16,4 +16,4 @@ name = "sdsconv_core"
 path = "src/lib.rs"
 
 [dependencies]
-sdsforge-core = { path = "../sdsforge_core", version = "0.5" }
+sdsforge-core = { path = "../sdsforge_core", version = "0.6" }

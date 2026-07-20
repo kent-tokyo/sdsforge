@@ -16,7 +16,7 @@ name = "sdsconv"
 path = "src/main.rs"
 
 [dependencies]
-sdsforge = { path = "../sdsforge", version = "0.4" }
+sdsforge = { path = "../sdsforge", version = "0.5" }
 anyhow = { workspace = true }
 tokio = { workspace = true }
 

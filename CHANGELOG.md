@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-20
+
+> Package versions: `sdsforge 0.5.0`, `sdsforge-core 0.6.0`
+
+`sdsforge assist` — a new, narrowly-scoped v1 covering Section 4 (first-aid
+measures) only — is the headline addition. It proposes candidate values
+grounded in an actual supplier SDS for a human to review; it never writes
+`official_sds.json`, generation artifacts, or any authoring-input file
+itself. Validated against 3 real public supplier SDS documents (Japanese,
+English, English/complex-layout) before this release — see
+`docs/experiments/assist_v1_section4_pilot.md` for the full pilot record,
+including two follow-up fixes made after real-data testing surfaced them.
+
+### Added
+
+- **`sdsforge assist`**: proposes Section 4 candidate values from one
+  supplier SDS document.
+  - Exactly one `--source` (PDF/DOCX/XLSX/HTML/TXT), `--section 4` only,
+    `--source-kind supplier-sds` required explicitly.
+  - Every proposal requires a verbatim excerpt verified against the
+    extracted source text — an unverified citation is rejected, not
+    emitted with a hedge.
+  - Source evidence (`supplier_sds`) and extraction method
+    (`llm_extraction`) are tracked as separate fields rather than
+    collapsed into a single "model estimate" label — the LLM locates and
+    quotes a value, it doesn't change what kind of evidence the source
+    document is.
+  - Confidence is capped at `Medium`; proposal ids are content-derived and
+    assigned by the host, never trusted from the model. A model-claimed
+    `source_page` is never trusted either (`extract_text` has no page
+    boundaries to verify it against) — always serialized `null`.
+  - Deterministic rejection of content-free placeholder values (`"none"`,
+    `"no data available"`, exact match only) and of any candidate whose
+    citation contains PDF-inserted inter-character whitespace artifacts
+    that a plain whitespace-normalized check would otherwise miss
+    (observed on real Japanese CID-keyed-font PDFs).
+  - `.env` file loading (via `dotenvy`) for local API-key convenience —
+    best-effort, silent no-op when absent.
+
+### Known limitations
+
+- **Occasional duplicate-content proposals across Section 4 paths.** A
+  sentence that sits at an exposure-route boundary and also independently
+  fits another path's definition can be proposed under both — e.g. an
+  eye-contact instruction's closing clause ("must receive immediate
+  medical attention") also proposed separately under
+  `MedicalAttentionAndSpecialTreatmentNeeded`. The content and citation
+  are both correct in isolation; the proposal is redundant, not wrong.
+  Measured at 1 of 15 retained proposals across the 3-document pilot
+  (precision 93%, recall 100%). See the pilot report for detail and the
+  rejected alternative (a keyword filter, rejected as overfitting to one
+  observed phrase).
+- Assist v1 covers Section 4 only, one source document per run, and has
+  no review/accept/apply workflow yet — turning an accepted proposal into
+  authoring input is currently a manual step.
+
 ## [0.4.1] - 2026-07-19
 
 > Package versions: `sdsforge 0.4.1`, `sdsforge-core 0.5.1`

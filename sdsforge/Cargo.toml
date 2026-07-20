@@ -1,6 +1,6 @@
 [package]
 name = "sdsforge"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2021"
 description = "CLI and desktop app for generating, converting, validating, and rendering chemical safety data sheets in MHLW/JIS Z 7253 structured formats."
 license = "MIT OR Apache-2.0"
@@ -19,7 +19,7 @@ name = "sdsforge"
 path = "src/main.rs"
 
 [dependencies]
-sdsforge-core = { path = "../sdsforge_core", version = "0.5.0", features = ["chematic-normalization"] }
+sdsforge-core = { path = "../sdsforge_core", version = "0.6.0", features = ["chematic-normalization"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 # YAML input for `sdsforge generate`. `serde_yaml` is archived (deprecated

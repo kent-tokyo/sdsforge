@@ -4933,7 +4933,7 @@ dependencies = [
 
 [[package]]
 name = "sdsforge"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4960,7 +4960,7 @@ dependencies = [
 
 [[package]]
 name = "sdsforge-core"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "base64",

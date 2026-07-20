@@ -115,6 +115,41 @@ sdsforge generate --input product.yaml --output-dir generated --strict
 
 ---
 
+## 辅助（实验性功能，v1）
+
+从供应商SDS中为Section 4（急救措施）提议候选值，供人工审核 — 绝不会写
+入 `official_sds.json`、生成产物或任何编写输入文件。每条提议的置信度上
+限为Medium，且必须有 `assist` 确认确实存在于提取后源文本中的逐字引文作
+为依据；未通过校验的候选会被丢弃并附带警告，而不是被静默保留。
+
+```bash
+sdsforge assist \
+  --source supplier-sds.pdf \
+  --source-kind supplier-sds \
+  --section 4 \
+  --output assist_proposals.json \
+  --provider anthropic \
+  --model claude-sonnet-4-6
+```
+
+会写入一个文件 `assist_proposals.json`，其中包含源文档的证据等级（始终
+为 `supplier_sds` — LLM只是"定位"该值，并不会改变源文档本身属于哪种证
+据类型）、本次运行的模型/提示词元数据，以及每条被采纳的提议（附逐字引
+文和确定性ID；`source_page` 始终为 `null` — 文本提取没有页面边界，无
+法验证模型声称的页码）。v1仅支持一个 `--source` 文档、仅支持
+`--section 4`，且尚无审核/应用/批准流程 — 将提议采纳进编写输入目前仍
+需手动完成。
+
+已针对3份真实公开的供应商SDS文档（日语、英语、版式复杂的英语）完成验
+证（精确率93%，召回率100%）— 详见
+[`docs/experiments/assist_v1_section4_pilot.md`](docs/experiments/assist_v1_section4_pilot.md)。
+**已知限制:** 当某一句话处于暴露途径的边界、同时又独立符合另一个
+Section 4路径的定义时，可能会被同时提议到两个路径下 — 各处的内容和引
+文都是正确的，只是存在冗余。v1不会自动纠正此问题；审核人员可能会看到
+同一条指示被提议了两次。
+
+---
+
 ## 为什么选择 sdsforge
 
 - **MHLW原生支持**: 直接转换为日本厚生劳动省SDS数据交换格式v1.0。反序列化为根据项目定义书生成的Rust类型，并通过基于规则的验证器检查合规性。

@@ -119,6 +119,46 @@ sdsforge generate --input product.yaml --output-dir generated --strict
 
 ---
 
+## アシスト（実験的機能, v1）
+
+サプライヤーSDSからSection 4（応急措置）の候補値を提案します。人間がレ
+ビューするためのもので、`official_sds.json`・生成成果物・その他のオー
+サリング入力ファイルへは一切書き込みません。すべての提案はconfidence
+Medium上限で、`assist` が抽出済みソーステキスト中に実際に存在すること
+を確認した逐語引用に裏付けられている必要があります — 検証に失敗した候
+補は警告付きで除外され、黙って残されることはありません。
+
+```bash
+sdsforge assist \
+  --source supplier-sds.pdf \
+  --source-kind supplier-sds \
+  --section 4 \
+  --output assist_proposals.json \
+  --provider anthropic \
+  --model claude-sonnet-4-6
+```
+
+`assist_proposals.json` という1ファイルを書き出します。内容は、ソース
+文書のevidence level（常に `supplier_sds` — LLMは値の所在を特定するだ
+けで、ソース文書がどの種類のエビデンスであるかを変えるわけではありま
+せん）、実行時のモデル/プロンプトのメタデータ、そして採用された各提案
+（逐語引用と決定論的ID付き。`source_page` は常に `null` です — テキス
+ト抽出にはページ境界がなく、モデルが主張するページ番号を検証できない
+ためです）。v1は `--source` 文書を1つのみ、`--section 4` のみをサポー
+トし、レビュー・適用・承認のワークフローはまだありません — 採用した提
+案をオーサリング入力へ反映するのは現状手動です。
+
+実在する公開supplier SDS文書3件（日本語・英語・レイアウトが複雑な英語）
+で検証済みです（precision 93%、recall 100%）— 詳細は
+[`docs/experiments/assist_v1_section4_pilot.md`](docs/experiments/assist_v1_section4_pilot.md)
+を参照してください。**既知の制限:** ある一文が複数のばく露経路の境界に
+あり、かつ別のSection 4 pathの定義にも独立して当てはまる場合、両方の
+pathへ重複して提案されることがあります — それぞれの内容・引用は正しい
+ものの、冗長です。v1では自動修正されず、人によるレビューで同じ指示が2
+回提案されているのを見る可能性があります。
+
+---
+
 ## なぜ sdsforge か
 
 - **MHLW ネイティブ**: 厚生労働省 SDS データ交換フォーマット v1.0への直接変換に対応。項目定義書から生成したRust型へのデシリアライズと、ルールベースの適合性検証を実行。
