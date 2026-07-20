@@ -1,0 +1,18 @@
+{
+  "schema_version": "1",
+  "source_document": "/Users/k_tanabe/.claude/projects/-Users-k-tanabe-Documents-Documents-oss-rust-sdsforge/5d640017-d5fa-4494-9704-cc863c493e73/tool-results/webfetch-1784516589330-l1b202.pdf",
+  "source_sha256": "78801367ba9d185cb6a1fb621e3a1c5f9127f57703fee3d3a215d0c1fcc80148",
+  "source_evidence_level": "supplier_sds",
+  "extraction_method": "llm_extraction",
+  "model_provider": "anthropic",
+  "model_name": "claude-sonnet-4-6",
+  "prompt_version": "section4-v1",
+  "proposals": [],
+  "warnings": [
+    "candidate 0 rejected: path 'FirstAidMeasures.ExposureRoute.FirstAidInhalation.FullText': source_excerpt not found in extracted source text (excerpt: \"吸入した場合\\n新鮮な空気のある場所に移すこと。症状が続く場合には、医師に連絡すること。\")",
+    "candidate 1 rejected: path 'FirstAidMeasures.ExposureRoute.FirstAidSkin.FullText': source_excerpt not found in extracted source text (excerpt: \"皮膚に付着した場合\\nすぐに石鹸と大量の水で洗浄すること。症状が続く場合には、医師に連絡すること。\")",
+    "candidate 2 rejected: path 'FirstAidMeasures.ExposureRoute.FirstAidEye.FullText': source_excerpt not found in extracted source text (excerpt: \"眼に入った場合\\n眼に入った場合、数分間気を付けて洗浄する。もしコンタクトを装着していて、容易に取り外せるなら、取り外す。その後も洗浄を続ける。直ちに医師の手当て…\")",
+    "candidate 3 rejected: path 'FirstAidMeasures.ExposureRoute.FirstAidIngestion.FullText': source_excerpt not found in extracted source text (excerpt: \"飲み込んだ場合\\n口をすすぐ。意識のない人の口には何も与えないこと。ただちに医師もしくは毒物管理センターに連絡すること。医師の指示がない場合には、無理に吐かせない…\")",
+    "candidate 4 rejected: path 'FirstAidMeasures.InformationToHealthProfessionals.FullText': source_excerpt not found in extracted source text (excerpt: \"応急処置をする者の保護に必要な注意事項\\n個人用保護具を着用すること。\")"
+  ]
+}

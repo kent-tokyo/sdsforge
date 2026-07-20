@@ -1,0 +1,67 @@
+{
+  "schema_version": "1",
+  "source_document": "/Users/k_tanabe/.claude/projects/-Users-k-tanabe-Documents-Documents-oss-rust-sdsforge/5d640017-d5fa-4494-9704-cc863c493e73/tool-results/webfetch-1784516715581-l2ba3k.pdf",
+  "source_sha256": "b68adfa81c4882b843665eab1ab6427d1360c8f135a961afcc97d304eed69da9",
+  "source_evidence_level": "supplier_sds",
+  "extraction_method": "llm_extraction",
+  "model_provider": "anthropic",
+  "model_name": "claude-sonnet-4-6",
+  "prompt_version": "section4-v1",
+  "proposals": [
+    {
+      "id": "assist-110559a5d32f",
+      "path": "FirstAidMeasures.DescriptionOfFirstAidMeasures.FullText",
+      "proposed_value": "General advice\nConsult a physician. Show this safety data sheet to the doctor in attendance.Move out of dangerous area.\nIf inhaled\nIf breathed in, move person into fresh air. If not breathing, give artificial respiration. Consult a physician.\nIn case of skin contact\nWash off with soap and plenty of water. Consult a physician.\nIn case of eye contact\nRinse thoroughly with plenty of water for at least 15 minutes and consult a physician.\nIf swallowed\nDo NOT induce vomiting. Never give anything by mouth to an unconscious person. Rinse mouth with water. Consult a physician.",
+      "source_page": null,
+      "source_excerpt": "General advice\nConsult a physician. Show this safety data sheet to the doctor in attendance.Move out of dangerous area.\nIf inhaled\nIf breathed in, move person into fresh air. If not breathing, give artificial respiration. Consult a physician.\nIn case of skin contact\nWash off with soap and plenty of water. Consult a physician.\nIn case of eye contact\nRinse thoroughly with plenty of water for at least 15 minutes and consult a physician.\nIf swallowed\nDo NOT induce vomiting. Never give anything by mouth to an unconscious person. Rinse mouth with water. Consult a physician.",
+      "confidence": "medium",
+      "rationale": "Full text of Section 4.1 Description of first aid measures covering all exposure routes and general advice."
+    },
+    {
+      "id": "assist-a42f0a0ec890",
+      "path": "FirstAidMeasures.ExposureRoute.FirstAidInhalation.FullText",
+      "proposed_value": "If breathed in, move person into fresh air. If not breathing, give artificial respiration. Consult a physician.",
+      "source_page": null,
+      "source_excerpt": "If inhaled\nIf breathed in, move person into fresh air. If not breathing, give artificial respiration. Consult a physician.",
+      "confidence": "medium",
+      "rationale": "Section 4.1 inhalation first aid instructions."
+    },
+    {
+      "id": "assist-e1c434800a5c",
+      "path": "FirstAidMeasures.ExposureRoute.FirstAidSkin.FullText",
+      "proposed_value": "Wash off with soap and plenty of water. Consult a physician.",
+      "source_page": null,
+      "source_excerpt": "In case of skin contact\nWash off with soap and plenty of water. Consult a physician.",
+      "confidence": "medium",
+      "rationale": "Section 4.1 skin contact first aid instructions."
+    },
+    {
+      "id": "assist-712147cf8ae3",
+      "path": "FirstAidMeasures.ExposureRoute.FirstAidEye.FullText",
+      "proposed_value": "Rinse thoroughly with plenty of water for at least 15 minutes and consult a physician.",
+      "source_page": null,
+      "source_excerpt": "In case of eye contact\nRinse thoroughly with plenty of water for at least 15 minutes and consult a physician.",
+      "confidence": "medium",
+      "rationale": "Section 4.1 eye contact first aid instructions."
+    },
+    {
+      "id": "assist-4c74af60dd64",
+      "path": "FirstAidMeasures.ExposureRoute.FirstAidIngestion.FullText",
+      "proposed_value": "Do NOT induce vomiting. Never give anything by mouth to an unconscious person. Rinse mouth with water. Consult a physician.",
+      "source_page": null,
+      "source_excerpt": "If swallowed\nDo NOT induce vomiting. Never give anything by mouth to an unconscious person. Rinse mouth with water. Consult a physician.",
+      "confidence": "medium",
+      "rationale": "Section 4.1 ingestion first aid instructions."
+    },
+    {
+      "id": "assist-f040655ad5bf",
+      "path": "FirstAidMeasures.MedicalAttentionAndSpecialTreatmentNeeded.FullText",
+      "proposed_value": "No data available",
+      "source_page": null,
+      "source_excerpt": "Indication of any immediate medical attention and special treatment needed\nNo data available",
+      "confidence": "medium",
+      "rationale": "Section 4.3 states no data available for immediate medical attention and special treatment needed."
+    }
+  ],
+  "warnings": []
+}
