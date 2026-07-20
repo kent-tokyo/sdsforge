@@ -188,3 +188,69 @@ Not recommended yet, despite being real findings: the boilerplate/dedup
 issues are real but cost only 1 point of precision per document and don't
 zero anything out — worth a future prompt refinement, not urgent enough
 to be the one change this round.
+
+## Follow-up: CJK inter-character spacing fix, implemented and rerun
+
+Implemented a narrower version of the recommendation above: rather than
+stripping *all* whitespace, `excerpt_verifies` now also removes a
+whitespace character when both of its immediate neighbors are Hiragana,
+Katakana, Han/Kanji, or the Japanese `。`/`、` marks (see
+`remove_cjk_intercharacter_whitespace` in `sdsforge_core/src/assist.rs`).
+Ordinary word/number/CAS-style spacing (`"15 minutes"`, `"fresh air"`,
+`"CAS 64-17-5"`) is untouched.
+
+**The `。`/`、` marks were not in the original plan** — an offline replay
+of the initial Han/Kanji/Hiragana/Katakana-only version against the real
+cached doc-a text (before spending more API budget on a live rerun, per
+plan) showed it *still* rejected both candidates checked. The real
+extraction artifact inserts a space on both sides of these two
+punctuation marks too, not just between ideographs. Widened the fix to
+include them once the offline replay made that concrete, then re-verified
+offline again before doing the live rerun. Worth flagging: the original
+scope (three named scripts only) would not have fixed the actual pilot
+failure it was written for — treat "supports at least X, Y, Z" as a floor
+to empirically verify against real data, not a checklist to stop at.
+
+### Before / after
+
+| document | raw | retained before | retained after | correct | false positives | misses | excerpt-verification rejections |
+|---|---|---|---|---|---|---|---|
+| doc-a | 5 | 0 | 5 | 4 | 1 | 0 | 0 |
+| doc-b | 6 | 6 | 6 | 5 | 1 | 0 | 0 |
+| doc-c | 6 | 6 | 6 | 5 | 1 | 0 | 0 |
+| **total** | **17** | **12** | **17** | **14** | **3** | **0** | **0** |
+
+- **precision** = 14 / 17 ≈ **82%** (was 83%)
+- **recall** = 14 / 14 = **100%** (was 71%)
+
+Exactly the predicted shape: recall jumped (doc-a's 4 real citations are
+no longer lost to an extraction artifact), precision stayed essentially
+flat. doc-a's 5th candidate (`InformationToHealthProfessionals` ←
+"個人用保護具を着用すること。", the first-aiders'-own-protective-equipment
+note) is a new false positive by count, but it isn't a new *kind* of
+problem — before this fix it happened to be rejected for the same
+excerpt-mismatch reason as the four real citations, not because anything
+caught its semantic mismatch. It's the same "boilerplate/misfiled content
+proposed as if valid" category already named above, not evidence this fix
+did anything wrong. It should be picked up by that already-identified,
+not-yet-implemented follow-up (deterministic placeholder/semantic
+filtering), per the acceptance criteria for this round explicitly
+allowing it to remain for now.
+
+Confirmed for this round: all four expected doc-a fields retained (doc-a
+is no longer a zero-output document); no candidate targeted a path
+outside the Section 4 allowlist; every proposal is still exactly
+`confidence: medium`, `source_evidence_level: supplier_sds`,
+`source_page: null`; doc-b/doc-c's proposals are byte-for-byte the same
+shape as before (same 6 paths, same content) -- the fix has zero effect
+on non-CJK documents, confirmed, not just assumed.
+
+### Next recommended change (unchanged from before, now with a live green light)
+
+The false positives left are concentrated in exactly the pattern already
+named: boilerplate placeholders (`"No data available"`, `"none"`) and one
+misfiled note (doc-a's protective-equipment line) being proposed as if
+they were real first-aid content. Recommend a deterministic
+semantic-filtering pass for these specific placeholder patterns next, in
+its own single commit, per the established one-change-at-a-time rule —
+not fuzzy matching, not a prompt change, not Section 5.

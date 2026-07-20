@@ -7,12 +7,52 @@
   "model_provider": "anthropic",
   "model_name": "claude-sonnet-4-6",
   "prompt_version": "section4-v1",
-  "proposals": [],
-  "warnings": [
-    "candidate 0 rejected: path 'FirstAidMeasures.ExposureRoute.FirstAidInhalation.FullText': source_excerpt not found in extracted source text (excerpt: \"吸入した場合\\n新鮮な空気のある場所に移すこと。症状が続く場合には、医師に連絡すること。\")",
-    "candidate 1 rejected: path 'FirstAidMeasures.ExposureRoute.FirstAidSkin.FullText': source_excerpt not found in extracted source text (excerpt: \"皮膚に付着した場合\\nすぐに石鹸と大量の水で洗浄すること。症状が続く場合には、医師に連絡すること。\")",
-    "candidate 2 rejected: path 'FirstAidMeasures.ExposureRoute.FirstAidEye.FullText': source_excerpt not found in extracted source text (excerpt: \"眼に入った場合\\n眼に入った場合、数分間気を付けて洗浄する。もしコンタクトを装着していて、容易に取り外せるなら、取り外す。その後も洗浄を続ける。直ちに医師の手当て…\")",
-    "candidate 3 rejected: path 'FirstAidMeasures.ExposureRoute.FirstAidIngestion.FullText': source_excerpt not found in extracted source text (excerpt: \"飲み込んだ場合\\n口をすすぐ。意識のない人の口には何も与えないこと。ただちに医師もしくは毒物管理センターに連絡すること。医師の指示がない場合には、無理に吐かせない…\")",
-    "candidate 4 rejected: path 'FirstAidMeasures.InformationToHealthProfessionals.FullText': source_excerpt not found in extracted source text (excerpt: \"応急処置をする者の保護に必要な注意事項\\n個人用保護具を着用すること。\")"
-  ]
+  "proposals": [
+    {
+      "id": "assist-9164f54e93d5",
+      "path": "FirstAidMeasures.ExposureRoute.FirstAidInhalation.FullText",
+      "proposed_value": "新鮮な空気のある場所に移すこと。症状が続く場合には、医師に連絡すること。",
+      "source_page": null,
+      "source_excerpt": "吸入した場合\n新鮮な空気のある場所に移すこと。症状が続く場合には、医師に連絡すること。",
+      "confidence": "medium",
+      "rationale": "Section 4 inhalation first aid: move to fresh air, contact doctor if symptoms persist."
+    },
+    {
+      "id": "assist-9d51bd6fd77b",
+      "path": "FirstAidMeasures.ExposureRoute.FirstAidSkin.FullText",
+      "proposed_value": "すぐに石鹸と大量の水で洗浄すること。症状が続く場合には、医師に連絡すること。",
+      "source_page": null,
+      "source_excerpt": "皮膚に付着した場合\nすぐに石鹸と大量の水で洗浄すること。症状が続く場合には、医師に連絡すること。",
+      "confidence": "medium",
+      "rationale": "Section 4 skin first aid: wash immediately with soap and water, contact doctor if symptoms persist."
+    },
+    {
+      "id": "assist-1dcdddcd693d",
+      "path": "FirstAidMeasures.ExposureRoute.FirstAidEye.FullText",
+      "proposed_value": "眼に入った場合、数分間気を付けて洗浄する。もしコンタクトを装着していて、容易に取り外せるなら、取り外す。その後も洗浄を続ける。直ちに医師の手当てを受ける必要がある。",
+      "source_page": null,
+      "source_excerpt": "眼に入った場合\n眼に入った場合、数分間気を付けて洗浄する。もしコンタクトを装着していて、容易に取り外せるなら、取り外す。その後も洗浄を続ける。直ちに医師の手当てを受ける必要がある。",
+      "confidence": "medium",
+      "rationale": "Section 4 eye first aid: rinse carefully for several minutes, remove contacts if possible, continue rinsing, seek immediate medical attention."
+    },
+    {
+      "id": "assist-c2b420ef6b1b",
+      "path": "FirstAidMeasures.ExposureRoute.FirstAidIngestion.FullText",
+      "proposed_value": "口をすすぐ。意識のない人の口には何も与えないこと。ただちに医師もしくは毒物管理センターに連絡すること。医師の指示がない場合には、無理に吐かせないこと。",
+      "source_page": null,
+      "source_excerpt": "飲み込んだ場合\n口をすすぐ。意識のない人の口には何も与えないこと。ただちに医師もしくは毒物管理センターに連絡すること。医師の指示がない場合には、無理に吐かせないこと。",
+      "confidence": "medium",
+      "rationale": "Section 4 ingestion first aid: rinse mouth, do not give anything to unconscious person, contact doctor/poison center, do not induce vomiting without medical advice."
+    },
+    {
+      "id": "assist-d5f736149111",
+      "path": "FirstAidMeasures.InformationToHealthProfessionals.FullText",
+      "proposed_value": "個人用保護具を着用すること。",
+      "source_page": null,
+      "source_excerpt": "応急処置をする者の保護に必要な注意事項\n個人用保護具を着用すること。",
+      "confidence": "medium",
+      "rationale": "Section 4 notes for first aiders: wear personal protective equipment."
+    }
+  ],
+  "warnings": []
 }

@@ -147,25 +147,108 @@ fn proposal_id(
     format!("assist-{}", &digest[..12])
 }
 
+/// Whether `text` is a Hiragana, Katakana, or Han/Kanji character, or the
+/// Japanese full stop `。`/comma `、` -- specifically the scripts named in
+/// the CJK inter-character spacing fix (see
+/// [`remove_cjk_intercharacter_whitespace`]), plus those two punctuation
+/// marks. Not a general CJK predicate: deliberately excludes Hangul,
+/// fullwidth forms, and every other CJK punctuation mark (brackets,
+/// middle dot, etc.), since only this set is known (from the Section 4
+/// pilot's real extracted text, not just its own synthetic test) to carry
+/// this PDF-extraction artifact.
+///
+/// `。`/`、` are included deliberately, not as an oversight of "CJK
+/// punctuation" scope: an offline replay of this fix against the pilot's
+/// actual doc-a text showed the same PDF font inserts a space on *both
+/// sides* of these two marks too (`...と 。` / `、 医師...`), and unlike
+/// Latin punctuation, Japanese text has no natural space before `。`/`、`
+/// -- so removing that space is the same "undo an extraction artifact"
+/// operation as between two ideographs, not a step toward general
+/// punctuation normalization. No other punctuation mark is included, and
+/// this does not touch *which* punctuation character is present -- a
+/// source using `.`/`,` where the excerpt uses `。`/`、` (or vice versa)
+/// still fails verification, deliberately.
+fn is_cjk_text_char(c: char) -> bool {
+    matches!(c as u32,
+        0x3040..=0x309F // Hiragana
+        | 0x30A0..=0x30FF // Katakana
+        | 0x3400..=0x4DBF // CJK Unified Ideographs Extension A
+        | 0x4E00..=0x9FFF // CJK Unified Ideographs
+        | 0x3001 // 、 ideographic comma
+        | 0x3002 // 。 ideographic full stop
+    )
+}
+
+/// Removes a whitespace character only when the characters immediately
+/// before and after it (in the original string) are both
+/// [`is_cjk_text_char`]. Operates on already whitespace-run-normalized
+/// text (see [`excerpt_verifies`]), where every remaining run is exactly
+/// one space, so this only ever needs to consider single characters, not
+/// runs.
+///
+/// This exists for exactly one observed failure mode: some PDFs' CID-keyed
+/// Japanese fonts cause text extraction to insert a space between every
+/// character (`吸入し た場合` for `吸入した場合`) -- content the model
+/// reads and understands correctly, then naturally quotes back without
+/// the extraction artifact, which then fails naive whitespace-normalized
+/// substring verification even though the citation is real. It does
+/// *not* attempt to correct OCR substitutions, missing characters,
+/// punctuation differences, full-width/half-width differences, reordered
+/// phrases, or paraphrases -- a real excerpt that differs from the source
+/// in any of those ways still fails verification, deliberately.
+///
+/// Never removes whitespace between two non-CJK characters, or between
+/// one CJK and one non-CJK character -- `"15 minutes"`, `"fresh air"`,
+/// and `"CAS 64-17-5"` keep their spaces exactly as before this fix.
+fn remove_cjk_intercharacter_whitespace(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut result = String::with_capacity(text.len());
+    for (i, &c) in chars.iter().enumerate() {
+        if c.is_whitespace() {
+            let prev = i.checked_sub(1).and_then(|j| chars.get(j));
+            let next = chars.get(i + 1);
+            if let (Some(&p), Some(&n)) = (prev, next) {
+                if is_cjk_text_char(p) && is_cjk_text_char(n) {
+                    continue;
+                }
+            }
+        }
+        result.push(c);
+    }
+    result
+}
+
+/// Whitespace-run normalization (collapses any run of whitespace -- a PDF
+/// line wrap included -- to one space) followed by
+/// [`remove_cjk_intercharacter_whitespace`]. The one normalization
+/// pipeline [`excerpt_verifies`] applies to both sides of the comparison.
+fn normalize_for_verification(text: &str) -> String {
+    let whitespace_collapsed: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    remove_cjk_intercharacter_whitespace(&whitespace_collapsed)
+}
+
 /// Whether `excerpt` appears verbatim in `source_text`, ignoring
 /// whitespace differences (PDF text extraction commonly reflows line
-/// breaks). Assist must run this against every candidate's
-/// `source_excerpt` before emitting a proposal -- an excerpt that doesn't
-/// verify is a hallucinated citation, not a real one.
+/// breaks) and CJK inter-character spacing artifacts (see
+/// [`remove_cjk_intercharacter_whitespace`]). Assist must run this
+/// against every candidate's `source_excerpt` before emitting a proposal
+/// -- an excerpt that doesn't verify is a hallucinated citation, not a
+/// real one.
 ///
-/// Deliberately just a whitespace-normalized substring check for v1: no
-/// punctuation normalization, no OCR-error tolerance, no full/half-width or
-/// other Unicode-variant folding. A real excerpt that differs from the
-/// source by punctuation, an OCR misread, or a width variant will fail
-/// this check and be rejected -- a conservative false negative, not a
-/// false positive. Add fuzzy matching only once real documents show this
-/// margin is actually too tight.
+/// Beyond whitespace-run collapsing and the CJK inter-character case,
+/// deliberately nothing else for v1: no punctuation normalization, no
+/// OCR-error tolerance, no full/half-width or other Unicode-variant
+/// folding. A real excerpt that differs from the source by punctuation,
+/// an OCR misread, or a width variant will still fail this check and be
+/// rejected -- a conservative false negative, not a false positive. Add
+/// broader fuzzy matching only once real documents show this margin is
+/// still too tight.
 pub fn excerpt_verifies(source_text: &str, excerpt: &str) -> bool {
-    let needle: String = excerpt.split_whitespace().collect::<Vec<_>>().join(" ");
+    let needle = normalize_for_verification(excerpt);
     if needle.is_empty() {
         return false;
     }
-    let haystack: String = source_text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let haystack = normalize_for_verification(source_text);
     haystack.contains(&needle)
 }
 
@@ -190,13 +273,23 @@ pub fn validate_candidate(
         ));
     };
     if value_str.trim().is_empty() {
-        return Err(format!("path '{}': proposed_value is empty", candidate.path));
+        return Err(format!(
+            "path '{}': proposed_value is empty",
+            candidate.path
+        ));
     }
     if candidate.source_excerpt.trim().is_empty() {
-        return Err(format!("path '{}': source_excerpt is empty", candidate.path));
+        return Err(format!(
+            "path '{}': source_excerpt is empty",
+            candidate.path
+        ));
     }
     if !excerpt_verifies(source_text, &candidate.source_excerpt) {
-        let mut shown = candidate.source_excerpt.chars().take(80).collect::<String>();
+        let mut shown = candidate
+            .source_excerpt
+            .chars()
+            .take(80)
+            .collect::<String>();
         if candidate.source_excerpt.chars().count() > 80 {
             shown.push('…');
         }
@@ -239,8 +332,8 @@ pub fn validate_candidate(
 /// wired up to it yet.
 pub fn parse_candidates_json(raw: &str) -> Result<Vec<serde_json::Value>, String> {
     let raw = crate::converter::llm::strip_code_fences(raw);
-    let value: serde_json::Value =
-        serde_json::from_str(&raw).map_err(|e| format!("assist response is not valid JSON: {e}"))?;
+    let value: serde_json::Value = serde_json::from_str(&raw)
+        .map_err(|e| format!("assist response is not valid JSON: {e}"))?;
     match value {
         serde_json::Value::Array(items) => Ok(items),
         _ => Err("assist response must be a JSON array of candidate objects".to_string()),
@@ -384,7 +477,11 @@ mod tests {
     }
 
     impl LlmBackend for FakeBackend {
-        async fn complete(&self, _system: &str, user: &str) -> Result<String, crate::error::SdsError> {
+        async fn complete(
+            &self,
+            _system: &str,
+            user: &str,
+        ) -> Result<String, crate::error::SdsError> {
             *self.captured_user_prompt.lock().unwrap() = Some(user.to_string());
             Ok(self.response.clone())
         }
@@ -430,6 +527,32 @@ mod tests {
     }
 
     #[test]
+    fn cjk_intercharacter_spacing_fix_retains_a_previously_rejected_candidate() {
+        // Synthetic fixture mirroring the pilot's actual doc-a failure shape
+        // -- a short fictional excerpt, not a committed supplier SDS extract.
+        // Extraction artifact: a space inserted between every character,
+        // *including* around 。/、 -- an earlier version of this fixture
+        // only spaced ideographs and missed that real case (an offline
+        // replay against the real pilot text is what caught it).
+        let synthetic_source = "4. 応急措置\n吸入し た 場 合\n新鮮な 空気の ある場所に 移すこ と 。 症状が続く 場合には 、 医師に連絡する こ と 。";
+        let c = candidate(
+            "FirstAidMeasures.ExposureRoute.FirstAidInhalation.FullText",
+            "新鮮な空気のある場所に移すこと。症状が続く場合には、医師に連絡すること。",
+            "新鮮な空気のある場所に移すこと。症状が続く場合には、医師に連絡すること。",
+            None,
+        );
+
+        // Before this fix, remove_cjk_intercharacter_whitespace didn't
+        // exist and only whitespace-run normalization applied -- this
+        // candidate would have been rejected for excerpt_not_found (the
+        // spaces are *inside* words, not between them, so collapsing runs
+        // alone can't remove them). It must now be retained.
+        let result = validate_candidate(&c, SOURCE_SHA, synthetic_source);
+        let p = result.expect("previously-rejected candidate must now be retained");
+        assert_eq!(p.confidence, ConfidenceLevel::Medium);
+    }
+
+    #[test]
     fn model_claimed_source_page_is_never_trusted() {
         // extract_text has no page boundaries, so an unverifiable page
         // number from the model must never survive into the proposal --
@@ -443,7 +566,10 @@ mod tests {
                 page,
             );
             let p = validate_candidate(&c, SOURCE_SHA, SOURCE_TEXT).unwrap();
-            assert_eq!(p.source_page, None, "claimed page {page:?} must not survive");
+            assert_eq!(
+                p.source_page, None,
+                "claimed page {page:?} must not survive"
+            );
         }
     }
 
@@ -643,6 +769,77 @@ mod tests {
         ));
     }
 
+    // -- CJK inter-character whitespace: the doc-a pilot failure mode --
+
+    #[test]
+    fn excerpt_verifies_the_exact_observed_hiragana_spacing_case() {
+        // The literal case from the Section 4 pilot: PDF extraction inserted
+        // a space between two Hiragana characters (し / た).
+        assert!(excerpt_verifies("吸入し た場合", "吸入した場合"));
+    }
+
+    #[test]
+    fn excerpt_verifies_space_between_kanji_and_hiragana() {
+        assert!(excerpt_verifies("話 した", "話した"));
+    }
+
+    #[test]
+    fn excerpt_verifies_space_between_adjacent_kanji() {
+        assert!(excerpt_verifies("日 本", "日本"));
+    }
+
+    #[test]
+    fn excerpt_verifies_spacing_between_every_character() {
+        assert!(excerpt_verifies("吸 入 し た 場 合", "吸入した場合"));
+    }
+
+    #[test]
+    fn excerpt_verifies_space_before_ideographic_full_stop() {
+        // The real doc-a failure mode this fix exists for: a space also
+        // appears between the last character and `。`, not just between
+        // ideographs -- found via an offline replay against the pilot's
+        // actual text, not anticipated by the initial (narrower) fix.
+        assert!(excerpt_verifies("移すこ と 。", "移すこと。"));
+    }
+
+    #[test]
+    fn excerpt_verifies_space_after_ideographic_comma() {
+        assert!(excerpt_verifies(
+            "場合には 、 医師に連絡",
+            "場合には、医師に連絡"
+        ));
+    }
+
+    #[test]
+    fn excerpt_verifies_line_breaks_and_cjk_spacing_combined() {
+        // A PDF line wrap (handled by the existing whitespace-run
+        // normalization) landing right at a CJK inter-character space.
+        assert!(excerpt_verifies("吸入し\nた 場合", "吸入した場合"));
+    }
+
+    #[test]
+    fn excerpt_verifies_ordinary_english_word_spacing_still_significant() {
+        // The fix must never merge ASCII word boundaries -- "freshair" is
+        // not the same excerpt as "fresh air".
+        assert!(!excerpt_verifies("Provide fresh air.", "freshair"));
+        assert!(excerpt_verifies("Provide fresh air.", "fresh air"));
+    }
+
+    #[test]
+    fn excerpt_verifies_number_unit_and_cas_like_spacing_still_significant() {
+        assert!(!excerpt_verifies("Wait 15 minutes.", "15minutes"));
+        assert!(excerpt_verifies("Wait 15 minutes.", "15 minutes"));
+        assert!(excerpt_verifies("CAS 64-17-5", "CAS 64-17-5"));
+    }
+
+    #[test]
+    fn excerpt_verifies_unrelated_japanese_excerpt_still_fails() {
+        assert!(!excerpt_verifies(
+            "吸入し た場合の応急措置",
+            "皮膚に付着した場合"
+        ));
+    }
+
     // -- run_section4_assist: end-to-end against a fake backend, no network --
 
     #[tokio::test]
@@ -658,7 +855,12 @@ mod tests {
         let backend = FakeBackend::new(&response);
 
         let run = run_section4_assist(
-            &backend, "supplier-sds.pdf", SOURCE_SHA, SOURCE_TEXT, "anthropic", "claude-test",
+            &backend,
+            "supplier-sds.pdf",
+            SOURCE_SHA,
+            SOURCE_TEXT,
+            "anthropic",
+            "claude-test",
         )
         .await
         .unwrap();
@@ -672,9 +874,16 @@ mod tests {
     #[tokio::test]
     async fn source_evidence_is_supplier_sds_not_model_estimate() {
         let backend = FakeBackend::new("[]");
-        let run = run_section4_assist(&backend, "doc.pdf", SOURCE_SHA, SOURCE_TEXT, "anthropic", "m")
-            .await
-            .unwrap();
+        let run = run_section4_assist(
+            &backend,
+            "doc.pdf",
+            SOURCE_SHA,
+            SOURCE_TEXT,
+            "anthropic",
+            "m",
+        )
+        .await
+        .unwrap();
         assert_eq!(run.source_evidence_level, EvidenceLevel::SupplierSds);
         assert_ne!(
             format!("{:?}", run.source_evidence_level),
@@ -685,9 +894,16 @@ mod tests {
     #[tokio::test]
     async fn extraction_method_records_llm_extraction() {
         let backend = FakeBackend::new("[]");
-        let run = run_section4_assist(&backend, "doc.pdf", SOURCE_SHA, SOURCE_TEXT, "anthropic", "m")
-            .await
-            .unwrap();
+        let run = run_section4_assist(
+            &backend,
+            "doc.pdf",
+            SOURCE_SHA,
+            SOURCE_TEXT,
+            "anthropic",
+            "m",
+        )
+        .await
+        .unwrap();
         assert_eq!(run.extraction_method, EXTRACTION_METHOD_LLM);
         assert_eq!(run.extraction_method, "llm_extraction");
     }
@@ -703,9 +919,16 @@ mod tests {
         }])
         .to_string();
         let backend = FakeBackend::new(&response);
-        let run = run_section4_assist(&backend, "doc.pdf", SOURCE_SHA, SOURCE_TEXT, "anthropic", "m")
-            .await
-            .unwrap();
+        let run = run_section4_assist(
+            &backend,
+            "doc.pdf",
+            SOURCE_SHA,
+            SOURCE_TEXT,
+            "anthropic",
+            "m",
+        )
+        .await
+        .unwrap();
         assert_eq!(run.proposals.len(), 1);
         for p in &run.proposals {
             assert_eq!(p.confidence, ConfidenceLevel::Medium);
@@ -725,9 +948,16 @@ mod tests {
         }])
         .to_string();
         let backend = FakeBackend::new(&response);
-        let run = run_section4_assist(&backend, "doc.pdf", SOURCE_SHA, SOURCE_TEXT, "anthropic", "m")
-            .await
-            .unwrap();
+        let run = run_section4_assist(
+            &backend,
+            "doc.pdf",
+            SOURCE_SHA,
+            SOURCE_TEXT,
+            "anthropic",
+            "m",
+        )
+        .await
+        .unwrap();
         assert!(run.proposals.is_empty());
         assert_eq!(run.warnings.len(), 1);
     }
@@ -745,12 +975,26 @@ mod tests {
         let backend_a = FakeBackend::new(&response);
         let backend_b = FakeBackend::new(&response);
 
-        let run_a = run_section4_assist(&backend_a, "doc.pdf", SOURCE_SHA, SOURCE_TEXT, "anthropic", "m")
-            .await
-            .unwrap();
-        let run_b = run_section4_assist(&backend_b, "doc.pdf", SOURCE_SHA, SOURCE_TEXT, "anthropic", "m")
-            .await
-            .unwrap();
+        let run_a = run_section4_assist(
+            &backend_a,
+            "doc.pdf",
+            SOURCE_SHA,
+            SOURCE_TEXT,
+            "anthropic",
+            "m",
+        )
+        .await
+        .unwrap();
+        let run_b = run_section4_assist(
+            &backend_b,
+            "doc.pdf",
+            SOURCE_SHA,
+            SOURCE_TEXT,
+            "anthropic",
+            "m",
+        )
+        .await
+        .unwrap();
 
         assert_eq!(run_a.proposals[0].id, run_b.proposals[0].id);
     }
@@ -766,9 +1010,16 @@ mod tests {
         }])
         .to_string();
         let backend = FakeBackend::new(&response);
-        let run = run_section4_assist(&backend, "doc.pdf", SOURCE_SHA, SOURCE_TEXT, "anthropic", "m")
-            .await
-            .unwrap();
+        let run = run_section4_assist(
+            &backend,
+            "doc.pdf",
+            SOURCE_SHA,
+            SOURCE_TEXT,
+            "anthropic",
+            "m",
+        )
+        .await
+        .unwrap();
         assert!(run.proposals.is_empty());
         assert_eq!(run.warnings.len(), 1);
     }
@@ -776,16 +1027,31 @@ mod tests {
     #[tokio::test]
     async fn malformed_llm_json_returns_error_not_an_empty_run() {
         let backend = FakeBackend::new("this is not JSON at all");
-        let result = run_section4_assist(&backend, "doc.pdf", SOURCE_SHA, SOURCE_TEXT, "anthropic", "m").await;
+        let result = run_section4_assist(
+            &backend,
+            "doc.pdf",
+            SOURCE_SHA,
+            SOURCE_TEXT,
+            "anthropic",
+            "m",
+        )
+        .await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn zero_valid_proposals_still_returns_a_valid_run() {
         let backend = FakeBackend::new("[]");
-        let run = run_section4_assist(&backend, "doc.pdf", SOURCE_SHA, SOURCE_TEXT, "anthropic", "m")
-            .await
-            .unwrap();
+        let run = run_section4_assist(
+            &backend,
+            "doc.pdf",
+            SOURCE_SHA,
+            SOURCE_TEXT,
+            "anthropic",
+            "m",
+        )
+        .await
+        .unwrap();
         assert!(run.proposals.is_empty());
         assert!(run.warnings.is_empty());
         assert_eq!(run.schema_version, ASSIST_SCHEMA_VERSION);
@@ -814,18 +1080,29 @@ mod tests {
         let backend = FakeBackend::new(&injected_response);
 
         let run = run_section4_assist(
-            &backend, "doc.pdf", SOURCE_SHA, &malicious_source, "anthropic", "m",
+            &backend,
+            "doc.pdf",
+            SOURCE_SHA,
+            &malicious_source,
+            "anthropic",
+            "m",
         )
         .await
         .unwrap();
 
-        assert!(run.proposals.is_empty(), "forbidden path must never become a proposal");
+        assert!(
+            run.proposals.is_empty(),
+            "forbidden path must never become a proposal"
+        );
         assert_eq!(run.warnings.len(), 1);
 
         // Sanity check: the pipeline did forward the (untrusted) source text,
         // so the rejection above is validation working, not the injection
         // attempt simply never reaching the model.
         let captured = backend.captured_user_prompt.lock().unwrap();
-        assert!(captured.as_ref().unwrap().contains("IGNORE ALL PREVIOUS INSTRUCTIONS"));
+        assert!(captured
+            .as_ref()
+            .unwrap()
+            .contains("IGNORE ALL PREVIOUS INSTRUCTIONS"));
     }
 }
