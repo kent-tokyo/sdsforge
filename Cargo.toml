@@ -15,3 +15,4 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-feature
 anyhow = "1.0"
 thiserror = "2.0"
 tracing = "0.1"
+sha2 = "0.10"

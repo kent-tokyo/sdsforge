@@ -41,6 +41,7 @@
 //! - **Pluggable LLM**: Ships with [`AnthropicBackend`] and [`OpenAiCompatBackend`].
 //!   Implement [`converter::LlmBackend`] to bring your own.
 
+pub mod assist;
 pub mod converter;
 pub mod country;
 pub mod enrichment;
@@ -51,6 +52,11 @@ pub mod language;
 pub mod normalize;
 pub mod schema;
 
+pub use assist::{
+    build_proposals, excerpt_verifies, is_allowed_path, parse_candidates_json, sha256_hex,
+    validate_candidate, AssistCandidate, AssistProposal, AssistRun, ASSIST_CONFIDENCE,
+    ASSIST_SCHEMA_VERSION, EXTRACTION_METHOD_LLM, SECTION4_ALLOWED_PATHS,
+};
 pub use converter::{
     AnthropicBackend, AnyBackend, ConvertConfig, ConversionReport, LlmBackend, LlmConfig,
     OpenAiCompatBackend, build_any_backend,

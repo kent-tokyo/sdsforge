@@ -31,6 +31,7 @@ reqwest = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+sha2 = { workspace = true }
 harumi = { version = "0.4", features = ["html"] }
 base64 = "0.22"
 pdf-extract = "0.10"
