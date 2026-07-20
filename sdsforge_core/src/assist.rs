@@ -78,6 +78,12 @@ pub struct AssistProposal {
     pub id: String,
     pub path: String,
     pub proposed_value: serde_json::Value,
+    /// Always `None` in v1. `extract_text` returns one flat string with no
+    /// page boundaries, so a model-claimed page number can never be
+    /// verified against the source -- [`validate_candidate`] discards
+    /// whatever [`AssistCandidate::source_page`] says rather than passing
+    /// through an unverifiable, possibly-wrong number. Revisit only once
+    /// page-aware extraction and within-page excerpt verification exist.
     pub source_page: Option<u32>,
     pub source_excerpt: String,
     pub confidence: ConfidenceLevel,
@@ -116,13 +122,16 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 /// `assist-<12 hex chars>` derived from `source_sha256` plus the
-/// candidate's own stable content (path, page, excerpt, value) -- never
-/// taken from the model. The same source document and accepted model
-/// output always produce the same id.
+/// candidate's own stable, *emitted* content (path, excerpt, value) --
+/// never taken from the model. `source_page` is deliberately excluded: it
+/// never survives into the emitted [`AssistProposal`] (see that struct's
+/// doc comment), so two candidates identical in everything else must
+/// still get the same id regardless of what page the model happened to
+/// guess. The same source document and accepted model output always
+/// produce the same id.
 fn proposal_id(
     source_sha256: &str,
     path: &str,
-    source_page: Option<u32>,
     source_excerpt: &str,
     proposed_value: &serde_json::Value,
 ) -> String {
@@ -130,8 +139,6 @@ fn proposal_id(
     hasher.update(source_sha256.as_bytes());
     hasher.update(b"\0");
     hasher.update(path.as_bytes());
-    hasher.update(b"\0");
-    hasher.update(source_page.map(|p| p.to_string()).unwrap_or_default().as_bytes());
     hasher.update(b"\0");
     hasher.update(source_excerpt.as_bytes());
     hasher.update(b"\0");
@@ -188,12 +195,6 @@ pub fn validate_candidate(
     if candidate.source_excerpt.trim().is_empty() {
         return Err(format!("path '{}': source_excerpt is empty", candidate.path));
     }
-    if let Some(0) = candidate.source_page {
-        return Err(format!(
-            "path '{}': source_page must be positive",
-            candidate.path
-        ));
-    }
     if !excerpt_verifies(source_text, &candidate.source_excerpt) {
         return Err(format!(
             "path '{}': source_excerpt not found in extracted source text",
@@ -204,7 +205,6 @@ pub fn validate_candidate(
     let id = proposal_id(
         source_sha256,
         &candidate.path,
-        candidate.source_page,
         &candidate.source_excerpt,
         &candidate.proposed_value,
     );
@@ -213,7 +213,8 @@ pub fn validate_candidate(
         id,
         path: candidate.path.clone(),
         proposed_value: candidate.proposed_value.clone(),
-        source_page: candidate.source_page,
+        // Never candidate.source_page -- see AssistProposal::source_page.
+        source_page: None,
         source_excerpt: candidate.source_excerpt.clone(),
         confidence: ASSIST_CONFIDENCE,
         rationale: candidate.rationale.clone(),
@@ -416,6 +417,43 @@ mod tests {
     }
 
     #[test]
+    fn model_claimed_source_page_is_never_trusted() {
+        // extract_text has no page boundaries, so an unverifiable page
+        // number from the model must never survive into the proposal --
+        // regardless of whether the model said 0, a plausible page, or
+        // omitted it entirely.
+        for page in [Some(0), Some(1), Some(999), None] {
+            let c = candidate(
+                "FirstAidMeasures.ExposureRoute.FirstAidInhalation.FullText",
+                "Remove to fresh air. Keep at rest.",
+                "Remove to fresh air. Keep at rest.",
+                page,
+            );
+            let p = validate_candidate(&c, SOURCE_SHA, SOURCE_TEXT).unwrap();
+            assert_eq!(p.source_page, None, "claimed page {page:?} must not survive");
+        }
+    }
+
+    #[test]
+    fn candidates_differing_only_by_claimed_page_get_the_same_id() {
+        let a = candidate(
+            "FirstAidMeasures.ExposureRoute.FirstAidInhalation.FullText",
+            "Remove to fresh air. Keep at rest.",
+            "Remove to fresh air. Keep at rest.",
+            Some(1),
+        );
+        let b = candidate(
+            "FirstAidMeasures.ExposureRoute.FirstAidInhalation.FullText",
+            "Remove to fresh air. Keep at rest.",
+            "Remove to fresh air. Keep at rest.",
+            Some(7),
+        );
+        let pa = validate_candidate(&a, SOURCE_SHA, SOURCE_TEXT).unwrap();
+        let pb = validate_candidate(&b, SOURCE_SHA, SOURCE_TEXT).unwrap();
+        assert_eq!(pa.id, pb.id);
+    }
+
+    #[test]
     fn confidence_never_exceeds_medium() {
         // ASSIST_CONFIDENCE is a compile-time constant, not a runtime
         // choice -- this test pins that it can never silently become High.
@@ -463,17 +501,6 @@ mod tests {
             "Administer oxygen immediately.",
             "Administer oxygen immediately.",
             None,
-        );
-        assert!(validate_candidate(&c, SOURCE_SHA, SOURCE_TEXT).is_err());
-    }
-
-    #[test]
-    fn rejects_zero_source_page() {
-        let c = candidate(
-            "FirstAidMeasures.DescriptionOfFirstAidMeasures.FullText",
-            "Remove to fresh air.",
-            "Remove to fresh air.",
-            Some(0),
         );
         assert!(validate_candidate(&c, SOURCE_SHA, SOURCE_TEXT).is_err());
     }

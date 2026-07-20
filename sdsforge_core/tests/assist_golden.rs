@@ -122,6 +122,10 @@ async fn golden_section4_fixture_emits_verified_candidates_and_rejects_the_hallu
         assert_eq!(p.confidence, ConfidenceLevel::Medium);
         assert!(p.id.starts_with("assist-"));
         assert!(ids.insert(p.id.clone()), "proposal ids must be unique: {}", p.id);
+        // The scripted response claims source_page: 1 for every candidate --
+        // extract_text has no page boundaries, so that claim must never
+        // survive into the emitted proposal.
+        assert_eq!(p.source_page, None);
     }
 
     let rerun = run_section4_assist(

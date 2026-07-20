@@ -106,6 +106,9 @@ async fn assist_writes_only_the_requested_output_file() {
     assert_eq!(run_json["proposals"].as_array().unwrap().len(), 1);
     assert_eq!(run_json["source_evidence_level"], "supplier_sds");
     assert_eq!(run_json["extraction_method"], "llm_extraction");
+    // The mocked response claims source_page: 1 -- extract_text has no page
+    // boundaries, so that claim must never survive into the output file.
+    assert_eq!(run_json["proposals"][0]["source_page"], serde_json::Value::Null);
 
     // Nothing else may appear in the output directory -- no official_sds.json,
     // generation_report.json, review_report.md, or authoring-input file.
