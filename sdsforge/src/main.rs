@@ -1,4 +1,9 @@
 fn main() -> anyhow::Result<()> {
+    // Best-effort: load ANTHROPIC_API_KEY/etc. from a .env file in the current or
+    // an ancestor directory into the process environment, if one exists. Silently
+    // does nothing when absent -- this is local-dev convenience, not a requirement.
+    dotenvy::dotenv().ok();
+
     sdsforge::init_process();
 
     if std::env::args().len() > 1 {

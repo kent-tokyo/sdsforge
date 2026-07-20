@@ -41,6 +41,7 @@ eframe = "0.34"
 rfd = "0.15"
 tempfile = "3"
 chrono = { version = "0.4", features = ["clock"] }
+dotenvy = "0.15"
 
 [dev-dependencies]
 wiremock = "0.6"
