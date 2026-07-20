@@ -53,8 +53,8 @@ pub mod normalize;
 pub mod schema;
 
 pub use assist::{
-    build_proposals, excerpt_verifies, is_allowed_path, parse_candidates_json, sha256_hex,
-    validate_candidate, AssistCandidate, AssistProposal, AssistRun, ASSIST_CONFIDENCE,
+    build_proposals, excerpt_verifies, is_allowed_path, parse_candidates_json, run_section4_assist,
+    sha256_hex, validate_candidate, AssistCandidate, AssistProposal, AssistRun, ASSIST_CONFIDENCE,
     ASSIST_SCHEMA_VERSION, EXTRACTION_METHOD_LLM, SECTION4_ALLOWED_PATHS,
 };
 pub use converter::{

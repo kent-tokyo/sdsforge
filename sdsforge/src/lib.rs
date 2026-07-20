@@ -20,7 +20,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use sdsforge_core::{Language, SourceCountry, SdsRoot};
 
 use tasks::{
-    EvalCorpusParams, LogFn, Provider, Quality, RenderFormat, RenderParams,
+    AssistParams, EvalCorpusParams, LogFn, Provider, Quality, RenderFormat, RenderParams,
     ToDocxParams, ToHtmlParams, ToJsonParams, ToPdfParams,
     check_json_file_size, collect_files,
 };
@@ -148,6 +148,15 @@ struct Cli {
     command: Commands,
 }
 
+/// `--source-kind` value for `sdsforge assist`. Assist v1 only accepts
+/// supplier SDS documents — a typed, required (no default) enum so the
+/// caller states out loud what kind of document `--source` is, since that
+/// becomes `AssistRun::source_evidence_level`.
+#[derive(Clone, Copy, ValueEnum)]
+enum CliSourceKind {
+    SupplierSds,
+}
+
 /// `--profile` value for `sdsforge generate`. Only `mhlw-v1` exists today —
 /// a typed enum (rather than a free-form string) so requesting an
 /// unsupported profile fails clearly through clap rather than silently
@@ -223,6 +232,32 @@ enum Commands {
         /// Use the MHLW-recommended filename: SDS_<date>_<product_code>.json
         #[arg(long)]
         suggested_name: bool,
+    },
+
+    /// Propose Section 4 (first-aid measures) candidate values from a supplier SDS,
+    /// for a human to review. Writes exactly one JSON proposal file — never touches
+    /// official_sds.json, generation artifacts, or any ProductInput file.
+    Assist {
+        /// Supplier SDS document (PDF/DOCX/XLSX/HTML/TXT) — assist v1 accepts exactly one.
+        #[arg(long)]
+        source: PathBuf,
+        /// What kind of document `--source` is. Assist v1 only accepts supplier-sds.
+        #[arg(long, value_enum)]
+        source_kind: CliSourceKind,
+        /// SDS section to extract candidates for. Assist v1 only supports 4 (first-aid measures).
+        #[arg(long)]
+        section: u32,
+        #[arg(long)]
+        output: PathBuf,
+        /// API key (or set ANTHROPIC_API_KEY / OPENAI_API_KEY env var)
+        #[arg(long, hide_env_values = true)]
+        api_key: Option<String>,
+        #[arg(long)]
+        model: Option<String>,
+        #[arg(long, value_enum, default_value = "anthropic")]
+        provider: CliProvider,
+        #[arg(long)]
+        base_url: Option<String>,
     },
 
     /// Render a structured SDS/JSON document as DOCX, HTML, or PDF
@@ -446,6 +481,23 @@ async fn run_cli(cli: Cli) -> anyhow::Result<()> {
             if strict && outcome.release_status == sdsforge_core::ReleaseStatus::Blocked {
                 std::process::exit(1);
             }
+        }
+
+        Commands::Assist {
+            source, source_kind: CliSourceKind::SupplierSds, section, output,
+            api_key, model, provider, base_url,
+        } => {
+            if section != 4 {
+                anyhow::bail!("assist v1 only supports --section 4 (first-aid measures)");
+            }
+            let provider = Provider::from(provider);
+            let api_key  = resolve_api_key(api_key, provider, &cfg)?;
+            let model    = model.unwrap_or_else(|| provider.default_model(Quality::Medium).to_string());
+
+            tasks::run_assist(
+                AssistParams { source, output, provider, api_key, model, base_url },
+                Arc::clone(&log),
+            ).await?;
         }
 
         Commands::ToJson {

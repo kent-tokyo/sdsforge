@@ -19,6 +19,7 @@ use sdsforge_core::{
     build_generation_artifacts, build_generation_report, compute_evidence_summary,
     compute_release_status, generate_from_resolved_input, generate_with_detailed_enrichment,
     validate_product_input, ChematicNormalizer, GenerationArtifacts, ProductInput, ReleaseStatus,
+    sha256_hex,
 };
 
 // ---------------------------------------------------------------------------
@@ -63,6 +64,18 @@ impl Provider {
             Provider::Groq      => "GROQ_API_KEY",
             Provider::Cohere    => "COHERE_API_KEY",
             Provider::Local     => "LOCAL_LLM_API_KEY",
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Provider::Anthropic => "anthropic",
+            Provider::Openai    => "openai",
+            Provider::Gemini    => "gemini",
+            Provider::Mistral   => "mistral",
+            Provider::Groq      => "groq",
+            Provider::Cohere    => "cohere",
+            Provider::Local     => "local",
         }
     }
 
@@ -761,6 +774,80 @@ pub async fn run_generate(params: GenerateParams, log: LogFn) -> anyhow::Result<
         blocking_findings_count: report.release_gate.blocking_findings.len(),
         unresolved_count: result.unresolved.len(),
     })
+}
+
+// ---------------------------------------------------------------------------
+// assist (v1: Section 4 / first-aid measures, single supplier-SDS source)
+// ---------------------------------------------------------------------------
+
+pub struct AssistParams {
+    pub source: PathBuf,
+    pub output: PathBuf,
+    pub provider: Provider,
+    pub api_key: String,
+    pub model: String,
+    pub base_url: Option<String>,
+}
+
+/// Extracts Section 4 candidate values from one supplier SDS via LLM, then
+/// validates every candidate deterministically before writing them out.
+/// Never touches `official_sds.json`, generation artifacts, or any
+/// `ProductInput` file -- writes exactly one `AssistRun` JSON to
+/// `params.output` and nothing else.
+///
+/// Thin CLI wiring around `sdsforge_core::run_section4_assist`: this
+/// function's own job is just building the concrete backend and doing file
+/// I/O, so the actual prompt/validation logic stays testable in
+/// `sdsforge_core` against a fake backend, with no network access required.
+///
+/// Fails closed: a malformed (non-JSON-array) LLM response is returned as
+/// an error and no output file is written. An individual invalid candidate
+/// (wrong section, unverifiable excerpt, forbidden field, ...) is instead
+/// omitted with a warning recorded in the written `AssistRun`. Zero valid
+/// candidates still produces a valid output file with an empty proposal
+/// list.
+pub async fn run_assist(params: AssistParams, log: LogFn) -> anyhow::Result<()> {
+    let source_bytes = std::fs::read(&params.source)
+        .with_context(|| format!("reading {}", params.source.display()))?;
+    let source_sha256 = sha256_hex(&source_bytes);
+
+    log(format!("Extracting text from {} ...", params.source.display()));
+    let source_text = extract_text(&params.source)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    let llm_config = LlmConfig { model: params.model.clone(), max_tokens: 8_192 };
+    let backend = build_backend(params.provider, params.api_key.clone(), llm_config, params.base_url.clone());
+
+    eprintln!(
+        "Assist: source text from {} will be sent to the {} API ({}) for Section 4 extraction.",
+        params.source.display(), params.provider.name(), params.model
+    );
+
+    let run = sdsforge_core::run_section4_assist(
+        &backend,
+        &params.source.display().to_string(),
+        &source_sha256,
+        &source_text,
+        params.provider.name(),
+        &params.model,
+    )
+    .await
+    .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    let json = serde_json::to_string_pretty(&run)?;
+    std::fs::write(&params.output, json)
+        .with_context(|| format!("writing {}", params.output.display()))?;
+
+    for w in &run.warnings {
+        log(format!("WARN: {w}"));
+    }
+    log(format!(
+        "Assist: {} proposal(s), {} warning(s) written to {}",
+        run.proposals.len(), run.warnings.len(), params.output.display()
+    ));
+
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

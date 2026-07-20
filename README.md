@@ -120,6 +120,37 @@ sdsforge generate --input product.yaml --output-dir generated --strict
 
 ---
 
+## Assist (experimental, v1)
+
+Proposes Section 4 (first-aid measures) candidate values from a supplier
+SDS, for a human to review — it never writes `official_sds.json`,
+generation artifacts, or any authoring-input file. Every proposal is
+capped at Medium confidence and must be backed by a verbatim excerpt that
+`assist` confirms actually appears in the extracted source text; a
+candidate that fails any check is dropped with a warning, not silently
+kept.
+
+```bash
+sdsforge assist \
+  --source supplier-sds.pdf \
+  --source-kind supplier-sds \
+  --section 4 \
+  --output assist_proposals.json \
+  --provider anthropic \
+  --model claude-sonnet-4-6
+```
+
+Writes one file, `assist_proposals.json`, containing the source document's
+evidence level (always `supplier_sds` — the LLM only *locates* the value,
+it doesn't change what kind of evidence the source document is), the
+model/prompt metadata for the run, and each accepted proposal with its
+page, verbatim excerpt, and a deterministic id. v1 supports exactly one
+`--source` document, `--section 4` only, and no review/apply/approval
+workflow yet — accepting a proposal into an authoring input file is
+currently a manual step.
+
+---
+
 ## Why sdsforge
 
 - **MHLW-native**: Converts directly to the Japanese Ministry of Health, Labour and Welfare SDS data exchange format v1.0, using Rust types generated from MHLW's item-definition document and checked for conformance by a rule-based validator.
